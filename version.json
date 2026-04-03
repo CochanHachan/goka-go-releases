@@ -1,5 +1,5 @@
 {
-  "version": "1.1.5",
-  "download_url": "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/releases/goka_go_1.1.5.zip",
-  "release_notes": "テスト用"
+  "version": "1.1.4",
+  "download_url": "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/releases/goka_go_1.1.4.zip",
+  "release_notes": "秒読み多言語対応、メールアドレス追加、ナビバー改善、タイトルバー中央配置"
 }
