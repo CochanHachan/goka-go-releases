@@ -16,8 +16,11 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import secrets
 import sqlite3
+import subprocess
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,7 +33,7 @@ except ImportError:
     raise
 
 try:
-    from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+    from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 except ImportError:
@@ -515,6 +518,18 @@ async def ws_disconnect(handle: str):
     ai_preference.pop(handle, None)
     user_status.pop(handle, None)
 
+    # 対局申請中だった場合、他クライアントに通知して申請を削除
+    if handle in pending_offers:
+        pending_offers.pop(handle, None)
+        _cancel_bot_timers(handle)
+        taken_msg = json.dumps({"type": "match_taken", "offerer": handle, "accepter": ""},
+                               ensure_ascii=False)
+        for other_handle, other_ws in list(connected_users.items()):
+            try:
+                await other_ws.send_text(taken_msg)
+            except Exception:
+                pass
+
     opponent = game_pairs.pop(handle, None)
     if opponent:
         game_pairs.pop(opponent, None)
@@ -541,7 +556,11 @@ async def _bot_auto_offer(handle: str):
         if not bot_name:
             return
         bot_info = AI_BOTS[bot_name]
-        user_status[handle] = "対局申請受付中"
+        _cur = user_status.get(handle, "ログイン")
+        if _cur == "対局申請中":
+            user_status[handle] = "申請・受付"
+        else:
+            user_status[handle] = "対局受付中"
         await ws_send(handle, {
             "type": "match_offer",
             "from": bot_name,
@@ -584,9 +603,9 @@ async def _bot_auto_accept(handle: str):
         # ボットからの挑戦状として送信（ユーザーが承諾してから対局開始）
         _cur = user_status.get(handle, "ログイン")
         if _cur == "対局申請中":
-            user_status[handle] = "申請中・受付中"
+            user_status[handle] = "申請・受付"
         else:
-            user_status[handle] = "対局申請受付中"
+            user_status[handle] = "対局受付中"
         await ws_send(handle, {
             "type": "match_offer",
             "from": bot_name,
@@ -649,12 +668,12 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
         elif target and target in connected_users:
             # 個別申込 → 申請中
             user_status[handle] = "対局申請中"
-            # 相手は受付中（既に申請中なら「申請中・受付中」）
+            # 相手は受付中（既に申請中なら「申請・受付」）
             _cur = user_status.get(target, "ログイン")
             if _cur == "対局申請中":
-                user_status[target] = "申請中・受付中"
+                user_status[target] = "申請・受付"
             elif _cur not in ("対局中", "検討中"):
-                user_status[target] = "対局申請受付中"
+                user_status[target] = "対局受付中"
             await ws_send(target, {
                 "type": "match_offer",
                 "from": handle,
@@ -772,6 +791,16 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
     elif msg_type == "match_cancel":
         # 申込キャンセル → ボット承諾タイマーもキャンセル
         _cancel_bot_timers(handle)
+        # 個別申込の場合、相手のステータスを修正
+        offer_info = pending_offers.get(handle, {})
+        target_of_cancel = offer_info.get("target")
+        if target_of_cancel and target_of_cancel in connected_users:
+            _cur = user_status.get(target_of_cancel, "ログイン")
+            if _cur == "申請・受付":
+                user_status[target_of_cancel] = "対局申請中"
+            elif _cur == "対局受付中":
+                user_status[target_of_cancel] = "ログイン"
+        pending_offers.pop(handle, None)
         user_status[handle] = "ログイン"
         cancel_msg = json.dumps(
             {"type": "match_cancelled", "from": handle}, ensure_ascii=False
@@ -842,7 +871,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
     elif msg_type == "set_status":
         # クライアントから明示的にステータスを設定
         new_status = msg.get("status", "ログイン")
-        if new_status in ("ログイン", "対局申請中", "対局申請受付中", "申請中・受付中", "対局中", "検討中"):
+        if new_status in ("ログイン", "対局申請中", "対局受付中", "申請・受付", "対局中", "検討中"):
             user_status[handle] = new_status
             logger.debug("Status set: %s = %s", handle, new_status)
 
@@ -951,6 +980,50 @@ def _rank_to_initial_elo(rank: str) -> float:
             if r == rank:
                 return float((elo_min + elo_max) // 2)
     return 430.0  # 20級の中央値
+
+
+# ---------------------------------------------------------------------------
+# 管理用エンドポイント（リモートデプロイ用）
+# ---------------------------------------------------------------------------
+ADMIN_TOKEN = "goka-deploy-2026"
+REPO_DIR = "/home/gokago_server/goka_server"
+
+@app.post("/admin/update")
+async def admin_update(request: Request):
+    """GitHubから最新コードを取得してサーバーを再起動する。"""
+    token = request.headers.get("X-Token", "")
+    if token != ADMIN_TOKEN:
+        return {"error": "forbidden"}, 403
+    try:
+        # git pull
+        result = subprocess.run(
+            ["git", "pull", "origin", "main"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=30
+        )
+        git_output = result.stdout + result.stderr
+        # サーバー再起動（新しいプロセスを起動してから自分を終了）
+        subprocess.Popen(
+            [sys.executable, os.path.join(REPO_DIR, "server.py")],
+            cwd=REPO_DIR,
+            start_new_session=True,
+        )
+        # 少し待ってから自分を終了
+        asyncio.get_event_loop().call_later(1.0, lambda: os.kill(os.getpid(), 9))
+        return {"status": "updating", "git": git_output}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/admin/status")
+async def admin_status(request: Request):
+    """サーバーの状態を返す。"""
+    token = request.headers.get("X-Token", "")
+    if token != ADMIN_TOKEN:
+        return {"error": "forbidden"}, 403
+    return {
+        "online_users": len(connected_users),
+        "users": list(connected_users.keys()),
+        "pid": os.getpid(),
+    }
 
 
 # ---------------------------------------------------------------------------

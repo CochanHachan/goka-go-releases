@@ -642,7 +642,7 @@ class AdminApp:
                 pass
             if not self._admin_col_widths_set:
                 ncols = len(self._admin_headers)
-                defaults = [40, 130, 120, 110, 100, 70, 80, 100, 60, 160]
+                defaults = [40, 130, 120, 110, 100, 70, 110, 100, 60, 160]
                 self._ws.restore_column_widths(self.tree, ncols, defaults)
                 self._admin_col_widths_set = True
             if self._sort_column is not None:
