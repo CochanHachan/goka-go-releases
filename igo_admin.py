@@ -535,7 +535,7 @@ class AdminApp:
         try:
             url = API_BASE_URL + urllib.parse.quote(path, safe="/=?&")
             req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=5) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except Exception as e:
             print("API GET error:", path, e)
@@ -597,6 +597,9 @@ class AdminApp:
         if users is None:
             self.status_label.config(text="サーバーに接続できません", fg=T("error_red"))
             return
+        self._refresh_with_data(users, force)
+
+    def _refresh_with_data(self, users, force=False):
         online_count = 0
         rows = []
         for u in users:
@@ -681,8 +684,26 @@ class AdminApp:
             text="オンライン: {}人".format(online_count))
 
     def _auto_refresh(self):
-        self._refresh()
-        self.root.after(2000, self._auto_refresh)
+        if not getattr(self, '_refresh_busy', False):
+            self._refresh_busy = True
+            threading.Thread(target=self._refresh_async, daemon=True).start()
+        self.root.after(1500, self._auto_refresh)
+
+    def _refresh_async(self):
+        """バックグラウンドでAPIを呼び出し、結果をメインスレッドに渡す。"""
+        try:
+            users = self._api_get("/api/users")
+            self.root.after(0, lambda: self._apply_refresh(users))
+        except Exception:
+            self._refresh_busy = False
+
+    def _apply_refresh(self, users):
+        """メインスレッドでUIを更新する。"""
+        self._refresh_busy = False
+        if users is None:
+            self.status_label.config(text="サーバーに接続できません", fg=T("error_red"))
+            return
+        self._refresh_with_data(users)
 
     def _delete_user(self):
         if self._highlighted_row is None:
