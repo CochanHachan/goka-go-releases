@@ -666,8 +666,12 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             })
             logger.info("AI match auto-accepted: %s vs %s", handle, target)
         elif target and target in connected_users:
-            # 個別申込 → 申請中
-            user_status[handle] = "対局申請中"
+            # 個別申込 → 既に受付中なら「申請・受付」、そうでなければ「対局申請中」
+            _my = user_status.get(handle, "ログイン")
+            if _my in ("対局受付中", "申請・受付"):
+                user_status[handle] = "申請・受付"
+            else:
+                user_status[handle] = "対局申請中"
             # 相手は受付中（既に申請中なら「申請・受付」）
             _cur = user_status.get(target, "ログイン")
             if _cur == "対局申請中":
@@ -694,7 +698,12 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
     elif msg_type == "match_offer_broadcast":
         # ボット自動申込タイマーをキャンセル
         _cancel_bot_timers(handle)
-        user_status[handle] = "対局申請中"  # ホスティング = 対局相手を募集中
+        # 既に受付中なら「申請・受付」、そうでなければ「対局申請中」
+        _my = user_status.get(handle, "ログイン")
+        if _my in ("対局受付中", "申請・受付"):
+            user_status[handle] = "申請・受付"
+        else:
+            user_status[handle] = "対局申請中"
         offer_msg = {
             "type": "match_offer",
             "from": handle,
@@ -801,7 +810,12 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             elif _cur == "対局受付中":
                 user_status[target_of_cancel] = "ログイン"
         pending_offers.pop(handle, None)
-        user_status[handle] = "ログイン"
+        # 申請・受付 → 申請を取り消すので「対局受付中」に戻る
+        _my = user_status.get(handle, "ログイン")
+        if _my == "申請・受付":
+            user_status[handle] = "対局受付中"
+        else:
+            user_status[handle] = "ログイン"
         cancel_msg = json.dumps(
             {"type": "match_cancelled", "from": handle}, ensure_ascii=False
         )
