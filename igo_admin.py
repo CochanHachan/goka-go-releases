@@ -169,7 +169,7 @@ class AdminApp:
         tree_frame.pack(fill="both", expand=True, padx=1, pady=1)
 
         self._admin_headers = ["ID", "ハンドルネーム", "氏名", "パスワード",
-                               "棋力", "Elo", "ステータス", "対戦相手", "管理者", "登録日"]
+                               "棋力", "Elo", "ステータス", "対戦相手", "メール", "登録日"]
         self.tree = Sheet(tree_frame,
             headers=self._admin_headers, data=[],
             show_x_scrollbar=False, show_y_scrollbar=True,
@@ -619,9 +619,10 @@ class AdminApp:
             created = u.get("created_at", "")
             user_id = u.get("id", "")
             opponent = u.get("opponent", "")
+            email = u.get("email", "")
             rows.append([
                 user_id, handle, u.get("real_name", ""),
-                pw_plain, display_rank, f"{elo_int:,}", status_text, opponent, "", created
+                pw_plain, display_rank, f"{elo_int:,}", status_text, opponent, email, created
             ])
         for bot_name, bot_info in self.AI_BOTS.items():
             rows.append([
@@ -645,7 +646,7 @@ class AdminApp:
                 pass
             if not self._admin_col_widths_set:
                 ncols = len(self._admin_headers)
-                defaults = [40, 130, 120, 110, 100, 70, 110, 100, 60, 160]
+                defaults = [40, 130, 120, 110, 100, 70, 110, 100, 180, 160]
                 self._ws.restore_column_widths(self.tree, ncols, defaults)
                 self._admin_col_widths_set = True
             if self._sort_column is not None:

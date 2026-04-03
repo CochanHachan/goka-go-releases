@@ -3,8 +3,8 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from glossy_button import GlossyButton
-from lang import L, get_language
+from igo.glossy_button import GlossyButton
+from igo.lang import L, get_language
 from igo.constants import API_BASE_URL
 from igo.theme import T
 from igo.elo import (
@@ -36,6 +36,7 @@ class RegisterScreen:
         fields = [
             ("reg_realname",  "realname",  False),
             ("reg_handle",    "handle",    False),
+            ("reg_email",     "email",     False),
             ("reg_password",  "password",  True),
             ("reg_password2", "password2", True),
         ]
@@ -106,6 +107,7 @@ class RegisterScreen:
     def _do_register(self):
         name = self.entries["realname"].get().strip()
         handle = self.entries["handle"].get().strip()
+        email = self.entries["email"].get().strip()
         pw = self.entries["password"].get().strip()
         pw2 = self.entries["password2"].get().strip()
         rank = localized_rank_to_internal(self.rank_var.get())
@@ -141,6 +143,7 @@ class RegisterScreen:
                 "password": pw,
                 "rank": base_rank,
                 "elo": initial_elo,
+                "email": email,
             }).encode("utf-8")
             _req = _urlreq.Request(
                 API_BASE_URL + "/api/register",

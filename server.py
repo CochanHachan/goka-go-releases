@@ -161,6 +161,7 @@ def init_db():
             elo             REAL    NOT NULL DEFAULT 0,
             rank            TEXT    NOT NULL DEFAULT '30級',
             language        TEXT    NOT NULL DEFAULT 'ja',
+            email           TEXT    NOT NULL DEFAULT '',
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -169,6 +170,13 @@ def init_db():
         conn.execute("ALTER TABLE users ADD COLUMN password_enc TEXT NOT NULL DEFAULT ''")
         conn.commit()
         logger.info("Added password_enc column to users table")
+    except sqlite3.OperationalError:
+        pass  # 既にカラムが存在する場合
+    # email カラムが無い既存DBに追加
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+        logger.info("Added email column to users table")
     except sqlite3.OperationalError:
         pass  # 既にカラムが存在する場合
     conn.commit()
@@ -203,6 +211,7 @@ class RegisterRequest(BaseModel):
     password: str
     rank: str = "30級"
     elo: Optional[float] = None
+    email: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -257,9 +266,9 @@ async def register(req: RegisterRequest):
         # ELO 初期値: クライアントから送られたeloを優先、なければrankから推定
         elo = req.elo if req.elo is not None else _rank_to_initial_elo(req.rank)
         conn.execute(
-            "INSERT INTO users (real_name, handle_name, password_hash, salt, password_enc, elo, rank) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (req.real_name, req.handle_name, pw_hash, salt, pw_enc, elo, req.rank)
+            "INSERT INTO users (real_name, handle_name, password_hash, salt, password_enc, elo, rank, email) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (req.real_name, req.handle_name, pw_hash, salt, pw_enc, elo, req.rank, req.email)
         )
         conn.commit()
         logger.info("Registered new user: %s", req.handle_name)
@@ -324,7 +333,7 @@ async def get_users():
     conn = get_db_connection()
     try:
         rows = conn.execute(
-            "SELECT id, handle_name, real_name, elo, rank, password_enc, created_at FROM users ORDER BY elo DESC"
+            "SELECT id, handle_name, real_name, elo, rank, password_enc, email, created_at FROM users ORDER BY elo DESC"
         ).fetchall()
     finally:
         conn.close()
@@ -340,6 +349,7 @@ async def get_users():
             "elo": row["elo"],
             "rank": row["rank"],
             "password_enc": pw_enc,
+            "email": row["email"] if row["email"] else "",
             "created_at": row["created_at"],
             "online": hn in connected_users,
             "status": user_status.get(hn, ""),
