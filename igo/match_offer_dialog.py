@@ -206,6 +206,7 @@ class MatchOfferDialog:
         """Add a new offer from cloud to the existing dialog."""
         name = offer.get("name", "?")
         if name in self._offers:
+            self._offers[name]["_time"] = _time.time()
             return
         self._add_offer(offer, None)
         self._refresh_list()
