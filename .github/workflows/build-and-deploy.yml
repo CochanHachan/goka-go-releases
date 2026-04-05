@@ -224,7 +224,7 @@ jobs:
               content = f.read()
 
           # ダウンロードリンクをGitHub Releases最新版に更新
-          new_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/GokaGo_Setup_{version}.exe"
+          new_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/goka_go_{version}.zip"
           content = re.sub(
               r'(<a\s+href=")[^"]*("\s+data-key="navDownload")',
               rf'\g<1>{new_link}\2',
