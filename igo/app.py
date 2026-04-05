@@ -436,7 +436,6 @@ class App:
             'xcopy "{src}\\*" "{dst}\\" /E /Y /I /Q >NUL\r\n'
             'if errorlevel 1 (\r\n'
             '    echo コピーに失敗しました。\r\n'
-            '    pause\r\n'
             '    exit /b 1\r\n'
             ')\r\n'
             'echo コピー完了。アプリを再起動します...\r\n'
