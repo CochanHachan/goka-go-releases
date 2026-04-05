@@ -47,8 +47,9 @@ def get_token():
         print("トークンが入力されませんでした。終了します。")
         sys.exit(1)
 
-    # 保存
-    with open(token_file, "w", encoding="utf-8") as f:
+    # 保存（owner-only permissions）
+    fd = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(token)
     print(f"トークンを {token_file} に保存しました。次回から自動読み込みされます。")
     return token
@@ -138,20 +139,23 @@ def run_workflow(token, version=None):
         print(f"エラー: ワークフロー '{WORKFLOW_NAME}' が見つかりません。")
         return False
 
-    # バージョン未指定の場合、version.json から取得
+    # バージョン未指定の場合、ワークフローの自動インクリメントに任せる
     if not version:
-        version = get_version_from_repo(token)
-        if not version:
-            version = input("ビルドバージョンを入力してください (例: 1.2.4): ").strip()
-            if not version:
-                print("バージョンが入力されませんでした。終了します。")
-                return False
+        current = get_version_from_repo(token)
+        if current:
+            parts = current.split(".")
+            parts[-1] = str(int(parts[-1]) + 1)
+            next_version = ".".join(parts)
+            print(f"現在のバージョン: {current} → 次のバージョン: {next_version}（自動インクリメント）")
+        else:
+            print("バージョン: 自動インクリメント")
 
-    print(f"ワークフロー '{WORKFLOW_NAME}' をバージョン {version} で実行中... ", end="", flush=True)
+    display_version = version if version else "自動インクリメント"
+    print(f"ワークフロー '{WORKFLOW_NAME}' を実行中 (バージョン: {display_version})... ", end="", flush=True)
     try:
         api_request("POST", f"actions/workflows/{wf_id}/dispatches", token, {
             "ref": "main",
-            "inputs": {"version": version}
+            "inputs": {"version": version or ""}
         })
         print("OK")
         print(f"ワークフローが開始されました。完了まで約10〜15分かかります。")
@@ -175,7 +179,7 @@ def wait_for_workflow(token):
                 run = runs["workflow_runs"][0]
                 status = run["status"]
                 conclusion = run.get("conclusion", "")
-                elapsed = i * 30
+                elapsed = (i + 1) * 30
                 minutes = elapsed // 60
                 seconds = elapsed % 60
                 print(f"  [{minutes:02d}:{seconds:02d}] 状態: {status}", end="")
