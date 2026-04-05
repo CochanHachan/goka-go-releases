@@ -28,6 +28,8 @@ a = Analysis(
         ('nav_stop.png',            '.'),
         # image フォルダ
         ('image',                   'image'),
+        # 秒読み音声ファイル
+        ('sounds',                  'sounds'),
         # 言語ファイル
         ('lang.py',                 '.'),
         # クラウドクライアント
@@ -82,6 +84,11 @@ a = Analysis(
         'igo.login_form',
         'igo.window_settings',
         'igo.teal_banner',
+        'igo.igo_cloud_client',
+        'igo.byoyomi_sound',
+        'igo.update_progress',
+        'pygame',
+        'pygame.mixer',
         'websockets',
         'websockets.legacy',
         'websockets.legacy.client',
