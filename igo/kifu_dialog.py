@@ -2,11 +2,11 @@
 """碁華 棋譜ダイアログ"""
 import tkinter as tk
 
-from glossy_button import GlossyButton
-from lang import L
+from igo.glossy_button import GlossyButton
+from igo.lang import L
 from igo.constants import BLACK, WHITE
 from igo.sgf import _parse_sgf_text
-from window_settings import WindowSettings
+from igo.window_settings import WindowSettings
 
 # Lazy import: tksheet
 Sheet = None

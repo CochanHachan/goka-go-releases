@@ -56,15 +56,23 @@ def _init_config_if_needed():
         with _ur.urlopen(_req, timeout=3) as _resp:
             server_settings = json.loads(_resp.read().decode("utf-8"))
         server_theme = server_settings.get("theme")
+        server_timeout = server_settings.get("offer_timeout_min")
+        cfg = {}
+        if os.path.exists(app_cfg):
+            with open(app_cfg, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        changed = False
         if server_theme and server_theme in ("dark", "light"):
-            cfg = {}
-            if os.path.exists(app_cfg):
-                with open(app_cfg, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
             if cfg.get("theme") != server_theme:
                 cfg["theme"] = server_theme
-                with open(app_cfg, "w", encoding="utf-8") as f:
-                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+                changed = True
+        if server_timeout is not None:
+            if cfg.get("offer_timeout_min") != server_timeout:
+                cfg["offer_timeout_min"] = server_timeout
+                changed = True
+        if changed:
+            with open(app_cfg, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
     except Exception:
         pass  # Server unreachable, use local config
 

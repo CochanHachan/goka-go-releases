@@ -8,9 +8,9 @@ import threading
 import json
 import time as _time
 
-from glossy_button import GlossyButton
-from lang import L, get_language
-from window_settings import WindowSettings
+from igo.glossy_button import GlossyButton
+from igo.lang import L, get_language
+from igo.window_settings import WindowSettings
 from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.theme import T
 from igo.elo import elo_to_display_rank
@@ -39,9 +39,17 @@ class MatchDialog:
         # Restore saved height or use default
         handle = app.current_user["handle_name"] if app.current_user else "default"
         self._ws = WindowSettings(app._ws._db_path, "match_dialog_{}".format(handle))
-        saved_h = self._ws.load("height")
+        saved_geom = self._ws.load("geometry")
         dw = 460
-        dh = saved_h if saved_h and isinstance(saved_h, int) else 520
+        dh = 600
+        if saved_geom and isinstance(saved_geom, str):
+            import re as _re
+            m = _re.match(r"(\d+)x(\d+)", saved_geom)
+            if m:
+                try:
+                    dw, dh = int(m.group(1)), int(m.group(2))
+                except ValueError:
+                    dw, dh = 460, 600
         # Center on parent window
         self.win.update_idletasks()
         pw = parent_root.winfo_width()
@@ -86,7 +94,7 @@ class MatchDialog:
         else:
             player_text = ""
         try:
-            from teal_banner import TealBanner
+            from igo.teal_banner import TealBanner
             banner_frame = tk.Frame(self.win, bg=bg, height=50)
             banner_frame.pack(fill="x", pady=(12, 6), padx=12)
             banner_frame.pack_propagate(False)
@@ -257,7 +265,7 @@ class MatchDialog:
         self._match_highlighted_row = None
         self.match_list.extra_bindings("cell_select", self._on_match_cell_select)
 
-        from glossy_pill_button import GlossyButton as GlossyPillButton
+        from igo.glossy_pill_button import GlossyButton as GlossyPillButton
         _lang = get_language()
         _accept_text  = {"ja": "承諾", "en": "Accept",  "zh": "接受", "ko": "수락"}.get(_lang, "承諾")
         _decline_text = {"ja": "辞退", "en": "Decline", "zh": "拒绝", "ko": "거절"}.get(_lang, "辞退")
@@ -375,6 +383,13 @@ class MatchDialog:
 
     def _start_udp_listen(self):
         self._listening = True
+        # 挑戦状受付ダイアログが既にポートを使用している場合、
+        # そのオファー情報を共有する
+        offer_dlg = getattr(self.app, '_current_offer_dialog', None)
+        if offer_dlg and hasattr(offer_dlg, '_offers'):
+            for name, offer in offer_dlg._offers.items():
+                if name not in self._offers:
+                    self._offers[name] = offer
         self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
@@ -382,8 +397,13 @@ class MatchDialog:
         except Exception:
             pass
         self._udp_sock.settimeout(1.0)
-        self._udp_sock.bind(("", NET_UDP_PORT))
-        threading.Thread(target=self._udp_recv_loop, daemon=True).start()
+        try:
+            self._udp_sock.bind(("", NET_UDP_PORT))
+            threading.Thread(target=self._udp_recv_loop, daemon=True).start()
+        except OSError:
+            # ポートが既に使用中の場合、リスナーなしで動作（既存オファーは共有済み）
+            self._udp_sock.close()
+            self._udp_sock = None
         self._refresh_list_timer()
 
     def _udp_recv_loop(self):
@@ -426,10 +446,18 @@ class MatchDialog:
         self.win.after(2000, self._refresh_list_timer)
 
     def _refresh_list(self):
+        # UDPリスナーがない場合、OfferDialogからオファーを同期
+        if self._udp_sock is None:
+            offer_dlg = getattr(self.app, '_current_offer_dialog', None)
+            if offer_dlg and hasattr(offer_dlg, '_offers'):
+                for name, offer in offer_dlg._offers.items():
+                    if name not in self._offers:
+                        self._offers[name] = offer
         now = _time.time()
-        # Remove stale offers (>8 seconds old) - only for LAN offers
+        # Remove stale offers: LAN >8s, Cloud >60s (safety net)
         stale = [k for k, v in self._offers.items()
-                 if v.get("_addr") is not None and now - v.get("_time", 0) > 8]
+                 if (v.get("_addr") is not None and now - v.get("_time", 0) > 8)
+                 or (v.get("_addr") is None and now - v.get("_time", 0) > 60)]
         for k in stale:
             del self._offers[k]
         rows = []
@@ -535,11 +563,9 @@ class MatchDialog:
             pass
 
     def _save_height(self):
-        """Save current dialog height to DB."""
+        """Save current dialog geometry to DB."""
         try:
-            h = self.win.winfo_height()
-            if h > 100:
-                self._ws.save("height", h)
+            self._ws.save("geometry", self.win.geometry())
         except Exception:
             pass
 

@@ -6,7 +6,7 @@ import random
 import os
 
 from igo.elo import _is_dan_rank
-from lang import L
+from igo.lang import L
 
 
 class PromotionPopup(tk.Toplevel):

@@ -3,8 +3,8 @@
 import tkinter as tk
 from tkinter import ttk
 
-from glossy_button import GlossyButton
-from lang import L, set_language, get_language
+from igo.glossy_button import GlossyButton
+from igo.lang import L, set_language, get_language
 from igo.constants import API_BASE_URL
 from igo.theme import T, _save_language_to_config
 from igo.ui_helpers import _entry_cfg, _validate_ascii, _disable_ime_for
@@ -52,7 +52,7 @@ class LoginScreen:
 
         # Import RoundedEntry and OutlineButton
         try:
-            from login_form import RoundedEntry, OutlineButton
+            from igo.login_form import RoundedEntry, OutlineButton
             self._has_rounded = True
         except ImportError:
             self._has_rounded = False

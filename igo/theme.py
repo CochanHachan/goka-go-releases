@@ -4,7 +4,7 @@ import os
 import json
 
 from igo.config import _get_app_data_dir
-from lang import set_language, get_language
+from igo.lang import set_language, get_language
 
 THEMES = {
     "dark": {

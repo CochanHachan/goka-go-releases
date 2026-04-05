@@ -10,9 +10,9 @@ import json
 import time as _time
 import random
 
-from glossy_button import GlossyButton
-from window_settings import WindowSettings
-from lang import L, set_language, get_language
+from igo.glossy_button import GlossyButton
+from igo.window_settings import WindowSettings
+from igo.lang import L, set_language, get_language
 from igo.constants import (
     APP_NAME, APP_VERSION, APP_BUILD, UPDATE_CHECK_URL,
     BOARD_SIZE, CELL_SIZE, MARGIN,
@@ -51,6 +51,7 @@ import igo.rendering as _rendering_mod
 class App:
     def __init__(self):
         self.root = tk.Tk()
+        self.root.withdraw()  # 更新確認完了まで非表示
         self.root.title("\u7881\u83ef")
         self.root.configure(bg=T("root_bg"))
 
@@ -58,16 +59,6 @@ class App:
         self._ws = WindowSettings(_db_path, "game")
         self._current_screen = "login"
         init_size = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
-        # Center login window on screen
-        login_w, login_h = 460, 420
-        screen_w = self.root.winfo_screenwidth()
-        screen_h = self.root.winfo_screenheight()
-        x = (screen_w - login_w) // 2
-        y = (screen_h - login_h) // 2
-        self.root.geometry("{}x{}+{}+{}".format(login_w, login_h, x, y))
-        self.root.resizable(True, True)
-        self.root.minsize(400, 400)
-        self.root.configure(bg="white")
 
         # Enter key: invoke button or move to next widget (like Tab)
         def _on_enter(event):
@@ -121,9 +112,8 @@ class App:
         self._ai_color = None
 
         self._current_frame = None
-        self.show_login()
-        # 起動後にバックグラウンドで更新確認（3秒後）
-        self.root.after(3000, self._check_for_update)
+        # 起動時にまず更新確認 → 完了後にログイン画面を表示
+        self._check_for_update_then_login()
 
     def _build_menubar(self):
         menubar = tk.Menu(self.root)
@@ -165,6 +155,15 @@ class App:
         ai_menu.add_radiobutton(label="対局しない", variable=self._ai_enabled_var,
             value="off", command=self._change_ai_setting)
         settings_menu.add_cascade(label="AIロボ", menu=ai_menu)
+        # 秒読みサブメニュー
+        byoyomi_menu = tk.Menu(settings_menu, tearoff=0)
+        self._byoyomi_voice_var = tk.StringVar(value=self._load_byoyomi_voice_setting())
+        self._byoyomi_voice_enabled = self._byoyomi_voice_var.get() == "on"
+        byoyomi_menu.add_radiobutton(label="よむ", variable=self._byoyomi_voice_var,
+            value="on", command=self._change_byoyomi_voice_setting)
+        byoyomi_menu.add_radiobutton(label="よまない", variable=self._byoyomi_voice_var,
+            value="off", command=self._change_byoyomi_voice_setting)
+        settings_menu.add_cascade(label="秒読み", menu=byoyomi_menu)
         menubar.add_cascade(label=L("menu_settings"), menu=settings_menu)
 
         # 表示(V)
@@ -216,10 +215,45 @@ class App:
              "ko": "재시작 후 언어가 변경됩니다."}.get(lang_code, "Restart to apply language change.")
         )
 
+    def _set_title(self, center_text=""):
+        """タイトルバーを設定する。碁華は左、center_textを中央に配置。"""
+        prefix = "碁華"
+        if not center_text:
+            self.root.title(prefix)
+            return
+        # ウィンドウ幅から全角スペースの数を推定
+        try:
+            win_w = self.root.winfo_width()
+            # タイトルバーフォント: 全角≒12px程度
+            total_chars = max(30, win_w // 12)
+        except Exception:
+            total_chars = 55
+        # OS側ボタン(閉じる等)とアイコン分の補正
+        # テキストが長い(対局中VS表示)場合は補正を控えめに
+        text_len = len(center_text)
+        extra = 8 if text_len < 20 else 3
+        pad = max(0, (total_chars - text_len) // 2 - len(prefix) + extra)
+        title = "{}{}{}".format(prefix, "\u3000" * pad, center_text)
+        self.root.title(title)
+
     def _load_ai_setting(self):
         """WindowSettingsからAIロボ設定を読み込む。デフォルトは'on'。"""
         val = self._ws.load("ai_enabled", "on")
         return val if val in ("on", "off") else "on"
+
+    def _load_byoyomi_voice_setting(self):
+        """WindowSettingsから秒読み設定を読み込む。デフォルトは'on'。"""
+        val = self._ws.load("byoyomi_voice", "on")
+        return val if val in ("on", "off") else "on"
+
+    def _change_byoyomi_voice_setting(self):
+        """秒読み設定を変更してDBに保存。"""
+        val = self._byoyomi_voice_var.get()
+        self._byoyomi_voice_enabled = val == "on"
+        try:
+            self._ws.save("byoyomi_voice", val)
+        except Exception:
+            pass
 
     def _change_ai_setting(self):
         """AIロボ設定を変更してDBに保存し、サーバーに通知。"""
@@ -300,12 +334,13 @@ class App:
     # ------------------------------------------------------------------
     # 自動更新
     # ------------------------------------------------------------------
-    def _check_for_update(self):
-        """起動時にバックグラウンドで新バージョンを確認する。"""
+    def _check_for_update_then_login(self):
+        """起動時に更新確認 → 完了後にログイン画面を表示する。"""
         def _worker():
             try:
-                import urllib.request
-                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=5) as r:
+                import urllib.request, ssl
+                ctx = ssl.create_default_context()
+                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx) as r:
                     data = json.loads(r.read().decode("utf-8"))
                 latest  = data.get("version", "")
                 dl_url  = data.get("download_url", "")
@@ -313,8 +348,21 @@ class App:
                 if latest and dl_url and self._is_newer(latest, APP_VERSION):
                     self.root.after(0, lambda: self._show_update_dialog(
                         latest, dl_url, notes))
-            except Exception:
-                pass  # オフライン or サーバー不達 → 無視
+                    return  # ダイアログ側でログイン画面を表示する
+            except Exception as _ue:
+                # デバッグ用: エラーをログファイルに記録
+                try:
+                    _log = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
+                    with open(_log, "w", encoding="utf-8") as _f:
+                        _f.write("URL: {}\n".format(UPDATE_CHECK_URL))
+                        _f.write("APP_VERSION: {}\n".format(APP_VERSION))
+                        _f.write("Error: {}\n".format(_ue))
+                        import traceback
+                        traceback.print_exc(file=_f)
+                except Exception:
+                    pass
+            # 更新不要 or チェック失敗 → すぐにログイン画面へ
+            self.root.after(0, self.show_login)
         threading.Thread(target=_worker, daemon=True).start()
 
     @staticmethod
@@ -328,157 +376,248 @@ class App:
         return _v(remote) > _v(current)
 
     def _show_update_dialog(self, latest, dl_url, notes):
-        """更新ダイアログを表示する。"""
-        win = tk.Toplevel(self.root)
+        """更新ダイアログを表示する。「後でする」→ログイン画面へ。"""
+        # ── カラーパレット ──────────────────────
+        _BG        = "#000000"
+        _FG        = "#E0E0E0"
+        _ACCENT    = "#D4A645"
+        _BTN_PRI   = "#8B2020"
+        _BTN_PRI_H = "#A52A2A"
+        _BTN_SEC   = "#1A2A5C"
+        _BTN_SEC_H = "#253A7A"
+        _BTN_FG    = "#FFFFFF"
+        _LINE_CLR  = "#D4A645"
+        _FONT      = "Yu Gothic UI"
+
+        def _rounded_rect(canvas, x1, y1, x2, y2, r, **kw):
+            pts = [
+                x1+r, y1,  x2-r, y1,
+                x2, y1,  x2, y1+r,
+                x2, y2-r,  x2, y2,
+                x2-r, y2,  x1+r, y2,
+                x1, y2,  x1, y2-r,
+                x1, y1+r,  x1, y1,
+            ]
+            return canvas.create_polygon(pts, smooth=True, **kw)
+
+        class _HoverButton(tk.Canvas):
+            def __init__(self, parent, text, btn_width, btn_height, radius,
+                         base_color, hover_color, fg, font, command, bg=None):
+                canvas_bg = bg if bg else _BG
+                super().__init__(parent, width=btn_width, height=btn_height,
+                                 bg=canvas_bg, highlightthickness=0, bd=0)
+                self._cmd = command
+                self._base = base_color
+                self._hover = hover_color
+                self._btn_w = btn_width
+                self._btn_h = btn_height
+                self._radius = radius
+                self._text = text
+                self._fg = fg
+                self._font = font
+                self._draw(self._base)
+                self.bind("<Enter>", lambda e: self._draw(self._hover))
+                self.bind("<Leave>", lambda e: self._draw(self._base))
+                self.bind("<ButtonRelease-1>", lambda e: self._cmd())
+
+            def _draw(self, color):
+                self.delete("all")
+                _rounded_rect(self, 2, 2, self._btn_w - 2, self._btn_h - 2,
+                               self._radius, fill=color, outline="")
+                self.create_text(self._btn_w // 2, self._btn_h // 2,
+                                 text=self._text, fill=self._fg,
+                                 font=self._font)
+
+        win = tk.Toplevel()
         win.title("アップデート")
-        win.resizable(False, False)
-        win.transient(self.root)
-        win.grab_set()
-        msg = (
-            "新しいバージョンがあります。\n\n"
-            "現在のバージョン : {}\n"
-            "新しいバージョン : {}\n\n"
-            "{}"
-        ).format(APP_VERSION, latest, notes)
-        tk.Label(win, text=msg, justify="left", padx=20, pady=15,
-                 font=("Yu Gothic UI", 10)).pack()
-        btn_frame = tk.Frame(win)
-        btn_frame.pack(pady=(0, 12))
-        tk.Button(btn_frame, text="今すぐ更新", width=12,
-                  command=lambda: self._do_update(win, dl_url, latest)
-                  ).pack(side="left", padx=6)
-        tk.Button(btn_frame, text="後で", width=8,
-                  command=win.destroy).pack(side="left", padx=6)
+        win.configure(bg=_BG)
+        win.withdraw()
+
+        outer = tk.Frame(win, bg=_BG, padx=30, pady=24)
+        outer.pack(fill="both", expand=True)
+
+        _gap = 8
+        tk.Frame(outer, bg=_LINE_CLR, height=2).pack(fill="x", pady=(0, _gap))
+
+        tk.Label(outer, text="アプリが進化しました",
+                 font=(_FONT, 16, "bold"),
+                 fg=_ACCENT, bg=_BG).pack(anchor="center")
+        tk.Label(outer, text="アップデートしてください",
+                 font=(_FONT, 16, "bold"),
+                 fg=_ACCENT, bg=_BG).pack(anchor="center", pady=(0, _gap))
+
+        tk.Frame(outer, bg=_LINE_CLR, height=2).pack(fill="x", pady=(0, 20))
+
+        tk.Label(outer, text="旧バージョン : {}".format(APP_VERSION),
+                 font=(_FONT, 12), fg=_FG, bg=_BG,
+                 anchor="center").pack(fill="x", pady=(0, 4))
+        tk.Label(outer, text="新バージョン : {}".format(latest),
+                 font=(_FONT, 12), fg=_FG, bg=_BG,
+                 anchor="center").pack(fill="x", pady=(0, 24))
+
+        _btn_w = 150
+        _btn_h = 44
+        btn_frame = tk.Frame(outer, bg=_BG)
+        btn_frame.pack(pady=(0, 4))
+        btn_font = (_FONT, 13)
+
+        _HoverButton(btn_frame, text="アップデート",
+                     btn_width=_btn_w, btn_height=_btn_h, radius=14,
+                     base_color=_BTN_PRI, hover_color=_BTN_PRI_H,
+                     fg=_BTN_FG, font=btn_font, bg=_BG,
+                     command=lambda: self._do_update(win, dl_url, latest)
+                     ).pack(side="left", padx=(0, 12))
+
+        def _skip_update():
+            win.destroy()
+            self.show_login()
+
+        _HoverButton(btn_frame, text="後でする",
+                     btn_width=_btn_w, btn_height=_btn_h, radius=14,
+                     base_color=_BTN_SEC, hover_color=_BTN_SEC_H,
+                     fg=_BTN_FG, font=btn_font, bg=_BG,
+                     command=_skip_update
+                     ).pack(side="left")
+
+        def _finalize():
+            win.update_idletasks()
+            rw = win.winfo_reqwidth()
+            rh = win.winfo_reqheight()
+            sx = win.winfo_screenwidth()
+            sy = win.winfo_screenheight()
+            x = (sx - rw) // 2
+            y = (sy - rh) // 2
+            win.geometry("+{}+{}".format(x, y))
+            win.resizable(False, False)
+            win.deiconify()
+
+        win.after(100, _finalize)
 
     def _do_update(self, dialog, dl_url, latest):
-        """zip をダウンロード・解凍・上書きして再起動を促す。"""
-        import urllib.request, zipfile, tempfile, shutil
+        """ZIPをダウンロード→解凍→アプリ終了→バッチで上書き→再起動。"""
+        import urllib.request, zipfile, tempfile, ssl
+        from igo.update_progress import show_update_progress
+
+        _log_path = os.path.join(os.path.expanduser("~"),
+                                 "goka_update_log.txt")
+
+        def _log(msg):
+            try:
+                with open(_log_path, "a", encoding="utf-8") as f:
+                    f.write("{}\n".format(msg))
+            except Exception:
+                pass
+
+        _log("=== _do_update called ===")
         dialog.destroy()
-        prog_win = tk.Toplevel(self.root)
-        prog_win.title("更新中...")
-        prog_win.resizable(False, False)
-        prog_win.transient(self.root)
-        prog_win.grab_set()
-        lbl = tk.Label(prog_win, text="ダウンロード中...",
-                       padx=30, pady=20, font=("Yu Gothic UI", 10))
-        lbl.pack()
-        prog_win.update()
+        prog = show_update_progress(self.root)
+
+        # PyInstaller exe のパスから正しいアプリディレクトリを取得
+        app_exe = sys.executable
+        app_dir = os.path.dirname(app_exe)
+        _log("sys.executable: {}".format(app_exe))
+        _log("app_dir: {}".format(app_dir))
+
         def _worker():
             try:
+                import time as _t
                 tmp_dir = tempfile.mkdtemp()
                 zip_path = os.path.join(tmp_dir, "update.zip")
-                # ダウンロード
+                _log("Downloading to: {}".format(zip_path))
                 urllib.request.urlretrieve(dl_url, zip_path)
-                self.root.after(0, lambda: lbl.config(text="解凍中..."))
-                # 解凍
+                zip_size = os.path.getsize(zip_path)
+                _log("Downloaded: {} bytes".format(zip_size))
+
+                # 「解凍中」を表示して2秒待つ
+                self.root.after(0, lambda: prog["set_status"]("解凍中"))
+                _t.sleep(2)
+
+                extract_dir = os.path.join(tmp_dir, "extracted")
+                os.makedirs(extract_dir, exist_ok=True)
                 with zipfile.ZipFile(zip_path, "r") as zf:
-                    zf.extractall(tmp_dir)
-                # ZIP内のトップレベルサブフォルダを検出して
-                # パスのネストを防ぐ（例: goka_go/ プレフィックスを除去）
-                src_dir = tmp_dir
-                entries = [e for e in os.listdir(tmp_dir)
-                           if e != "update.zip"]
-                if (len(entries) == 1
-                        and os.path.isdir(os.path.join(tmp_dir, entries[0]))):
-                    src_dir = os.path.join(tmp_dir, entries[0])
-                # インストール先を正しく取得
-                # （PyInstaller frozen時は sys.executable の親ディレクトリ）
-                app_dir = _get_install_dir()
-                if getattr(sys, 'frozen', False) and sys.platform == 'win32':
-                    # Windows frozen: 実行中のexe/DLLは上書き不可のため
-                    # バッチファイルでプロセス終了後にコピー→再起動
-                    self._launch_update_batch(
-                        src_dir, app_dir, tmp_dir, prog_win, latest)
+                    _log("ZIP entries: {}".format(len(zf.namelist())))
+                    zf.extractall(extract_dir)
+                _log("Extracted OK")
+
+                # ZIP内にgoka_goサブフォルダがある場合、そこをコピー元にする
+                inner = os.path.join(extract_dir, "goka_go")
+                if os.path.isdir(inner):
+                    extract_dir = inner
+                    _log("Using inner dir: {}".format(extract_dir))
+
+                # 「インストール中」を表示して2秒待つ
+                self.root.after(0, lambda: prog["set_status"]("インストール中"))
+                _t.sleep(2)
+
+                # 「アップデートは正常に終了しました。」を表示して1.5秒待つ
+                if "show_complete" in prog:
+                    self.root.after(0, lambda: prog["show_complete"]())
                 else:
-                    # 開発モード: 直接コピー
-                    self.root.after(0, lambda: lbl.config(text="コピー中..."))
-                    for root_dir, dirs, files in os.walk(src_dir):
-                        for fname in files:
-                            if fname.endswith(".zip"):
-                                continue
-                            src = os.path.join(root_dir, fname)
-                            rel = os.path.relpath(src, src_dir)
-                            dst = os.path.join(app_dir, rel)
-                            os.makedirs(os.path.dirname(dst), exist_ok=True)
-                            shutil.copy2(src, dst)
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                    self.root.after(0,
-                                    lambda: self._update_done(prog_win, latest))
+                    self.root.after(0, lambda: prog["set_status"]("アップデート完了"))
+                _t.sleep(1.5)
+
+                bat_path = os.path.join(tmp_dir, "goka_update.bat")
+                with open(bat_path, "w", encoding="utf-8") as bf:
+                    bf.write("@echo off\n")
+                    bf.write("chcp 65001 >nul\n")
+                    bf.write('tasklist /FI "IMAGENAME eq goka_go.exe"'
+                             ' 2>NUL | find /I "goka_go.exe" >NUL\n')
+                    bf.write("if %ERRORLEVEL%==0 (\n")
+                    bf.write("  timeout /t 1 /nobreak >nul\n")
+                    bf.write("  goto WAIT\n")
+                    bf.write(")\n")
+                    bf.write(":WAIT\n")
+                    bf.write('tasklist /FI "IMAGENAME eq goka_go.exe"'
+                             ' 2>NUL | find /I "goka_go.exe" >NUL\n')
+                    bf.write("if %ERRORLEVEL%==0 (\n")
+                    bf.write("  timeout /t 1 /nobreak >nul\n")
+                    bf.write("  goto WAIT\n")
+                    bf.write(")\n")
+                    bf.write('xcopy /s /y /q "{}\\*" "{}\\"\n'.format(
+                        extract_dir, app_dir))
+                    bf.write('start "" "{}"\n'.format(app_exe))
+                    bf.write("del /q \"%~f0\"\n")
+
+                _log("Batch: {}".format(bat_path))
+                self.root.after(0, lambda: self._launch_update(
+                    prog, bat_path, _log))
             except Exception as e:
-                self.root.after(0, lambda: (
-                    prog_win.destroy(),
-                    messagebox.showerror("更新エラー", str(e))
-                ))
+                import traceback
+                _log("WORKER ERROR: {}".format(e))
+                _log(traceback.format_exc())
+                def _show_err(err=e):
+                    prog["close"]()
+                    self.root.deiconify()
+                    messagebox.showerror("更新エラー", str(err))
+                    self.show_login()
+                self.root.after(0, _show_err)
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _launch_update_batch(self, src_dir, app_dir, tmp_dir,
-                             prog_win, latest):
-        """バッチファイルを生成し、exe終了後にファイルコピー→再起動する。"""
-        exe_path = sys.executable
-        exe_name = os.path.basename(exe_path)
-        # バッチファイルはsrc_dirの外（tmp_dirの親）に生成して
-        # xcopyのコピー対象に含まれないようにする
-        import tempfile as _tf
-        bat_dir = _tf.mkdtemp()
-        bat_path = os.path.join(bat_dir, "_goka_update.bat")
-        bat_content = (
-            '@echo off\r\n'
-            'echo 碁華アップデート中... しばらくお待ちください。\r\n'
-            'echo.\r\n'
-            ':WAIT_LOOP\r\n'
-            'tasklist /FI "IMAGENAME eq {exe}" 2>NUL '
-            '| find /I "{exe}" >NUL\r\n'
-            'if not errorlevel 1 (\r\n'
-            '    timeout /t 1 /nobreak >NUL\r\n'
-            '    goto WAIT_LOOP\r\n'
-            ')\r\n'
-            'echo プロセス終了を確認。ファイルをコピーします...\r\n'
-            'xcopy "{src}\\*" "{dst}\\" /E /Y /I /Q >NUL\r\n'
-            'if errorlevel 1 (\r\n'
-            '    echo コピーに失敗しました。\r\n'
-            '    exit /b 1\r\n'
-            ')\r\n'
-            'echo コピー完了。アプリを再起動します...\r\n'
-            'rmdir /s /q "{tmp}" 2>NUL\r\n'
-            'start "" "{exe_path}"\r\n'
-            'rmdir /s /q "{bat_dir}" 2>NUL\r\n'
-            'exit\r\n'
-        ).format(
-            exe=exe_name,
-            src=src_dir,
-            dst=app_dir,
-            tmp=tmp_dir,
-            exe_path=exe_path,
-            bat_dir=bat_dir,
-        )
-        with open(bat_path, "w", encoding="cp932") as f:
-            f.write(bat_content)
-        # バッチを非表示で実行
+    def _launch_update(self, prog, bat_path, _log=None):
+        """バッチを起動してアプリを終了する。"""
         import subprocess
-        subprocess.Popen(
-            ['cmd', '/c', bat_path],
-            creationflags=0x08000000,  # CREATE_NO_WINDOW
-            close_fds=True,
-        )
-        # 更新完了を通知してアプリ終了
-        def _notify_and_exit():
-            prog_win.destroy()
-            messagebox.showinfo(
-                "更新準備完了",
-                "バージョン {} への更新を準備しました。\n"
-                "アプリを終了して自動的に再起動します。".format(latest)
-            )
+        try:
+            if _log:
+                _log("_launch_update called")
+            prog["close"]()
+            if _log:
+                _log("prog closed")
+            # バッチを非表示で実行（黒い画面を出さない）
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            subprocess.Popen(
+                ['cmd', '/c', bat_path],
+                startupinfo=si,
+                creationflags=subprocess.CREATE_NO_WINDOW)
+            if _log:
+                _log("batch launched, destroying root")
             self.root.destroy()
-        self.root.after(0, _notify_and_exit)
-
-    def _update_done(self, prog_win, latest):
-        """更新完了ダイアログを表示し、再起動を促す（開発モード用）。"""
-        prog_win.destroy()
-        if messagebox.showinfo(
-            "更新完了",
-            "バージョン {} に更新しました。\nアプリを再起動してください。".format(latest)
-        ) is not None:
-            self.root.destroy()
+        except Exception as e:
+            if _log:
+                import traceback
+                _log("LAUNCH ERROR: {}".format(e))
+                _log(traceback.format_exc())
 
 
     def _user_screen_name(self, screen_name):
@@ -512,14 +651,24 @@ class App:
         frame.pack(expand=True, fill="both")
 
     def show_login(self):
+        self.root.withdraw()
+        self.root.title("\u7881\u83ef")
+        self.root.minsize(400, 400)
         self._save_geometry()
         self.root.config(menu="")
         self.login_screen.reset()
         self._switch_frame(self._login_frame)
         self._apply_geometry("login")
         self.root.configure(bg="white")
-        self.root.geometry("460x420")
-        self.root.after(200, lambda: self.root.resizable(False, False))
+        login_w, login_h = 460, 420
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        lx = (screen_w - login_w) // 2
+        ly = (screen_h - login_h) // 2
+        self.root.geometry("{}x{}+{}+{}".format(login_w, login_h, lx, ly))
+        self.root.resizable(False, False)  # deiconify前に設定（後から変更するとちらつく）
+        self.root.update_idletasks()
+        self.root.deiconify()
 
     def show_register(self):
         self._save_geometry()
@@ -572,7 +721,7 @@ class App:
         self.go_board.white_rank_label.config(fg="#b0b0b0")
         # Show logged-in user in title bar
         rank = elo_to_display_rank(user["elo_rating"]) if user["elo_rating"] else ""
-        self.root.title("\u7881\u83ef - {}\uff08{}\uff09".format(user["handle_name"], rank))
+        self._set_title("{}（{}）".format(user["handle_name"], rank))
         self._save_geometry()
         self._switch_frame(self._game_frame)
         self._apply_geometry("game")
@@ -738,7 +887,7 @@ class App:
             komi_str = "\u30b3\u30df{}\u76ee".format(int(komi))
         else:
             komi_str = "\u30b3\u30df{}\u76ee\u534a".format(int(komi))
-        self.root.title("\u7881\u83ef - {}({})  VS  {}({})  {}".format(
+        self._set_title("{}({})  VS  {}({})  {}".format(
             b_name, b_rank, w_name, w_rank, komi_str))
 
     def _update_elo_after_game(self, winner_color):
@@ -784,7 +933,7 @@ class App:
                 self.go_board.white_rank_label.config(fg=T("rank_fg"))
             user_now = self.current_user
             if user_now:
-                self.root.title("\u7881\u83ef - {}\uff08{}\uff09".format(
+                self._set_title("{}（{}）".format(
                     user_now["handle_name"], new_display))
         # Promotion dialog
         if new_rank != old_rank:
@@ -1030,7 +1179,7 @@ class App:
     def _connect_cloud(self):
         """Connect to the cloud WebSocket server."""
         try:
-            from igo_cloud_client import CloudClient
+            from igo.igo_cloud_client import CloudClient
         except ImportError:
             return
         if self._cloud_client and self._cloud_client.connected:
@@ -1654,7 +1803,7 @@ class App:
         user = self.current_user
         if user:
             rank = elo_to_display_rank(user["elo_rating"]) if user["elo_rating"] else ""
-            self.root.title("\u7881\u83ef - {}\uff08{}\uff09".format(user["handle_name"], rank))
+            self._set_title("{}（{}）".format(user["handle_name"], rank))
         # Restart match listener
         self._start_match_listener()
         # Tell server to reset state and restart bot timers

@@ -7,7 +7,7 @@ import threading
 import json
 import time as _time
 
-from lang import L, get_language
+from igo.lang import L, get_language
 from igo.constants import (
     BOARD_SIZE, CELL_SIZE, MARGIN, STONE_RADIUS, STAR_RADIUS,
     EMPTY, BLACK, WHITE, STAR_POINTS, TIME_LIMIT,
@@ -15,6 +15,7 @@ from igo.constants import (
 )
 from igo.theme import T
 from igo.elo import elo_to_display_rank, rank_to_initial_elo
+from igo.byoyomi_sound import play_byoyomi_sound, play_byoyomi_start, play_timeout_sound
 from igo.game_logic import GoGame, _neighbors
 from igo.katago import (
     KataGoGTP, _katago_score, _katago_winrate, calculate_territory_chinese,
@@ -139,9 +140,9 @@ class GoBoard:
             fg=T("text_disabled"), bg=T("container_bg"), anchor="e")
         self.komi_label.pack(side="right")
         self.black_winrate_label = tk.Label(
-            bp_bottom, text="", font=("", 9, "bold"),
+            bp_bottom, text="", font=("", 11, "bold"),
             fg="#4CAF50", bg=T("container_bg"), anchor="e")
-        self.black_winrate_label.pack(side="right", padx=(0, 8))
+        self.black_winrate_label.pack(side="right", padx=(0, 0))
 
         # White player panel (right)
         self.white_panel = tk.Frame(self.top_frame, bg=T("container_bg"), bd=0,
@@ -176,9 +177,9 @@ class GoBoard:
             fg=T("timer_inactive"), bg=T("container_bg"), anchor="e")
         self.white_time_label.pack(side="right")
         self.white_winrate_label = tk.Label(
-            wp_bottom, text="", font=("", 9, "bold"),
+            wp_bottom, text="", font=("", 11, "bold"),
             fg="#4CAF50", bg=T("container_bg"), anchor="w")
-        self.white_winrate_label.pack(side="left", padx=(0, 8))
+        self.white_winrate_label.pack(side="left", padx=(8, 0))
 
         # Navigation bar for kifu replay (initially hidden, packed side=bottom BEFORE canvas)
         self._reviewing = False
@@ -306,19 +307,23 @@ class GoBoard:
                 if not alive:
                     self.game.time_out(BLACK)
                     self._update_time_display()
+                    self._play_byoyomi_if_enabled(None, is_timeout=True)
                     if self.net_mode and self.app:
                         self.app.send_net_message({"type": "timeout", "player": "black"})
                     self._show_time_out(BLACK)
                     return
+                self._play_byoyomi_if_enabled(self.timer_black)
             else:
                 alive = self.timer_white.tick()
                 if not alive:
                     self.game.time_out(WHITE)
                     self._update_time_display()
+                    self._play_byoyomi_if_enabled(None, is_timeout=True)
                     if self.net_mode and self.app:
                         self.app.send_net_message({"type": "timeout", "player": "white"})
                     self._show_time_out(WHITE)
                     return
+                self._play_byoyomi_if_enabled(self.timer_white)
         else:
             # Legacy simple timer
             if self.game.current_player == BLACK:
@@ -396,6 +401,25 @@ class GoBoard:
         else:
             self.black_panel.config(highlightbackground=T("panel_inactive"))
             self.white_panel.config(highlightbackground=T("panel_highlight"))
+
+    def _play_byoyomi_if_enabled(self, timer, is_timeout=False):
+        """秒読み設定がオンの場合、音声を再生する。
+        持ち時間中は読まない。秒読みフェーズに入ってから読む。"""
+        if self.app and not getattr(self.app, '_byoyomi_voice_enabled', True):
+            return
+        if is_timeout:
+            play_timeout_sound()
+            return
+        if timer is None:
+            return
+        # 秒読みフェーズのみ音声を再生
+        if timer.in_byoyomi:
+            # 秒読み開始の瞬間を検知（byo_remaining がフルリセットされた直後）
+            if not getattr(timer, '_byoyomi_start_announced', False):
+                timer._byoyomi_start_announced = True
+                play_byoyomi_start()
+                return  # 開始アナウンスだけ再生、秒数は次のtickから
+            play_byoyomi_sound(timer.byo_remaining)
 
     def _show_time_out(self, loser):
         """Show timeout result - called on the side whose clock ran out."""
@@ -694,7 +718,7 @@ class GoBoard:
             opp_name = getattr(self, "white_name", "相手")
         else:
             opp_name = getattr(self, "black_name", "相手")
-        self._show_temp_overlay("{}がパスをしました".format(opp_name))
+        self._show_temp_overlay("{}がパスをしました".format(opp_name), duration=5000)
         self.game.pass_turn()
         self._update_time_display()
         if self.game.game_over:
@@ -1123,12 +1147,21 @@ class GoBoard:
         """Position nav_frame right below the board, following board position."""
         if not self._reviewing:
             return
-        # 碁盤の下端を計算
+        # 碁盤の下端を計算（グリッド最下行 + 半マージン）
         grid_bottom_y = self.offset_y + self.margin + (BOARD_SIZE - 1) * self.cell_size
-        board_bottom_y = grid_bottom_y + self.margin  # 盤面のマージン分
+        board_bottom_y = grid_bottom_y + self.margin // 2  # 碁盤に近づける
         # キャンバスの親内での位置
         canvas_y = self.canvas.winfo_y()
-        y = canvas_y + board_bottom_y + 1  # 1px の間隔
+        y = canvas_y + board_bottom_y + 10  # 碁盤との間隔
+        # ウィンドウ下端からはみ出さないよう制限
+        try:
+            parent_h = self.canvas.master.winfo_height()
+            nav_h = self.nav_frame.winfo_reqheight() or 30
+            max_y = parent_h - nav_h - 2
+            if y > max_y:
+                y = max_y
+        except Exception:
+            pass
         self.nav_frame.place(relx=0.5, y=y, anchor="n")
         self.nav_frame.lift()
 
