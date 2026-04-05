@@ -37,6 +37,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -80,7 +82,7 @@ jobs:
           from datetime import datetime, timezone
           build_date = datetime.now(timezone.utc).strftime("%Y%m%d")
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write(f"version={new_version}\n")
               f.write(f"build_date={build_date}\n")
               f.write(f"release_notes={notes}\n")
