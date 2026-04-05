@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>碁華 - Goka GO | ネット対戦型囲碁ゲーム</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Yu Mincho", "游明朝", "Hiragino Mincho Pro", serif; color: #fff; overflow: hidden; }
+
+  /* ===== Slideshow Container ===== */
+  .slideshow {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* ===== Each Slide ===== */
+  .slide {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out;
+    pointer-events: none;
+  }
+  .slide.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* ===== Slide 1: Hero (碁盤) ===== */
+  .slide-hero img {
+    filter: brightness(0.5);
+  }
+  .hero-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .hero-sub {
+    font-size: 1.4rem;
+    letter-spacing: 0.5em;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 20px;
+    font-weight: 300;
+    opacity: 0;
+    transform: translateY(20px);
+    animation: slideUp 1s ease 0.5s forwards;
+  }
+  .hero-title {
+    font-size: 6rem;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    color: #fff;
+    text-shadow: 0 0 40px rgba(0,0,0,0.7), 0 0 80px rgba(0,0,0,0.5);
+    opacity: 0;
+    transform: translateY(20px);
+    animation: slideUp 1s ease 1s forwards;
+  }
+  .hero-line {
+    width: 120px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.5);
+    margin: 30px auto;
+    opacity: 0;
+    animation: fadeIn 1s ease 0.8s forwards;
+  }
+
+  /* ===== Slide 2: Flower ===== */
+  .flower-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.3) 0%,
+      rgba(0,0,0,0.1) 40%,
+      rgba(0,0,0,0.1) 60%,
+      rgba(0,0,0,0.4) 100%
+    );
+  }
+  .flower-text {
+    font-size: 2.8rem;
+    letter-spacing: 0.4em;
+    color: #fff;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.8), 0 0 60px rgba(0,0,0,0.5);
+    font-weight: 400;
+    max-width: 85vw;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .flower-text.latin {
+    font-size: 2.2rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* ===== Slide 3: Master ===== */
+  .slide-master img {
+    filter: brightness(0.7);
+  }
+  .master-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+  }
+  .master-nav {
+    position: absolute;
+    top: 160px;
+    right: 60px;
+    text-align: right;
+  }
+  .master-nav a {
+    display: block;
+    color: rgba(255,255,255,0.9);
+    text-decoration: none;
+    font-size: 1.2rem;
+    letter-spacing: 0.2em;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+    transition: all 0.3s ease;
+  }
+  .master-nav a:hover {
+    color: #f0c860;
+    border-bottom-color: #f0c860;
+    padding-right: 10px;
+  }
+  .master-nav a:last-child {
+    border-bottom: none;
+  }
+  .master-logo {
+    position: absolute;
+    bottom: 60px;
+    left: 60px;
+  }
+  .master-logo .logo-title {
+    font-size: 3rem;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+  }
+  .master-logo .logo-sub {
+    font-size: 1rem;
+    letter-spacing: 0.3em;
+    color: rgba(255,255,255,0.6);
+    margin-top: 8px;
+  }
+
+  /* ===== Slide Indicators ===== */
+  .indicators {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 12px;
+    z-index: 100;
+  }
+  .indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.3);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255,255,255,0.5);
+  }
+  .indicator.active {
+    background: #fff;
+    transform: scale(1.2);
+  }
+  .indicator:hover {
+    background: rgba(255,255,255,0.7);
+  }
+
+  /* ===== Language Switcher ===== */
+  .lang-switcher {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 200;
+    display: flex;
+    gap: 6px;
+  }
+  .lang-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.4);
+    color: #fff;
+    padding: 5px 11px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    letter-spacing: 0.05em;
+    backdrop-filter: blur(4px);
+    transition: all 0.2s ease;
+    font-family: inherit;
+  }
+  .lang-btn:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.7);
+  }
+  .lang-btn.active {
+    background: rgba(255,255,255,0.35);
+    border-color: #fff;
+    font-weight: bold;
+  }
+
+  /* ===== Animations ===== */
+  @keyframes slideUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 768px) {
+    .hero-title { font-size: 3.5rem; }
+    .hero-sub { font-size: 1rem; }
+    .flower-text { font-size: 1.6rem; }
+    .master-nav { top: 30px; right: 30px; }
+    .master-nav a { font-size: 1rem; }
+    .master-logo { bottom: 30px; left: 30px; }
+    .master-logo .logo-title { font-size: 2rem; }
+    .lang-switcher { top: 12px; right: 12px; }
+    .lang-btn { padding: 4px 8px; font-size: 0.75rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Language Switcher -->
+<div class="lang-switcher">
+  <button class="lang-btn" data-lang="ja">JP</button>
+  <button class="lang-btn" data-lang="en">EN</button>
+  <button class="lang-btn" data-lang="zh">中</button>
+  <button class="lang-btn" data-lang="ko">한</button>
+</div>
+
+<div class="slideshow">
+  <!-- Slide 1: Hero -->
+  <div class="slide slide-hero active" data-index="0">
+    <img src="hero.jpg" alt="碁盤">
+    <div class="hero-overlay">
+      <p class="hero-sub">ネット対戦型囲碁アプリ</p>
+      <div class="hero-line"></div>
+      <h1 class="hero-title">碁華</h1>
+    </div>
+  </div>
+
+  <!-- Slide 2: Flower -->
+  <div class="slide slide-flower" data-index="1">
+    <img src="flower.jpg" alt="華">
+    <div class="flower-overlay">
+      <p class="flower-text">虚空に咲く盤上の華</p>
+    </div>
+  </div>
+
+  <!-- Slide 3: Master -->
+  <div class="slide slide-master" data-index="2">
+    <img src="master.jpg" alt="棋士">
+    <div class="master-overlay">
+      <nav class="master-nav">
+        <!-- DOWNLOAD_LINK: この行はGitHub Actionsワークフローで自動更新されます -->
+        <a href="https://github.com/CochanHachan/goka-go-releases/releases/latest" data-key="navDownload">ダウンロード</a>
+        <a data-key='navHowto' href='/howto'>遊び方</a>
+        <a data-key='navFeatures' href='/features'>機能紹介</a>
+        <a data-key='navSystem' href='/sysreq'>動作環境</a>
+        <a href="mailto:pcochan@proton.me" data-key="navContact">お問い合わせ</a>
+      </nav>
+      <div class="master-logo">
+        <div class="logo-title">碁華</div>
+        <div class="logo-sub">GOKA GO — 虚空に咲く盤上の華</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Indicators -->
+<div class="indicators">
+  <div class="indicator active" data-target="0"></div>
+  <div class="indicator" data-target="1"></div>
+  <div class="indicator" data-target="2"></div>
+</div>
+
+<script>
+  // ===== Slideshow =====
+  const slides = document.querySelectorAll('.slide');
+  const indicators = document.querySelectorAll('.indicator');
+  let current = 0;
+  let timer = null;
+  const INTERVAL = 5000;
+
+  function goTo(index) {
+    slides[current].classList.remove('active');
+    indicators[current].classList.remove('active');
+    current = index;
+    slides[current].classList.add('active');
+    indicators[current].classList.add('active');
+  }
+  function next() {
+    if (current < slides.length - 1) {
+      goTo(current + 1);
+    } else {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+  function startTimer() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(next, INTERVAL);
+  }
+  indicators.forEach(ind => {
+    ind.addEventListener('click', () => {
+      const idx = parseInt(ind.dataset.target);
+      goTo(idx);
+      if (idx < slides.length - 1) {
+        startTimer();
+      } else {
+        clearInterval(timer);
+        timer = null;
+      }
+    });
+  });
+  startTimer();
+
+  // ===== Language System =====
+  const TRANSLATIONS = {
+    ja: {
+      title:       "碁華 - Goka GO | ネット対戦型囲碁ゲーム",
+      heroSub:     "ネット対戦型囲碁アプリ",
+      flowerText:  "虚空に咲く盤上の華",
+      navDownload: "ダウンロード",
+      navHowto:    "遊び方",
+      navFeatures: "機能紹介",
+      navSystem:   "動作環境",
+      navContact:  "お問い合わせ",
+      logoSub:     "GOKA GO — 虚空に咲く盤上の華",
+    },
+    en: {
+      title:       "Goka GO | Online Go Board Game App",
+      heroSub:     "Online Go Board Game App",
+      flowerText:  "A flower blooming on the board in the void",
+      navDownload: "Download",
+      navHowto:    "How to Play",
+      navFeatures: "Features",
+      navSystem:   "System Requirements",
+      navContact:  "Contact",
+      logoSub:     "GOKA GO — A flower blooming on the board in the void",
+    },
+    zh: {
+      title:       "碁华 - Goka GO | 网络围棋对战应用",
+      heroSub:     "网络围棋对战应用",
+      flowerText:  "虚空中盛开的棋盘之华",
+      navDownload: "下载",
+      navHowto:    "玩法介绍",
+      navFeatures: "功能说明",
+      navSystem:   "运行环境",
+      navContact:  "联系我们",
+      logoSub:     "GOKA GO — 虚空中盛开的棋盘之华",
+    },
+    ko: {
+      title:       "碁華 - Goka GO | 네트워크 대전형 바둑 앱",
+      heroSub:     "네트워크 대전형 바둑 앱",
+      flowerText:  "허공에 피는 바둑판의 꽃",
+      navDownload: "다운로드",
+      navHowto:    "게임 방법",
+      navFeatures: "기능 소개",
+      navSystem:   "시스템 요구사항",
+      navContact:  "문의하기",
+      logoSub:     "GOKA GO — 허공에 피는 바둑판의 꽃",
+    },
+  };
+
+  function detectLang() {
+    const saved = localStorage.getItem('goka-lang');
+    if (saved && TRANSLATIONS[saved]) return saved;
+    const bl = (navigator.language || 'en').substring(0, 2).toLowerCase();
+    if (bl === 'ja') return 'ja';
+    if (bl === 'zh') return 'zh';
+    if (bl === 'ko') return 'ko';
+    return 'en';
+  }
+
+  function applyLang(lang) {
+    const t = TRANSLATIONS[lang];
+    document.documentElement.lang = lang;
+    document.title = t.title;
+    document.querySelector('.hero-sub').textContent = t.heroSub;
+    const flowerEl = document.querySelector('.flower-text');
+    flowerEl.textContent = t.flowerText;
+    flowerEl.classList.toggle('latin', lang === 'en' || lang === 'ko');
+    const keyMap = {
+      navDownload: t.navDownload,
+      navHowto:    t.navHowto,
+      navFeatures: t.navFeatures,
+      navSystem:   t.navSystem,
+      navContact:  t.navContact,
+    };
+    document.querySelectorAll('.master-nav a[data-key]').forEach(a => {
+      const key = a.dataset.key;
+      if (keyMap[key]) a.textContent = keyMap[key];
+    });
+    document.querySelector('.logo-sub').textContent = t.logoSub;
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+    localStorage.setItem('goka-lang', lang);
+  }
+
+  applyLang(detectLang());
+
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyLang(btn.dataset.lang));
+  });
+</script>
+
+</body>
+</html>
