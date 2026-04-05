@@ -156,8 +156,8 @@ jobs:
                       zf.extract(member, "katago")
                       print(f"  Extracted: {member.filename}")
 
-          # KataGo ニューラルネットモデル
-          model_url = "https://github.com/lightvector/KataGo/releases/download/v1.12.4/b18c384nbt-uec.bin.gz"
+          # KataGo ニューラルネットモデル（b28c512nbt — 最強モデル、約278MB展開後）
+          model_url = "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"
           model_gz = "model.bin.gz"
           print(f"Downloading KataGo model from {model_url}...")
           urllib.request.urlretrieve(model_url, model_gz)
