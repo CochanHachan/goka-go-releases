@@ -394,6 +394,8 @@ class App:
                     self.root.after(0, lambda: lbl.config(text="コピー中..."))
                     for root_dir, dirs, files in os.walk(src_dir):
                         for fname in files:
+                            if fname.endswith(".zip"):
+                                continue
                             src = os.path.join(root_dir, fname)
                             rel = os.path.relpath(src, src_dir)
                             dst = os.path.join(app_dir, rel)
@@ -414,8 +416,11 @@ class App:
         """バッチファイルを生成し、exe終了後にファイルコピー→再起動する。"""
         exe_path = sys.executable
         exe_name = os.path.basename(exe_path)
-        # バッチファイルを一時ディレクトリに生成
-        bat_path = os.path.join(tmp_dir, "_goka_update.bat")
+        # バッチファイルはsrc_dirの外（tmp_dirの親）に生成して
+        # xcopyのコピー対象に含まれないようにする
+        import tempfile as _tf
+        bat_dir = _tf.mkdtemp()
+        bat_path = os.path.join(bat_dir, "_goka_update.bat")
         bat_content = (
             '@echo off\r\n'
             'echo 碁華アップデート中... しばらくお待ちください。\r\n'
@@ -437,6 +442,7 @@ class App:
             'echo コピー完了。アプリを再起動します...\r\n'
             'rmdir /s /q "{tmp}" 2>NUL\r\n'
             'start "" "{exe_path}"\r\n'
+            'rmdir /s /q "{bat_dir}" 2>NUL\r\n'
             'exit\r\n'
         ).format(
             exe=exe_name,
@@ -444,6 +450,7 @@ class App:
             dst=app_dir,
             tmp=tmp_dir,
             exe_path=exe_path,
+            bat_dir=bat_dir,
         )
         with open(bat_path, "w", encoding="cp932") as f:
             f.write(bat_content)
