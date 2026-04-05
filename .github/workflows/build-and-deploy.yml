@@ -185,6 +185,7 @@ jobs:
           print(f"Updated version.json to v{version}")
 
       - name: Commit and push release
+        shell: bash
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
