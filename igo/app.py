@@ -51,9 +51,11 @@ import igo.rendering as _rendering_mod
 class App:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.withdraw()  # 初期化完了まで非表示（ちらつき防止）
+        # 初期化完了まで完全透明にする（ちらつき防止）
+        # withdraw/deiconify はWindowsでタスクバーがちらつくため alpha を使用
+        self.root.attributes('-alpha', 0)
         self.root.title("\u7881\u83ef")
-        self.root.configure(bg=T("root_bg"))
+        self.root.configure(bg="white")
 
         _db_path = os.path.join(_get_app_data_dir(), "ui_settings.db")
         self._ws = WindowSettings(_db_path, "game")
@@ -520,9 +522,10 @@ class App:
         self._apply_geometry("login")
         self.root.configure(bg="white")
         self.root.geometry("460x420")
-        self.root.after(200, lambda: self.root.resizable(False, False))
-        # 初期化完了後にウィンドウを表示（ちらつき防止）
-        self.root.deiconify()
+        self.root.resizable(False, False)
+        # レイアウト計算を完了させてから表示（ちらつき防止）
+        self.root.update_idletasks()
+        self.root.attributes('-alpha', 1)
 
     def show_register(self):
         self._save_geometry()
