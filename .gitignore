@@ -6,3 +6,4 @@ dist/
 *.json
 !goka_go.spec
 katago/
+gh_token.txt
