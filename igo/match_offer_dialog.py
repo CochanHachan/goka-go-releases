@@ -7,8 +7,8 @@ import threading
 import json
 import time as _time
 
-from lang import L, get_language
-from window_settings import WindowSettings
+from igo.lang import L, get_language
+from igo.window_settings import WindowSettings
 from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.theme import T
 from igo.elo import elo_to_display_rank
@@ -54,7 +54,7 @@ class MatchOfferDialog:
         # Build UI
         bg = self._parchment_bg
         try:
-            from teal_banner import TealBanner
+            from igo.teal_banner import TealBanner
             banner_frame = tk.Frame(self.win, bg=bg, height=50)
             banner_frame.pack(fill="x", pady=(6, 8), padx=16)
             banner_frame.pack_propagate(False)
@@ -80,6 +80,10 @@ class MatchOfferDialog:
             print("TealBanner error:", e)
             tk.Label(self.win, text="\u6311\u6226\u72b6\u304c\u5c4a\u3044\u3066\u3044\u307e\u3059\uff01",
                      font=("", 14, "bold"), fg=T("accent_gold"), bg=bg).pack(pady=(12, 8))
+
+        # --- Buttons first (side=bottom) so list doesn't push them off ---
+        btn_frame = tk.Frame(self.win, bg=bg)
+        btn_frame.pack(side="bottom", fill="x", pady=(0, 8), padx=16)
 
         list_border = tk.Frame(self.win, bd=1, relief="solid", bg="#c4a870")
         list_border.pack(fill="both", expand=True, padx=16, pady=(0, 8))
@@ -115,10 +119,7 @@ class MatchOfferDialog:
         self._ws.restore_column_widths(self.offer_list, 4, [120, 80, 120, 70])
         self._offer_highlighted_row = None
         self.offer_list.extra_bindings("cell_select", self._on_offer_cell_select)
-
-        btn_frame = tk.Frame(self.win, bg=bg)
-        btn_frame.pack(fill="x", pady=(0, 8), padx=16)
-        from glossy_pill_button import GlossyButton as GlossyPillButton
+        from igo.glossy_pill_button import GlossyButton as GlossyPillButton
         _lang = get_language()
         _accept_text  = {"ja": "承諾", "en": "Accept",  "zh": "接受", "ko": "수락"}.get(_lang, "承諾")
         _decline_text = {"ja": "辞退", "en": "Decline", "zh": "拒绝", "ko": "거절"}.get(_lang, "辞退")
@@ -150,14 +151,15 @@ class MatchOfferDialog:
                 try:
                     dw, dh = int(parts[0]), int(parts[1])
                 except ValueError:
-                    dw, dh = 440, 320
+                    dw, dh = 440, 420
             else:
-                dw, dh = 440, 320
+                dw, dh = 440, 420
         else:
-            dw, dh = 440, 320
+            dw, dh = 440, 420
         x = px + (pw - dw) // 2
         y = py + (ph - dh) // 2
         self.win.geometry("{}x{}+{}+{}".format(dw, dh, x, y))
+        self.win.minsize(440, 420)
 
         # Add first offer
         self._add_offer(first_offer, first_addr)
@@ -234,11 +236,11 @@ class MatchOfferDialog:
 
     def _refresh_list(self):
         now = _time.time()
-        # Remove stale offers (>8 seconds since last broadcast) - only for LAN mode
-        if not self._cloud_mode:
-            stale = [k for k, v in self._offers.items() if now - v.get("_time", 0) > 8]
-            for k in stale:
-                del self._offers[k]
+        # Remove stale offers: LAN >8s, Cloud >60s (safety net)
+        timeout = 60 if self._cloud_mode else 8
+        stale = [k for k, v in self._offers.items() if now - v.get("_time", 0) > timeout]
+        for k in stale:
+            del self._offers[k]
         # Save selection
         sel_name = None
         sel = self.offer_list.get_currently_selected()

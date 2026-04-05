@@ -3,7 +3,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from glossy_button import GlossyButton
+from igo.glossy_button import GlossyButton
 from igo.lang import L, get_language
 from igo.constants import API_BASE_URL
 from igo.theme import T
@@ -22,15 +22,17 @@ class RegisterScreen:
         self.parent = parent
         self.app = app
 
-        container = tk.Frame(parent, bg=T("container_bg"), padx=40, pady=30)
+        container = tk.Frame(parent, bg=T("container_bg"), padx=20, pady=20)
         container.place(relx=0.5, rely=0.5, anchor="center")
 
         tk.Label(container, text=L("reg_title"),
                  font=("", 22, "bold"),
-                 fg=T("accent_gold"), bg=T("container_bg")).pack(pady=(0, 20))
+                 fg=T("accent_gold"), bg=T("container_bg")).pack(pady=(0, 8))
 
         form = tk.Frame(container, bg=T("container_bg"))
         form.pack(fill="x")
+
+        _sp = 8  # 各項目の等間隔スペース
 
         # fields: (lang_key, entry_key, is_pw)
         fields = [
@@ -44,7 +46,7 @@ class RegisterScreen:
         self._handle_warn_label = None
         for lang_key, entry_key, is_pw in fields:
             tk.Label(form, text=L(lang_key), font=("", 11),
-                     fg=T("text_secondary"), bg=T("container_bg"), anchor="w").pack(fill="x", pady=(0, 2))
+                     fg=T("text_secondary"), bg=T("container_bg"), anchor="w").pack(fill="x", pady=(_sp, 2))
             if is_pw:
                 _vcmd = (form.register(_validate_ascii), '%P')
                 e = tk.Entry(form, show="*",
@@ -52,26 +54,32 @@ class RegisterScreen:
                 _disable_ime_for(e)
             else:
                 e = tk.Entry(form, **_entry_cfg())
-            e.pack(fill="x", ipady=4, pady=(0, 6))
+            if entry_key == "email":
+                _disable_ime_for(e)
+            e.pack(fill="x", ipady=4, pady=(0, 0))
             self.entries[entry_key] = e
             if entry_key == "handle":
                 self._handle_warn_label = tk.Label(form, text="", font=("", 9),
                     fg=T("error_red"), bg=T("container_bg"), anchor="w")
-                self._handle_warn_label.pack(fill="x", pady=(0, 2))
                 _sv = tk.StringVar()
                 e.config(textvariable=_sv)
                 self._handle_sv = _sv
-                def _on_handle_change(*args, _w=self._handle_warn_label):
+                self._handle_entry = e
+                def _on_handle_change(*args, _w=self._handle_warn_label, _e=e):
                     val = self._handle_sv.get()
                     if len(val) > 20:
                         _w.config(text=L("reg_handle_warn"))
+                        try:
+                            _w.pack(after=_e, fill="x", pady=(2, 0))
+                        except tk.TclError:
+                            pass
                     else:
                         _w.config(text="")
-                        self.error_label.config(text="")
+                        _w.pack_forget()
                 _sv.trace_add("write", _on_handle_change)
 
         tk.Label(form, text=L("reg_rank"), font=("", 11),
-                 fg=T("text_secondary"), bg=T("container_bg"), anchor="w").pack(fill="x", pady=(0, 2))
+                 fg=T("text_secondary"), bg=T("container_bg"), anchor="w").pack(fill="x", pady=(_sp, 2))
         _loc_ranks = get_localized_go_ranks()
         self.rank_var = tk.StringVar(value=rank_to_localized("1\u7d1a"))
         style = ttk.Style()
@@ -79,15 +87,15 @@ class RegisterScreen:
         self.rank_combo = ttk.Combobox(form, textvariable=self.rank_var,
             values=_loc_ranks, state="readonly", style="Dark.TCombobox",
             font=("", 11))
-        self.rank_combo.pack(fill="x", ipady=4, pady=(0, 10))
+        self.rank_combo.pack(fill="x", ipady=4, pady=(0, 0))
         _apply_combo_listbox_style(self.rank_combo)
 
         self.error_label = tk.Label(form, text="", font=("", 10),
                                      fg=T("error_red"), bg=T("container_bg"))
-        self.error_label.pack(fill="x")
+        self.error_label.pack(fill="x", pady=(0, 0))
 
         btn_frame = tk.Frame(form, bg=T("container_bg"))
-        btn_frame.pack(pady=(12, 0))
+        btn_frame.pack(pady=(_sp, 0))
 
         self._register_btn = GlossyButton(btn_frame, text=L("reg_btn"),
                   width=180, height=40, base_color=(50, 150, 50),
@@ -117,7 +125,7 @@ class RegisterScreen:
             return
         if len(handle) > 20:
             self.error_label.config(text="\u30cf\u30f3\u30c9\u30eb\u30cd\u30fc\u30e0\u306f20\u5b57\u4ee5\u5185\u3067\u3059\u3002")
-            entry = self.entries["\u30cf\u30f3\u30c9\u30eb\u30cd\u30fc\u30e0"]
+            entry = self.entries["handle"]
             def _delayed_focus():
                 entry.focus_force()
                 entry.config(selectbackground="#FFFF99", selectforeground="black")
@@ -171,4 +179,3 @@ class RegisterScreen:
         for e in self.entries.values():
             e.delete(0, "end")
         self.error_label.config(text="")
-

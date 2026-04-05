@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 ELO レーティングシステム"""
-from lang import get_language
+from igo.lang import get_language
 
 # --------------- Elo Rating System ---------------
 # (rank_str, elo_min, elo_max) - ordered highest to lowest

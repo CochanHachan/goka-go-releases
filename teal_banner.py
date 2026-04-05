@@ -7,7 +7,6 @@ All visual parameters are configurable.
 """
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageTk, ImageFont
-import numpy as np
 import os
 
 
@@ -158,9 +157,9 @@ class TealBanner(tk.Canvas):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _smooth_np(t):
-        """Vectorized smoothstep."""
-        t = np.clip(t, 0.0, 1.0)
+    def _smooth(t):
+        """Smoothstep for a single float value."""
+        t = max(0.0, min(1.0, t))
         return t * t * (3.0 - 2.0 * t)
 
     def _make_rounded_mask(self, w, h, radius):
@@ -191,36 +190,27 @@ class TealBanner(tk.Canvas):
         else:
             cr = max(4, sh // 6)  # auto: moderate rounding
 
-        # --- Background with horizontal gradient ---
-        xs = np.arange(sw, dtype=np.float64)
-        ys = np.arange(sh, dtype=np.float64)
-        xx, yy = np.meshgrid(xs, ys)
-
-        # Horizontal factor: 0 at edges, 1 at center
-        hx = xx / max(1, sw - 1)
-        h_factor_raw = self._smooth_np(1.0 - np.abs(hx - 0.5) * 2.0)
-
-        # Apply gradient_strength: exaggerate the factor
+        # --- Background with horizontal gradient (pure Pillow) ---
         gs = max(0.0, self._gradient_strength)
-        h_factor = np.clip(h_factor_raw * gs, 0.0, 1.0)
+        edge = self._bg_edge
+        center = self._bg_center
+        sw_max = max(1, sw - 1)
+        sh_max = max(1, sh - 1)
 
-        # Subtle vertical factor (lighter at top)
-        vy = yy / max(1, sh - 1)
-        v_factor = (1.0 - vy) * 0.12 * gs
-
-        t = np.clip(h_factor + v_factor, 0.0, 1.0)
-
-        edge = np.array(self._bg_edge, dtype=np.float64)
-        center = np.array(self._bg_center, dtype=np.float64)
-
-        pixels = np.zeros((sh, sw, 4), dtype=np.uint8)
-        for ch in range(3):
-            pixels[:, :, ch] = np.clip(
-                edge[ch] + (center[ch] - edge[ch]) * t, 0, 255
-            ).astype(np.uint8)
-        pixels[:, :, 3] = 255
-
-        img = Image.fromarray(pixels, "RGBA")
+        img = Image.new("RGBA", (sw, sh))
+        pix = img.load()
+        for y in range(sh):
+            vy = y / sh_max
+            v_factor = (1.0 - vy) * 0.12 * gs
+            for x in range(sw):
+                hx = x / sw_max
+                h_raw = self._smooth(1.0 - abs(hx - 0.5) * 2.0)
+                h_factor = max(0.0, min(1.0, h_raw * gs))
+                t = max(0.0, min(1.0, h_factor + v_factor))
+                r = int(max(0, min(255, edge[0] + (center[0] - edge[0]) * t)))
+                g = int(max(0, min(255, edge[1] + (center[1] - edge[1]) * t)))
+                b = int(max(0, min(255, edge[2] + (center[2] - edge[2]) * t)))
+                pix[x, y] = (r, g, b, 255)
 
         # --- Outer border (drawn along the edge of the banner) ---
         if self._border_color is not None:
