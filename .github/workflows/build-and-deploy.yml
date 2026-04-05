@@ -209,3 +209,47 @@ jobs:
             gh release upload "v${version}" "${zipFile}" --clobber 2>$null
           }
         shell: pwsh
+
+      - name: Update homepage download link
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          import re, os
+
+          version = os.environ["RELEASE_VERSION"]
+          index_path = "web/index.html"
+
+          with open(index_path, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          # ダウンロードリンクをGitHub Releases最新版に更新
+          new_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/GokaGo_Setup_{version}.exe"
+          content = re.sub(
+              r'(<a\s+href=")[^"]*("\s+data-key="navDownload")',
+              rf'\g<1>{new_link}\2',
+              content
+          )
+
+          with open(index_path, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          print(f"Updated download link to v{version}")
+
+      - name: Deploy to Netlify
+        shell: bash
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npx netlify-cli deploy --prod --dir=web \
+            --site="${NETLIFY_SITE_ID}" \
+            --auth="${NETLIFY_AUTH_TOKEN}"
+
+      - name: Commit homepage update
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git add web/index.html
+          git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git push)
