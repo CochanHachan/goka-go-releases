@@ -100,19 +100,19 @@ class MergePRApp:
         self.btn_refresh = tk.Button(
             toolbar, text="更新", command=self.refresh, width=8
         )
-        self.btn_refresh.pack(side="left", padx=(0, 5))
+        self.btn_refresh.pack(side="left", padx=5)
 
         self.btn_merge_selected = tk.Button(
             toolbar, text="選択したPRをマージ", command=self.merge_selected,
             bg="#238636", fg="white", width=18
         )
-        self.btn_merge_selected.pack(side="left", padx=(0, 5))
+        self.btn_merge_selected.pack(side="left", padx=5)
 
         self.btn_merge_all = tk.Button(
             toolbar, text="全てマージ", command=self.merge_all,
             bg="#1f6feb", fg="white", width=12
         )
-        self.btn_merge_all.pack(side="left", padx=(0, 5))
+        self.btn_merge_all.pack(side="left", padx=5)
 
         self.status_label = tk.Label(toolbar, text="", fg="#586069", font=("", 9))
         self.status_label.pack(side="right")
@@ -140,7 +140,7 @@ class MergePRApp:
         scrollbar.pack(side="right", fill="y")
 
         # ログエリア
-        log_frame = tk.Frame(self.root, padx=10, pady=(0, 10))
+        log_frame = tk.Frame(self.root, padx=10, pady=10)
         log_frame.pack(fill="x")
         self.log_text = tk.Text(log_frame, height=4, font=("Consolas", 9), state="disabled")
         self.log_text.pack(fill="x")
