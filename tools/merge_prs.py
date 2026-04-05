@@ -19,7 +19,6 @@ import urllib.request
 import urllib.error
 import json
 import os
-import sys
 import threading
 
 REPO = "CochanHachan/goka-go-releases"
@@ -217,7 +216,7 @@ class MergePRApp:
         self.tree.delete(*self.tree.get_children())
         for pr in prs:
             author = pr["user"]["login"]
-            mergeable = "マージ可" if pr.get("mergeable_state") != "blocked" else "確認中"
+            mergeable = "オープン"
             self.tree.insert("", "end", values=(
                 f"#{pr['number']}", pr["title"], author, mergeable
             ))
