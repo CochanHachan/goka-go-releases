@@ -9,7 +9,7 @@ glossy_button.py と同じフォルダに置いて実行してください。
 """
 import tkinter as tk
 from tkinter import messagebox
-from glossy_button import GlossyButton
+from igo.glossy_button import GlossyButton
 
 
 # =====================================================================
