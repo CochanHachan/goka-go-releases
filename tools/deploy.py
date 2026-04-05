@@ -11,6 +11,7 @@
 初回実行時にGitHubトークンの入力を求められます（gh_token.txt に自動保存）。
 """
 
+import base64
 import urllib.request
 import urllib.error
 import json
@@ -90,7 +91,6 @@ def merge_all_prs(token):
     merged = 0
     for pr in prs:
         num = pr["number"]
-        title = pr["title"]
         try:
             print(f"\nPR #{num} をマージ中... ", end="", flush=True)
             api_request("PUT", f"pulls/{num}/merge", token, {
@@ -115,7 +115,6 @@ def get_version_from_repo(token):
     """version.json から現在のバージョンを取得"""
     try:
         result = api_request("GET", "contents/version.json", token)
-        import base64
         content = base64.b64decode(result["content"]).decode("utf-8")
         data = json.loads(content)
         return data.get("version", "")
