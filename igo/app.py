@@ -51,6 +51,7 @@ import igo.rendering as _rendering_mod
 class App:
     def __init__(self):
         self.root = tk.Tk()
+        self.root.withdraw()  # 初期化完了まで非表示（ちらつき防止）
         self.root.title("\u7881\u83ef")
         self.root.configure(bg=T("root_bg"))
 
@@ -520,6 +521,8 @@ class App:
         self.root.configure(bg="white")
         self.root.geometry("460x420")
         self.root.after(200, lambda: self.root.resizable(False, False))
+        # 初期化完了後にウィンドウを表示（ちらつき防止）
+        self.root.deiconify()
 
     def show_register(self):
         self._save_geometry()
