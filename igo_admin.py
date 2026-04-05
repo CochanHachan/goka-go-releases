@@ -720,7 +720,7 @@ class AdminApp:
         if messagebox.askyesno("確認", "'{}'を削除しますか？".format(handle)):
             try:
                 req = urllib.request.Request(
-                    API_BASE_URL + "/api/user/" + urllib.parse.quote(handle), method="DELETE")
+                    API_BASE_URL + "/api/user/" + urllib.parse.quote(handle, safe=''), method="DELETE")
                 urllib.request.urlopen(req, timeout=5)
             except Exception as e:
                 messagebox.showerror("エラー", str(e))
