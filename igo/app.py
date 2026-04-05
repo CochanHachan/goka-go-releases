@@ -370,23 +370,38 @@ class App:
                 # ダウンロード
                 urllib.request.urlretrieve(dl_url, zip_path)
                 self.root.after(0, lambda: lbl.config(text="解凍中..."))
-                prog_win.update()
-                # 解凍・上書き
-                app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                # 解凍
                 with zipfile.ZipFile(zip_path, "r") as zf:
                     zf.extractall(tmp_dir)
-                # zip内のファイルをアプリフォルダへコピー
-                for root_dir, dirs, files in os.walk(tmp_dir):
-                    for fname in files:
-                        if fname.endswith(".zip"):
-                            continue
-                        src = os.path.join(root_dir, fname)
-                        rel = os.path.relpath(src, tmp_dir)
-                        dst = os.path.join(app_dir, rel)
-                        os.makedirs(os.path.dirname(dst), exist_ok=True)
-                        shutil.copy2(src, dst)
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                self.root.after(0, lambda: self._update_done(prog_win, latest))
+                # ZIP内のトップレベルサブフォルダを検出して
+                # パスのネストを防ぐ（例: goka_go/ プレフィックスを除去）
+                src_dir = tmp_dir
+                entries = [e for e in os.listdir(tmp_dir)
+                           if e != "update.zip"]
+                if (len(entries) == 1
+                        and os.path.isdir(os.path.join(tmp_dir, entries[0]))):
+                    src_dir = os.path.join(tmp_dir, entries[0])
+                # インストール先を正しく取得
+                # （PyInstaller frozen時は sys.executable の親ディレクトリ）
+                app_dir = _get_install_dir()
+                if getattr(sys, 'frozen', False) and sys.platform == 'win32':
+                    # Windows frozen: 実行中のexe/DLLは上書き不可のため
+                    # バッチファイルでプロセス終了後にコピー→再起動
+                    self._launch_update_batch(
+                        src_dir, app_dir, tmp_dir, prog_win, latest)
+                else:
+                    # 開発モード: 直接コピー
+                    self.root.after(0, lambda: lbl.config(text="コピー中..."))
+                    for root_dir, dirs, files in os.walk(src_dir):
+                        for fname in files:
+                            src = os.path.join(root_dir, fname)
+                            rel = os.path.relpath(src, src_dir)
+                            dst = os.path.join(app_dir, rel)
+                            os.makedirs(os.path.dirname(dst), exist_ok=True)
+                            shutil.copy2(src, dst)
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    self.root.after(0,
+                                    lambda: self._update_done(prog_win, latest))
             except Exception as e:
                 self.root.after(0, lambda: (
                     prog_win.destroy(),
@@ -394,8 +409,64 @@ class App:
                 ))
         threading.Thread(target=_worker, daemon=True).start()
 
+    def _launch_update_batch(self, src_dir, app_dir, tmp_dir,
+                             prog_win, latest):
+        """バッチファイルを生成し、exe終了後にファイルコピー→再起動する。"""
+        exe_path = sys.executable
+        exe_name = os.path.basename(exe_path)
+        # バッチファイルを一時ディレクトリに生成
+        bat_path = os.path.join(tmp_dir, "_goka_update.bat")
+        bat_content = (
+            '@echo off\r\n'
+            'echo 碁華アップデート中... しばらくお待ちください。\r\n'
+            'echo.\r\n'
+            ':WAIT_LOOP\r\n'
+            'tasklist /FI "IMAGENAME eq {exe}" 2>NUL '
+            '| find /I "{exe}" >NUL\r\n'
+            'if not errorlevel 1 (\r\n'
+            '    timeout /t 1 /nobreak >NUL\r\n'
+            '    goto WAIT_LOOP\r\n'
+            ')\r\n'
+            'echo プロセス終了を確認。ファイルをコピーします...\r\n'
+            'xcopy "{src}\\*" "{dst}\\" /E /Y /I /Q >NUL\r\n'
+            'if errorlevel 1 (\r\n'
+            '    echo コピーに失敗しました。\r\n'
+            '    pause\r\n'
+            '    exit /b 1\r\n'
+            ')\r\n'
+            'echo コピー完了。アプリを再起動します...\r\n'
+            'rmdir /s /q "{tmp}" 2>NUL\r\n'
+            'start "" "{exe_path}"\r\n'
+            'exit\r\n'
+        ).format(
+            exe=exe_name,
+            src=src_dir,
+            dst=app_dir,
+            tmp=tmp_dir,
+            exe_path=exe_path,
+        )
+        with open(bat_path, "w", encoding="cp932") as f:
+            f.write(bat_content)
+        # バッチを非表示で実行
+        import subprocess
+        subprocess.Popen(
+            ['cmd', '/c', bat_path],
+            creationflags=0x08000000,  # CREATE_NO_WINDOW
+            close_fds=True,
+        )
+        # 更新完了を通知してアプリ終了
+        def _notify_and_exit():
+            prog_win.destroy()
+            messagebox.showinfo(
+                "更新準備完了",
+                "バージョン {} への更新を準備しました。\n"
+                "アプリを終了して自動的に再起動します。".format(latest)
+            )
+            self.root.destroy()
+        self.root.after(0, _notify_and_exit)
+
     def _update_done(self, prog_win, latest):
-        """更新完了ダイアログを表示し、再起動を促す。"""
+        """更新完了ダイアログを表示し、再起動を促す（開発モード用）。"""
         prog_win.destroy()
         if messagebox.showinfo(
             "更新完了",
