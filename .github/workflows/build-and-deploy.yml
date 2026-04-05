@@ -135,6 +135,88 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller goka_go.spec --noconfirm
 
+      - name: Download KataGo
+        shell: python
+        run: |
+          import urllib.request, zipfile, gzip, shutil, os
+
+          # KataGo OpenCL Windows x64 バイナリ
+          katago_url = "https://github.com/lightvector/KataGo/releases/download/v1.16.4/katago-v1.16.4-opencl-windows-x64.zip"
+          katago_zip = "katago-opencl.zip"
+          print(f"Downloading KataGo binary from {katago_url}...")
+          urllib.request.urlretrieve(katago_url, katago_zip)
+
+          os.makedirs("katago", exist_ok=True)
+          with zipfile.ZipFile(katago_zip, "r") as zf:
+              for member in zf.infolist():
+                  # DLL, exe, cfg, pem のみ展開
+                  name = member.filename
+                  if name.endswith((".exe", ".dll", ".cfg", ".pem")):
+                      member.filename = os.path.basename(name)
+                      zf.extract(member, "katago")
+                      print(f"  Extracted: {member.filename}")
+
+          # KataGo ニューラルネットモデル（b28c512nbt — 最強モデル、約278MB展開後）
+          model_url = "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"
+          model_gz = "model.bin.gz"
+          print(f"Downloading KataGo model from {model_url}...")
+          urllib.request.urlretrieve(model_url, model_gz)
+
+          with gzip.open(model_gz, "rb") as f_in:
+              with open(os.path.join("katago", "model.bin"), "wb") as f_out:
+                  shutil.copyfileobj(f_in, f_out)
+          print(f"  Extracted: model.bin ({os.path.getsize(os.path.join('katago', 'model.bin')) / (1024*1024):.1f} MB)")
+
+          # KataGoData フォルダ作成（初回起動時に自動生成されるが、Inno Setupに必要）
+          os.makedirs(os.path.join("katago", "KataGoData"), exist_ok=True)
+          # プレースホルダーファイル
+          with open(os.path.join("katago", "KataGoData", ".keep"), "w") as f:
+              f.write("")
+
+          print("KataGo setup complete.")
+          for fn in sorted(os.listdir("katago")):
+              fp = os.path.join("katago", fn)
+              if os.path.isfile(fp):
+                  print(f"  {fn}: {os.path.getsize(fp) / (1024*1024):.2f} MB")
+
+      - name: Prepare installer assets
+        shell: python
+        run: |
+          import json, os
+
+          # igo_config.json（デフォルト設定ファイル、リポジトリには未コミット）
+          if not os.path.exists("igo_config.json"):
+              cfg = {"theme": "light", "language": "ja"}
+              with open("igo_config.json", "w", encoding="utf-8") as f:
+                  json.dump(cfg, f, ensure_ascii=False, indent=2)
+              print("Created default igo_config.json")
+          else:
+              print("igo_config.json already exists")
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer with Inno Setup
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Error "Inno Setup not found at $iscc"
+            exit 1
+          }
+          & $iscc "installer\GokaGo_Setup.iss"
+          $exeName = "GokaGo_Setup_${env:RELEASE_VERSION}.exe"
+          $exePath = "dist\installer\$exeName"
+          if (Test-Path $exePath) {
+            $sizeMB = (Get-Item $exePath).Length / 1MB
+            Write-Output "Installer created: $exePath ($([math]::Round($sizeMB, 1)) MB)"
+          } else {
+            Write-Error "Installer not found at $exePath"
+            exit 1
+          }
+
       - name: Create update ZIP
         shell: python
         run: |
@@ -204,8 +286,53 @@ jobs:
           $version = $env:RELEASE_VERSION
           $notes = $env:RELEASE_NOTES
           $zipFile = "releases/goka_go_${version}.zip"
-          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" 2>$null
+          $exeFile = "dist/installer/GokaGo_Setup_${version}.exe"
+          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" "${exeFile}" 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release upload "v${version}" "${zipFile}" --clobber 2>$null
+            gh release upload "v${version}" "${zipFile}" "${exeFile}" --clobber 2>$null
           }
         shell: pwsh
+
+      - name: Update homepage download link
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          import re, os
+
+          version = os.environ["RELEASE_VERSION"]
+          index_path = "web/index.html"
+
+          with open(index_path, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          # ダウンロードリンクをインストーラー（.exe）に更新
+          new_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/GokaGo_Setup_{version}.exe"
+          content = re.sub(
+              r'(<a\s+href=")[^"]*("\s+data-key="navDownload")',
+              rf'\g<1>{new_link}\2',
+              content
+          )
+
+          with open(index_path, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          print(f"Updated download link to v{version}")
+
+      - name: Deploy to Netlify
+        shell: bash
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npx netlify-cli deploy --prod --dir=web \
+            --site="${NETLIFY_SITE_ID}" \
+            --auth="${NETLIFY_AUTH_TOKEN}"
+
+      - name: Commit homepage update
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git add web/index.html
+          git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git push)
