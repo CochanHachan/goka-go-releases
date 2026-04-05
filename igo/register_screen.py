@@ -3,7 +3,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from igo.glossy_button import GlossyButton
+from glossy_button import GlossyButton
 from igo.lang import L, get_language
 from igo.constants import API_BASE_URL
 from igo.theme import T
