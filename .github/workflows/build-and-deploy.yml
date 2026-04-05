@@ -56,11 +56,14 @@ jobs:
       - name: Determine version
         id: version
         shell: python
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
           import json, re, os
 
           # 手動入力のバージョン
-          manual_version = "${{ github.event.inputs.version }}".strip()
+          manual_version = os.environ.get("INPUT_VERSION", "").strip()
 
           if manual_version:
               new_version = manual_version
@@ -74,7 +77,7 @@ jobs:
               new_version = ".".join(parts)
 
           # リリースノート
-          notes = "${{ github.event.inputs.release_notes }}".strip()
+          notes = os.environ.get("INPUT_RELEASE_NOTES", "").strip()
           if not notes:
               notes = f"v{new_version} 自動ビルド"
 
@@ -91,11 +94,14 @@ jobs:
 
       - name: Update version in source files
         shell: python
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          BUILD_DATE: ${{ steps.version.outputs.build_date }}
         run: |
-          import re
+          import re, os
 
-          version = "${{ steps.version.outputs.version }}"
-          build_date = "${{ steps.version.outputs.build_date }}"
+          version = os.environ["RELEASE_VERSION"]
+          build_date = os.environ["BUILD_DATE"]
 
           # igo/constants.py
           with open("igo/constants.py", "r", encoding="utf-8") as f:
@@ -143,19 +149,22 @@ jobs:
                       arcname = os.path.relpath(fp, "dist")
                       try:
                           zf.write(fp, arcname)
-                      except PermissionError:
-                          pass
+                      except PermissionError as e:
+                          print(f"WARNING: Could not add {fp}: {e}")
 
           size_mb = os.path.getsize(dst) / (1024 * 1024)
           print(f"Created {dst} ({size_mb:.1f} MB)")
 
       - name: Deploy update ZIP and version.json
         shell: python
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
         run: |
           import json, shutil, os
 
-          version = "${{ steps.version.outputs.version }}"
-          notes = "${{ steps.version.outputs.release_notes }}"
+          version = os.environ["RELEASE_VERSION"]
+          notes = os.environ["RELEASE_NOTES"]
 
           # ZIPをreleasesフォルダにコピー
           src_zip = "dist/goka_go.zip"
@@ -176,18 +185,23 @@ jobs:
           print(f"Updated version.json to v{version}")
 
       - name: Commit and push release
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json "releases/goka_go_${{ steps.version.outputs.version }}.zip" igo/constants.py installer/GokaGo_Setup.iss
-          git diff --cached --quiet || (git commit -m "Release v${{ steps.version.outputs.version }}: ${{ steps.version.outputs.release_notes }}" && git push)
+          git add version.json "releases/goka_go_${RELEASE_VERSION}.zip" igo/constants.py installer/GokaGo_Setup.iss
+          git diff --cached --quiet || (git commit -m "Release v${RELEASE_VERSION}: ${RELEASE_NOTES}" && git push)
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
         run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $notes = "${{ steps.version.outputs.release_notes }}"
+          $version = $env:RELEASE_VERSION
+          $notes = $env:RELEASE_NOTES
           $zipFile = "releases/goka_go_${version}.zip"
           gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" 2>$null
           if ($LASTEXITCODE -ne 0) {
