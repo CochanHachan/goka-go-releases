@@ -1,0 +1,194 @@
+name: Build and Deploy
+
+on:
+  # 手動トリガー（バージョン指定可能）
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースバージョン（例: 1.2.4）。空欄の場合はパッチバージョンを自動インクリメント'
+        required: false
+        default: ''
+      release_notes:
+        description: 'リリースノート'
+        required: false
+        default: ''
+  # mainへのソースコード変更push時に自動実行
+  push:
+    branches: [main]
+    paths:
+      - 'igo/**'
+      - 'igo_game.py'
+      - 'igo_cloud_client.py'
+      - 'glossy_button.py'
+      - 'glossy_pill_button.py'
+      - 'teal_banner.py'
+      - 'decorative_banner.py'
+      - 'lang.py'
+      - 'login_form.py'
+      - 'window_settings.py'
+      - 'goka_go.spec'
+      - 'image/**'
+      - '*.png'
+      - '*.wav'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install pyinstaller tksheet cryptography websockets pillow
+
+      - name: Determine version
+        id: version
+        shell: python
+        run: |
+          import json, re, os
+
+          # 手動入力のバージョン
+          manual_version = "${{ github.event.inputs.version }}".strip()
+
+          if manual_version:
+              new_version = manual_version
+          else:
+              # version.jsonから現在バージョンを読み取り、パッチをインクリメント
+              with open("version.json", "r", encoding="utf-8") as f:
+                  data = json.load(f)
+              current = data["version"]
+              parts = current.split(".")
+              parts[-1] = str(int(parts[-1]) + 1)
+              new_version = ".".join(parts)
+
+          # リリースノート
+          notes = "${{ github.event.inputs.release_notes }}".strip()
+          if not notes:
+              notes = f"v{new_version} 自動ビルド"
+
+          # ビルド日付
+          from datetime import datetime, timezone
+          build_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={new_version}\n")
+              f.write(f"build_date={build_date}\n")
+              f.write(f"release_notes={notes}\n")
+
+          print(f"Version: {new_version}, Build: {build_date}")
+
+      - name: Update version in source files
+        shell: python
+        run: |
+          import re
+
+          version = "${{ steps.version.outputs.version }}"
+          build_date = "${{ steps.version.outputs.build_date }}"
+
+          # igo/constants.py
+          with open("igo/constants.py", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(
+              r'(APP_VERSION\s*=\s*")[^"]*(")',
+              rf'\g<1>{version}\2',
+              content
+          )
+          content = re.sub(
+              r'(APP_BUILD\s*=\s*")[^"]*(")',
+              rf'\g<1>{build_date}\2',
+              content
+          )
+          with open("igo/constants.py", "w", encoding="utf-8") as f:
+              f.write(content)
+          print(f"Updated constants.py: APP_VERSION={version}, APP_BUILD={build_date}")
+
+          # installer/GokaGo_Setup.iss
+          with open("installer/GokaGo_Setup.iss", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(
+              r'(#define AppVersion\s+")[^"]*(")',
+              rf'\g<1>{version}\2',
+              content
+          )
+          with open("installer/GokaGo_Setup.iss", "w", encoding="utf-8") as f:
+              f.write(content)
+          print(f"Updated GokaGo_Setup.iss: AppVersion={version}")
+
+      - name: Build with PyInstaller
+        run: pyinstaller goka_go.spec --noconfirm
+
+      - name: Create update ZIP
+        shell: python
+        run: |
+          import zipfile, os
+
+          src = "dist/goka_go"
+          dst = "dist/goka_go.zip"
+          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
+              for root, dirs, files in os.walk(src):
+                  for f in files:
+                      fp = os.path.join(root, f)
+                      arcname = os.path.relpath(fp, "dist")
+                      try:
+                          zf.write(fp, arcname)
+                      except PermissionError:
+                          pass
+
+          size_mb = os.path.getsize(dst) / (1024 * 1024)
+          print(f"Created {dst} ({size_mb:.1f} MB)")
+
+      - name: Deploy update ZIP and version.json
+        shell: python
+        run: |
+          import json, shutil, os
+
+          version = "${{ steps.version.outputs.version }}"
+          notes = "${{ steps.version.outputs.release_notes }}"
+
+          # ZIPをreleasesフォルダにコピー
+          src_zip = "dist/goka_go.zip"
+          dst_zip = f"releases/goka_go_{version}.zip"
+          os.makedirs("releases", exist_ok=True)
+          shutil.copy2(src_zip, dst_zip)
+          print(f"Copied {src_zip} -> {dst_zip}")
+
+          # version.json更新
+          vj = {
+              "version": version,
+              "download_url": f"https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/releases/goka_go_{version}.zip",
+              "release_notes": notes
+          }
+          with open("version.json", "w", encoding="utf-8") as f:
+              json.dump(vj, f, ensure_ascii=False)
+              f.write("\n")
+          print(f"Updated version.json to v{version}")
+
+      - name: Commit and push release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json "releases/goka_go_${{ steps.version.outputs.version }}.zip" igo/constants.py installer/GokaGo_Setup.iss
+          git diff --cached --quiet || (git commit -m "Release v${{ steps.version.outputs.version }}: ${{ steps.version.outputs.release_notes }}" && git push)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $notes = "${{ steps.version.outputs.release_notes }}"
+          $zipFile = "releases/goka_go_${version}.zip"
+          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release upload "v${version}" "${zipFile}" --clobber 2>$null
+          }
+        shell: pwsh
