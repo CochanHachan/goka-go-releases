@@ -548,6 +548,7 @@ class AdminApp:
         dlg.title("ユーザー新規登録")
         dlg.transient(self.root)
         dlg.grab_set()
+        dlg.geometry("500x550")
         dlg.resizable(False, False)
 
         def _on_success(handle):
