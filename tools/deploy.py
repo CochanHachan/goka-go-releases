@@ -5,7 +5,8 @@
 
 使い方:
   python deploy.py                  # 全PRマージ＋ワークフロー実行
-  python deploy.py --merge-only     # PRマージのみ
+  python deploy.py --merge-only     # 全PRマージのみ（ビルドなし）
+  python deploy.py --merge-select   # PR選択マージのみ（ビルドなし）
   python deploy.py --run-only 1.2.5 # ワークフロー実行のみ（バージョン指定）
 
 初回実行時にGitHubトークンの入力を求められます（gh_token.txt に自動保存）。
@@ -76,19 +77,17 @@ def api_request(method, path, token, data=None):
         raise RuntimeError(f"GitHub API エラー ({e.code}): {error_body}")
 
 
-def merge_all_prs(token):
-    """全オープンPRをマージ"""
+def _fetch_open_prs(token):
+    """オープンPR一覧を取得して返す"""
     print("\n--- オープンPR一覧を取得中 ---")
     prs = api_request("GET", "pulls?state=open&sort=created&direction=asc", token)
-
     if not prs:
         print("オープンPRはありません。")
-        return 0
+    return prs or []
 
-    print(f"{len(prs)}件のオープンPRが見つかりました:")
-    for pr in prs:
-        print(f"  #{pr['number']}: {pr['title']}")
 
+def _merge_prs(token, prs):
+    """指定されたPRリストをマージして成功件数を返す"""
     merged = 0
     for pr in prs:
         num = pr["number"]
@@ -107,8 +106,75 @@ def merge_all_prs(token):
             merged += 1
         except Exception as e:
             print(f"失敗: {e}")
+    return merged
 
+
+def merge_all_prs(token):
+    """全オープンPRをマージ"""
+    prs = _fetch_open_prs(token)
+    if not prs:
+        return 0
+
+    print(f"{len(prs)}件のオープンPRが見つかりました:")
+    for pr in prs:
+        print(f"  #{pr['number']}: {pr['title']}")
+
+    merged = _merge_prs(token, prs)
     print(f"\n{merged}/{len(prs)}件のPRをマージしました。")
+    return merged
+
+
+def merge_select_prs(token):
+    """対話的にPRを選択してマージ"""
+    prs = _fetch_open_prs(token)
+    if not prs:
+        return 0
+
+    print(f"\n{len(prs)}件のオープンPRがあります:")
+    for i, pr in enumerate(prs, 1):
+        print(f"  [{i}] #{pr['number']}: {pr['title']}")
+    print(f"  [a] 全てマージ")
+    print(f"  [q] キャンセル")
+
+    print("\nマージするPRの番号を入力 (カンマ区切りで複数可, 例: 1,3,5):")
+    choice = input("> ").strip().lower()
+
+    if choice == "q" or not choice:
+        print("キャンセルしました。")
+        return 0
+
+    if choice == "a":
+        selected = prs
+    else:
+        indices = []
+        for part in choice.replace(" ", "").split(","):
+            try:
+                idx = int(part)
+                if 1 <= idx <= len(prs):
+                    indices.append(idx - 1)
+                else:
+                    print(f"無効な番号: {part} (1〜{len(prs)}を指定してください)")
+                    return 0
+            except ValueError:
+                print(f"無効な入力: {part}")
+                return 0
+        selected = [prs[i] for i in indices]
+
+    if not selected:
+        print("選択されたPRがありません。")
+        return 0
+
+    print(f"\n以下の{len(selected)}件をマージします:")
+    for pr in selected:
+        print(f"  #{pr['number']}: {pr['title']}")
+
+    confirm = input("\n実行しますか？ (y/N): ").strip().lower()
+    if confirm != "y":
+        print("キャンセルしました。")
+        return 0
+
+    merged = _merge_prs(token, selected)
+    print(f"\n{merged}/{len(selected)}件のPRをマージしました。")
     return merged
 
 
@@ -206,6 +272,7 @@ def wait_for_workflow(token):
 def main():
     args = sys.argv[1:]
     merge_only = "--merge-only" in args
+    merge_select = "--merge-select" in args
     run_only = "--run-only" in args
     no_wait = "--no-wait" in args
     version = None
@@ -222,6 +289,12 @@ def main():
     print("=" * 50)
 
     token = get_token()
+
+    # PR選択マージモード
+    if merge_select:
+        merge_select_prs(token)
+        print("\n完了!")
+        return
 
     # PRマージ
     if not run_only:
