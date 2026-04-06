@@ -453,6 +453,7 @@ class App:
                         return
                     if self._update_dialog_shown:
                         _write_log("Update dialog already shown, skipping")
+                        self.root.after(0, self.show_login)
                         return
                     self._update_dialog_shown = True
                     _write_log("Showing update dialog")
@@ -710,18 +711,10 @@ class App:
                 lines = []
                 lines.append("@echo off")
                 lines.append("chcp 65001 >nul")
-                # ── 管理者権限チェック＆昇格（C:\Program Files 書き込み対応） ──
-                # センチネル引数で無限再帰を防止
-                lines.append('if "%~1"=="__ELEVATED__" goto AFTER_UAC')
-                lines.append("NET SESSION >nul 2>&1")
-                lines.append("if %errorLevel% neq 0 (")
-                lines.append("  powershell -Command \"Start-Process "
-                             "-FilePath '%~f0' "
-                             "-ArgumentList '__ELEVATED__' "
-                             "-Verb RunAs\"")
-                lines.append("  exit /b")
-                lines.append(")")
-                lines.append(":AFTER_UAC")
+                # ── 管理者権限チェック＆昇格（コピー失敗時のみ） ──
+                # robocopy/xcopy が権限不足で失敗した場合だけ UAC 昇格する
+                # ユーザー書き込み可能ディレクトリでは不要な UAC プロンプトを出さない
+                lines.append('if "%~1"=="__ELEVATED__" goto COPY')
                 lines.append('echo [%date% %time%] Update batch started > "{}"'.format(
                     bat_log))
                 # ── プロセス終了待機（最大30秒） ──
@@ -762,7 +755,7 @@ class App:
                 lines.append("if %ERRORLEVEL% NEQ 0 (")
                 lines.append('  echo [%date% %time%] xcopy also failed '
                              '>> "{}"'.format(bat_log))
-                lines.append("  goto FAIL")
+                lines.append("  goto ELEVATE")
                 lines.append(")")
                 # ── コピー後の検証 ──
                 lines.append(":VERIFY")
@@ -774,6 +767,20 @@ class App:
                 lines.append('echo [%date% %time%] Verified OK, '
                              'restarting >> "{}"'.format(bat_log))
                 lines.append('start "" "{}"'.format(app_exe))
+                lines.append("goto CLEANUP")
+                # ── コピー失敗時: UAC昇格を試行（未昇格時のみ） ──
+                lines.append(":ELEVATE")
+                lines.append('if "%~1"=="__ELEVATED__" (')
+                lines.append('  echo [%date% %time%] Already elevated '
+                             'but copy still failed >> "{}"'.format(bat_log))
+                lines.append("  goto FAIL")
+                lines.append(")")
+                lines.append('echo [%date% %time%] Attempting UAC elevation '
+                             '>> "{}"'.format(bat_log))
+                lines.append("powershell -Command \"Start-Process "
+                             "-FilePath '%~f0' "
+                             "-ArgumentList '__ELEVATED__' "
+                             "-Verb RunAs\"")
                 lines.append("goto CLEANUP")
                 # ── 失敗時: 再起動しない（ループ防止） ──
                 lines.append(":FAIL")
