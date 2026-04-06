@@ -830,16 +830,16 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 user_status[handle] = "対局受付中"
             else:
                 user_status[handle] = "ログイン"
-        cancel_msg = json.dumps(
-            {"type": "match_cancelled", "from": handle}, ensure_ascii=False
-        )
-        for other_handle, other_ws in list(connected_users.items()):
-            if other_handle != handle:
-                try:
-                    await other_ws.send_text(cancel_msg)
-                except Exception:
-                    pass
-        logger.info("Match cancelled by: %s", handle)
+            cancel_msg = json.dumps(
+                {"type": "match_cancelled", "from": handle}, ensure_ascii=False
+            )
+            for other_handle, other_ws in list(connected_users.items()):
+                if other_handle != handle:
+                    try:
+                        await other_ws.send_text(cancel_msg)
+                    except Exception:
+                        pass
+            logger.info("Match cancelled by: %s", handle)
 
     elif msg_type in ("move", "pass", "resign", "timeout", "score_result"):
         opponent = game_pairs.get(handle)
