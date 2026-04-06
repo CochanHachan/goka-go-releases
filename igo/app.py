@@ -336,29 +336,55 @@ class App:
     # ------------------------------------------------------------------
     def _check_for_update_then_login(self):
         """起動時に更新確認 → 完了後にログイン画面を表示する。"""
-        def _worker():
+        _log_path = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
+
+        def _write_log(msg):
             try:
-                import urllib.request, ssl
+                with open(_log_path, "a", encoding="utf-8") as _f:
+                    _f.write("{}\n".format(msg))
+            except Exception:
+                pass
+
+        def _fetch_version_json():
+            """version.json を取得。SSL検証 → 失敗時はSSL検証なしでリトライ。"""
+            import urllib.request, ssl
+            # 1回目: SSL検証あり
+            try:
                 ctx = ssl.create_default_context()
-                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx) as r:
-                    data = json.loads(r.read().decode("utf-8"))
-                latest  = data.get("version", "")
-                dl_url  = data.get("download_url", "")
-                notes   = data.get("release_notes", "")
+                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=8, context=ctx) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except Exception as e1:
+                _write_log("SSL verified request failed: {}".format(e1))
+
+            # 2回目: SSL検証なし（PyInstallerバンドルでの証明書問題を回避）
+            ctx2 = ssl.create_default_context()
+            ctx2.check_hostname = False
+            ctx2.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=8, context=ctx2) as r:
+                return json.loads(r.read().decode("utf-8"))
+
+        def _worker():
+            _write_log("=== Update check started ===")
+            _write_log("APP_VERSION: {}".format(APP_VERSION))
+            _write_log("URL: {}".format(UPDATE_CHECK_URL))
+            try:
+                data = _fetch_version_json()
+                latest = data.get("version", "")
+                dl_url = data.get("download_url", "")
+                notes = data.get("release_notes", "")
+                _write_log("Remote version: {}".format(latest))
+                _write_log("Is newer: {}".format(self._is_newer(latest, APP_VERSION)))
                 if latest and dl_url and self._is_newer(latest, APP_VERSION):
+                    _write_log("Showing update dialog")
                     self.root.after(0, lambda: self._show_update_dialog(
                         latest, dl_url, notes))
                     return  # ダイアログ側でログイン画面を表示する
+                _write_log("No update needed")
             except Exception as _ue:
-                # デバッグ用: エラーをログファイルに記録
+                _write_log("Error: {}".format(_ue))
                 try:
-                    _log = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
-                    with open(_log, "w", encoding="utf-8") as _f:
-                        _f.write("URL: {}\n".format(UPDATE_CHECK_URL))
-                        _f.write("APP_VERSION: {}\n".format(APP_VERSION))
-                        _f.write("Error: {}\n".format(_ue))
-                        import traceback
-                        traceback.print_exc(file=_f)
+                    import traceback
+                    _write_log(traceback.format_exc())
                 except Exception:
                     pass
             # 更新不要 or チェック失敗 → すぐにログイン画面へ
