@@ -546,9 +546,13 @@ class AdminApp:
         """管理者画面から既存の RegisterScreen をダイアログとして表示"""
         dlg = tk.Toplevel(self.root)
         dlg.title("ユーザー新規登録")
-        dlg.resizable(False, False)
         dlg.transient(self.root)
         dlg.grab_set()
+
+        # RegisterScreen は place() を使うため、親のサイズを明示的に設定
+        dlg_w, dlg_h = 420, 560
+        dlg.geometry("{}x{}".format(dlg_w, dlg_h))
+        dlg.resizable(False, False)
 
         def _on_success(handle):
             dlg.destroy()
@@ -563,14 +567,14 @@ class AdminApp:
         )
 
         # ダイアログを親ウィンドウの中央に配置
-        dlg.update_idletasks()
-        pw = dlg.winfo_reqwidth()
-        ph = dlg.winfo_reqheight()
         rx = self.root.winfo_x()
         ry = self.root.winfo_y()
         rw = self.root.winfo_width()
         rh = self.root.winfo_height()
-        dlg.geometry("+{}+{}".format(rx + (rw - pw) // 2, ry + (rh - ph) // 2))
+        dlg.geometry("{}x{}+{}+{}".format(
+            dlg_w, dlg_h,
+            rx + (rw - dlg_w) // 2,
+            ry + (rh - dlg_h) // 2))
 
     # =================================================================
     # パスワード移行
