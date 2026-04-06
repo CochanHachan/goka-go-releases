@@ -51,7 +51,7 @@ import igo.rendering as _rendering_mod
 class App:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.withdraw()  # 更新確認完了まで非表示
+        self.root.withdraw()  # 初期化完了まで非表示（show_loginで表示）
         self.root.title("\u7881\u83ef")
         self.root.configure(bg=T("root_bg"))
 
@@ -113,8 +113,9 @@ class App:
 
         self._current_frame = None
         self._update_dialog_shown = False  # 二重ダイアログ防止フラグ
-        # 起動時にまず更新確認 → 完了後にログイン画面を表示
-        self._check_for_update_then_login()
+        # ログイン画面をすぐに表示し、更新確認はバックグラウンドで行う
+        self.show_login()
+        self._check_for_update_background()
 
     def _build_menubar(self):
         menubar = tk.Menu(self.root)
@@ -405,8 +406,9 @@ class App:
         cls._write_marker(m)
 
     # ── 更新チェック本体 ───────────────────────
-    def _check_for_update_then_login(self):
-        """起動時に更新確認 → 完了後にログイン画面を表示する。"""
+    def _check_for_update_background(self):
+        """バックグラウンドで更新確認。更新があればダイアログを表示する。
+        ログイン画面は既に表示済み。"""
         _log_path = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
 
         def _write_log(msg):
@@ -440,12 +442,10 @@ class App:
             _write_log("URL: {}".format(UPDATE_CHECK_URL))
             # ── アップデート直後の再起動時はチェックをスキップ ──
             # マーカーのバージョンと現在のバージョンが一致 → 更新成功直後
-            # HTTPリクエスト不要ですぐにログイン画面を表示する
             _marker = self._read_marker()
             if _marker.get("version") and _marker.get("version") == APP_VERSION:
                 _write_log("Just updated to v{}, skipping check".format(APP_VERSION))
                 self._delete_marker()
-                self.root.after(0, self.show_login)
                 return
             try:
                 data = _fetch_version_json()
@@ -458,17 +458,15 @@ class App:
                     # ── ループ防止チェック ──
                     if self._should_skip_update(latest, _log=_write_log):
                         _write_log("Update skipped (too many attempts)")
-                        self.root.after(0, self.show_login)
                         return
                     if self._update_dialog_shown:
                         _write_log("Update dialog already shown, skipping")
-                        self.root.after(0, self.show_login)
                         return
                     self._update_dialog_shown = True
                     _write_log("Showing update dialog")
                     self.root.after(0, lambda: self._show_update_dialog(
                         latest, dl_url, notes))
-                    return  # ダイアログ側でログイン画面を表示する
+                    return  # ダイアログ側で処理する
                 else:
                     # 更新不要 → 前回の更新が成功したとみなしマーカー削除
                     self._delete_marker()
@@ -480,8 +478,7 @@ class App:
                     _write_log(traceback.format_exc())
                 except Exception:
                     pass
-            # 更新不要 or チェック失敗 → すぐにログイン画面へ
-            self.root.after(0, self.show_login)
+            # 更新不要 or チェック失敗 → ログイン画面は既に表示済み
         threading.Thread(target=_worker, daemon=True).start()
 
     @staticmethod
@@ -589,7 +586,7 @@ class App:
 
         def _skip_update():
             win.destroy()
-            self.show_login()
+            # ログイン画面は既に表示済み
 
         _HoverButton(btn_frame, text="後でする",
                      btn_width=_btn_w, btn_height=_btn_h, radius=14,
