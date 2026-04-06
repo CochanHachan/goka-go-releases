@@ -819,8 +819,8 @@ class OneClickDeployApp:
                                 run_ts = None
 
                             if latest["status"] == "completed":
-                                # マージ開始より前のrunは古い → スキップしてリトライ
-                                if run_ts and run_ts < merge_start_utc:
+                                # マージ開始より前のrun、またはタイムスタンプ不明 → スキップしてリトライ
+                                if not run_ts or run_ts < merge_start_utc:
                                     self.log(
                                         "Run #{} はマージ前のビルドです（スキップ）".format(
                                             latest["id"]), "info")
