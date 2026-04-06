@@ -143,7 +143,7 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
     Returns (score_lead, ownership_list) or raises RuntimeError.
     score_lead > 0 means Black leads.
     """
-    katago_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "katago")
+    katago_dir = os.path.join(_get_install_dir(), "katago")
     _exe = "katago.exe" if platform.system() == "Windows" else "katago"
     katago_exe = os.path.join(katago_dir, _exe)
     model_file = os.path.join(katago_dir, "model.bin")
@@ -233,7 +233,7 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
     """Run KataGo analysis to get win rate.
     Returns (black_winrate, white_winrate) as percentages (0-100).
     """
-    katago_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "katago")
+    katago_dir = os.path.join(_get_install_dir(), "katago")
     _exe = "katago.exe" if platform.system() == "Windows" else "katago"
     katago_exe = os.path.join(katago_dir, _exe)
     model_file = os.path.join(katago_dir, "model.bin")
