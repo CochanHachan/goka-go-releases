@@ -649,14 +649,59 @@ class App:
             prog["close"]()
             if _log:
                 _log("prog closed")
-            # バッチを非表示で実行（黒い画面を出さない）
-            si = subprocess.STARTUPINFO()
-            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            si.wShowWindow = 0  # SW_HIDE
-            subprocess.Popen(
-                ['cmd', '/c', bat_path],
-                startupinfo=si,
-                creationflags=subprocess.CREATE_NO_WINDOW)
+
+            # app_dir への書き込み権限を確認
+            app_dir = os.path.dirname(sys.executable)
+            _needs_elevation = False
+            try:
+                _test_path = os.path.join(app_dir, ".update_write_test")
+                with open(_test_path, "w") as _tf:
+                    _tf.write("test")
+                os.remove(_test_path)
+            except (PermissionError, OSError):
+                _needs_elevation = True
+
+            if _log:
+                _log("app_dir: {}".format(app_dir))
+                _log("needs_elevation: {}".format(_needs_elevation))
+
+            if _needs_elevation:
+                # Program Files等、管理者権限が必要な場合はUAC昇格で実行
+                if _log:
+                    _log("Launching batch with admin elevation (ShellExecuteW)")
+                try:
+                    import ctypes
+                    ret = ctypes.windll.shell32.ShellExecuteW(
+                        None, "runas", "cmd.exe",
+                        '/c "{}"'.format(bat_path),
+                        None, 0)  # 0 = SW_HIDE
+                    if _log:
+                        _log("ShellExecuteW returned: {}".format(ret))
+                    if ret <= 32:
+                        _log("ShellExecuteW failed (ret={}), falling back".format(ret))
+                        raise RuntimeError("ShellExecuteW failed")
+                except Exception as _elev_err:
+                    if _log:
+                        _log("Elevation failed: {}, trying normal launch".format(_elev_err))
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    si.wShowWindow = 0
+                    subprocess.Popen(
+                        ['cmd', '/c', bat_path],
+                        startupinfo=si,
+                        creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                # 書き込み可能なら通常起動（UACプロンプトなし）
+                if _log:
+                    _log("Launching batch normally (no elevation needed)")
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0  # SW_HIDE
+                subprocess.Popen(
+                    ['cmd', '/c', bat_path],
+                    startupinfo=si,
+                    creationflags=subprocess.CREATE_NO_WINDOW)
+
             if _log:
                 _log("batch launched, destroying root")
             self.root.destroy()
