@@ -566,8 +566,7 @@ class OneClickDeployApp:
             # 完了ダイアログ
             self.root.after(500, lambda: messagebox.showinfo(
                 "デプロイ完了",
-                "全ての処理が正常に完了しました!\n\n"
-                "HP: {}".format(HP_URL)
+                "全ての処理が正常に終了しました。"
             ))
 
     def _deploy_thread(self):
