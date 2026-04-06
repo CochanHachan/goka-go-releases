@@ -717,49 +717,52 @@ class OneClickDeployApp:
         self.log("PRマージを開始します（{}件）".format(len(selected_prs)), "accent")
 
         def _worker():
-            merged = 0
-            total = len(selected_prs)
-            for i, (_, pr) in enumerate(selected_prs):
-                if self.cancel_flag:
-                    self._on_cancel()
-                    return
-                num = pr["number"]
-                title = pr["title"]
-                self.log("PR #{}: {} をマージ中...".format(num, title), "info")
-                try:
-                    api_request(
-                        "PUT", "pulls/{}/merge".format(num),
-                        self.token, {"merge_method": "merge"})
-                    branch = pr["head"]["ref"]
+            try:
+                merged = 0
+                total = len(selected_prs)
+                for i, (_, pr) in enumerate(selected_prs):
+                    if self.cancel_flag:
+                        self._on_cancel()
+                        return
+                    num = pr["number"]
+                    title = pr["title"]
+                    self.log("PR #{}: {} をマージ中...".format(num, title), "info")
                     try:
                         api_request(
-                            "DELETE",
-                            "git/refs/heads/{}".format(branch),
-                            self.token)
-                    except Exception:
-                        pass
-                    self.log("PR #{} マージ完了".format(num), "success")
-                    merged += 1
-                except Exception as e:
-                    self.log("PR #{} マージ失敗: {}".format(num, e), "error")
-                self.set_progress(int((i + 1) / total * 100))
+                            "PUT", "pulls/{}/merge".format(num),
+                            self.token, {"merge_method": "merge"})
+                        branch = pr["head"]["ref"]
+                        try:
+                            api_request(
+                                "DELETE",
+                                "git/refs/heads/{}".format(branch),
+                                self.token)
+                        except Exception:
+                            pass
+                        self.log("PR #{} マージ完了".format(num), "success")
+                        merged += 1
+                    except Exception as e:
+                        self.log("PR #{} マージ失敗: {}".format(num, e), "error")
+                    self.set_progress(int((i + 1) / total * 100))
 
-            self.log(
-                "{}件中{}件のPRをマージしました".format(total, merged),
-                "success" if merged > 0 else "warning")
-            self.set_status("マージ完了", _SUCCESS)
-            self.running = False
-            self.cancel_flag = False
-            self.root.after(0, lambda: self.btn_go.configure(state="normal"))
-            self.root.after(0, lambda: self.btn_merge.configure(state="normal"))
-            self.root.after(0, lambda: self.btn_cancel.configure(
-                state="disabled"))
-
-            self._fetch_current_version()
-
-            self.root.after(500, lambda: messagebox.showinfo(
-                "マージ完了",
-                "{}件中{}件のPRをマージしました。".format(total, merged)))
+                self.log(
+                    "{}件中{}件のPRをマージしました".format(total, merged),
+                    "success" if merged > 0 else "warning")
+                self.set_status("マージ完了", _SUCCESS)
+                self._fetch_current_version()
+                self.root.after(500, lambda: messagebox.showinfo(
+                    "マージ完了",
+                    "{}件中{}件のPRをマージしました。".format(total, merged)))
+            except Exception as e:
+                self.log("予期しないエラー: {}".format(e), "error")
+                self.set_status("エラー", _ERROR)
+            finally:
+                self.running = False
+                self.cancel_flag = False
+                self.root.after(0, lambda: self.btn_go.configure(state="normal"))
+                self.root.after(0, lambda: self.btn_merge.configure(state="normal"))
+                self.root.after(0, lambda: self.btn_cancel.configure(
+                    state="disabled"))
 
         threading.Thread(target=_worker, daemon=True).start()
 
