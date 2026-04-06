@@ -550,7 +550,28 @@ class App:
                 tmp_dir = tempfile.mkdtemp()
                 zip_path = os.path.join(tmp_dir, "update.zip")
                 _log("Downloading to: {}".format(zip_path))
-                urllib.request.urlretrieve(dl_url, zip_path)
+                # SSL検証あり → 失敗時はSSL検証なしでリトライ
+                _dl_ok = False
+                try:
+                    ctx = ssl.create_default_context()
+                    req = urllib.request.Request(dl_url, headers={"User-Agent": "GokaGo-Updater"})
+                    with urllib.request.urlopen(req, timeout=60, context=ctx) as resp:
+                        with open(zip_path, "wb") as zf_out:
+                            import shutil as _shutil
+                            _shutil.copyfileobj(resp, zf_out)
+                    _dl_ok = True
+                except Exception as _e1:
+                    _log("SSL download failed: {}".format(_e1))
+                if not _dl_ok:
+                    _log("Retrying without SSL verification")
+                    ctx2 = ssl.create_default_context()
+                    ctx2.check_hostname = False
+                    ctx2.verify_mode = ssl.CERT_NONE
+                    req2 = urllib.request.Request(dl_url, headers={"User-Agent": "GokaGo-Updater"})
+                    with urllib.request.urlopen(req2, timeout=60, context=ctx2) as resp:
+                        with open(zip_path, "wb") as zf_out:
+                            import shutil as _shutil
+                            _shutil.copyfileobj(resp, zf_out)
                 zip_size = os.path.getsize(zip_path)
                 _log("Downloaded: {} bytes".format(zip_size))
 
