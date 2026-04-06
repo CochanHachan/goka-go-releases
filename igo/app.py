@@ -334,6 +334,76 @@ class App:
     # ------------------------------------------------------------------
     # 自動更新
     # ------------------------------------------------------------------
+    # ── アップデートマーカー管理 ─────────────────────
+    _UPDATE_MARKER_NAME = "goka_update_marker.json"
+    _MAX_UPDATE_ATTEMPTS = 3
+    _ATTEMPT_WINDOW_SEC = 600          # 10分
+
+    @staticmethod
+    def _marker_path():
+        """アップデート試行マーカーファイルのパス。"""
+        from igo.config import _get_app_data_dir
+        return os.path.join(_get_app_data_dir(), App._UPDATE_MARKER_NAME)
+
+    @classmethod
+    def _read_marker(cls):
+        """マーカーを読み取り dict を返す。存在しなければ空 dict。"""
+        try:
+            with open(cls._marker_path(), "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    @classmethod
+    def _write_marker(cls, data):
+        try:
+            with open(cls._marker_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+    @classmethod
+    def _delete_marker(cls):
+        try:
+            os.remove(cls._marker_path())
+        except Exception:
+            pass
+
+    @classmethod
+    def _should_skip_update(cls, target_version, _log=None):
+        """同じバージョンへの更新を短期間に何度も試行している場合 True。"""
+        import time as _t
+        m = cls._read_marker()
+        if m.get("version") != target_version:
+            return False
+        attempts = m.get("attempts", 0)
+        last_ts = m.get("last_ts", 0)
+        elapsed = _t.time() - last_ts
+        if elapsed > cls._ATTEMPT_WINDOW_SEC:
+            # ウィンドウ超過 → リセット
+            return False
+        if attempts >= cls._MAX_UPDATE_ATTEMPTS:
+            if _log:
+                _log("SKIP: v{} attempted {} times in {:.0f}s".format(
+                    target_version, attempts, elapsed))
+            return True
+        return False
+
+    @classmethod
+    def _record_attempt(cls, target_version):
+        """更新試行を記録する。"""
+        import time as _t
+        m = cls._read_marker()
+        if m.get("version") != target_version:
+            m = {"version": target_version, "attempts": 0, "last_ts": 0}
+        now = _t.time()
+        if now - m.get("last_ts", 0) > cls._ATTEMPT_WINDOW_SEC:
+            m["attempts"] = 0
+        m["attempts"] = m.get("attempts", 0) + 1
+        m["last_ts"] = now
+        cls._write_marker(m)
+
+    # ── 更新チェック本体 ───────────────────────
     def _check_for_update_then_login(self):
         """起動時に更新確認 → 完了後にログイン画面を表示する。"""
         _log_path = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
@@ -375,10 +445,18 @@ class App:
                 _write_log("Remote version: {}".format(latest))
                 _write_log("Is newer: {}".format(self._is_newer(latest, APP_VERSION)))
                 if latest and dl_url and self._is_newer(latest, APP_VERSION):
+                    # ── ループ防止チェック ──
+                    if self._should_skip_update(latest, _log=_write_log):
+                        _write_log("Update skipped (too many attempts)")
+                        self.root.after(0, self.show_login)
+                        return
                     _write_log("Showing update dialog")
                     self.root.after(0, lambda: self._show_update_dialog(
                         latest, dl_url, notes))
                     return  # ダイアログ側でログイン画面を表示する
+                else:
+                    # 更新不要 → 前回の更新が成功したとみなしマーカー削除
+                    self._delete_marker()
                 _write_log("No update needed")
             except Exception as _ue:
                 _write_log("Error: {}".format(_ue))
@@ -535,6 +613,8 @@ class App:
                 pass
 
         _log("=== _do_update called ===")
+        # ── 試行を記録（ループ防止） ──
+        self._record_attempt(latest)
         dialog.destroy()
         prog = show_update_progress(self.root)
 
@@ -586,15 +666,107 @@ class App:
                     zf.extractall(extract_dir)
                 _log("Extracted OK")
 
-                # ZIP内にgoka_goサブフォルダがある場合、そこをコピー元にする
-                inner = os.path.join(extract_dir, "goka_go")
-                if os.path.isdir(inner):
-                    extract_dir = inner
-                    _log("Using inner dir: {}".format(extract_dir))
+                # ── ZIP内のトップレベルサブフォルダ自動検出 ──
+                # 「goka_go/」等の単一サブフォルダがある場合、
+                # そこをコピー元にする（ネスト防止）。
+                entries = [e for e in os.listdir(extract_dir)
+                           if os.path.isdir(os.path.join(extract_dir, e))]
+                if len(entries) == 1:
+                    candidate = os.path.join(extract_dir, entries[0])
+                    # サブフォルダ内に exe があるか確認
+                    if any(f.endswith(".exe") for f in os.listdir(candidate)
+                           if os.path.isfile(os.path.join(candidate, f))):
+                        extract_dir = candidate
+                        _log("Using inner dir: {}".format(extract_dir))
+                    else:
+                        _log("Inner dir has no exe, keeping: {}".format(
+                            extract_dir))
+                else:
+                    _log("Top-level entries: {}".format(entries))
+
+                # コピー元に exe が存在するか事前検証
+                src_exe = os.path.join(extract_dir, os.path.basename(app_exe))
+                if not os.path.isfile(src_exe):
+                    raise RuntimeError(
+                        "コピー元に {} が見つかりません: {}".format(
+                            os.path.basename(app_exe), extract_dir))
+                _log("Source exe OK: {}".format(src_exe))
 
                 # 「インストール中」を表示して2秒待つ
                 self.root.after(0, lambda: prog["set_status"]("インストール中"))
                 _t.sleep(2)
+
+                # ── 堅牢なバッチファイル生成 ──
+                bat_log = os.path.join(os.path.expanduser("~"),
+                                       "goka_update_batch.log")
+                bat_path = os.path.join(tmp_dir, "goka_update.bat")
+                exe_name = os.path.basename(app_exe)
+
+                lines = []
+                lines.append("@echo off")
+                lines.append("chcp 65001 >nul")
+                lines.append('echo [%date% %time%] Update batch started > "{}"'.format(
+                    bat_log))
+                # ── プロセス終了待機（最大30秒） ──
+                lines.append("set WAIT_COUNT=0")
+                lines.append(":WAIT")
+                lines.append('tasklist /FI "IMAGENAME eq {}"'
+                             ' 2>NUL | find /I "{}" >NUL'.format(
+                                 exe_name, exe_name))
+                lines.append("if %ERRORLEVEL% NEQ 0 goto COPY")
+                lines.append("set /a WAIT_COUNT+=1")
+                lines.append("if %WAIT_COUNT% GEQ 30 (")
+                lines.append('  echo [%date% %time%] TIMEOUT: process did '
+                             'not exit after 30s >> "{}"'.format(bat_log))
+                lines.append("  goto COPY")
+                lines.append(")")
+                lines.append("timeout /t 1 /nobreak >nul")
+                lines.append("goto WAIT")
+                # ── ファイルコピー（robocopy優先 → xcopy fallback） ──
+                lines.append(":COPY")
+                lines.append('echo [%date% %time%] Copying files... >> "{}"'.format(
+                    bat_log))
+                # robocopy: 終了コード 0-7 は正常
+                lines.append('robocopy "{}" "{}" /E /IS /IT /NFL /NDL '
+                             '/NJH /NJS /R:3 /W:2 >> "{}" 2>&1'.format(
+                                 extract_dir, app_dir, bat_log))
+                lines.append("if %ERRORLEVEL% LEQ 7 (")
+                lines.append('  echo [%date% %time%] robocopy OK '
+                             '>> "{}"'.format(bat_log))
+                lines.append("  goto VERIFY")
+                lines.append(")")
+                # robocopy失敗時 → xcopy fallback
+                lines.append('echo [%date% %time%] robocopy failed '
+                             '(code=%ERRORLEVEL%), trying xcopy '
+                             '>> "{}"'.format(bat_log))
+                lines.append('xcopy /s /y /q "{}\\*" "{}\\" '
+                             '>> "{}" 2>&1'.format(
+                                 extract_dir, app_dir, bat_log))
+                lines.append("if %ERRORLEVEL% NEQ 0 (")
+                lines.append('  echo [%date% %time%] xcopy also failed '
+                             '>> "{}"'.format(bat_log))
+                lines.append("  goto FAIL")
+                lines.append(")")
+                # ── コピー後の検証 ──
+                lines.append(":VERIFY")
+                lines.append('if not exist "{}" ('.format(app_exe))
+                lines.append('  echo [%date% %time%] VERIFY FAIL: '
+                             'exe missing >> "{}"'.format(bat_log))
+                lines.append("  goto FAIL")
+                lines.append(")")
+                lines.append('echo [%date% %time%] Verified OK, '
+                             'restarting >> "{}"'.format(bat_log))
+                lines.append('start "" "{}"'.format(app_exe))
+                lines.append("goto CLEANUP")
+                # ── 失敗時: 再起動しない（ループ防止） ──
+                lines.append(":FAIL")
+                lines.append('echo [%date% %time%] UPDATE FAILED - '
+                             'NOT restarting >> "{}"'.format(bat_log))
+                lines.append(":CLEANUP")
+                lines.append("del /q \"%~f0\"")
+
+                with open(bat_path, "w", encoding="utf-8") as bf:
+                    bf.write("\n".join(lines) + "\n")
 
                 # 「アップデートは正常に終了しました。」を表示して1.5秒待つ
                 if "show_complete" in prog:
@@ -602,28 +774,6 @@ class App:
                 else:
                     self.root.after(0, lambda: prog["set_status"]("アップデート完了"))
                 _t.sleep(1.5)
-
-                bat_path = os.path.join(tmp_dir, "goka_update.bat")
-                with open(bat_path, "w", encoding="utf-8") as bf:
-                    bf.write("@echo off\n")
-                    bf.write("chcp 65001 >nul\n")
-                    bf.write('tasklist /FI "IMAGENAME eq goka_go.exe"'
-                             ' 2>NUL | find /I "goka_go.exe" >NUL\n')
-                    bf.write("if %ERRORLEVEL%==0 (\n")
-                    bf.write("  timeout /t 1 /nobreak >nul\n")
-                    bf.write("  goto WAIT\n")
-                    bf.write(")\n")
-                    bf.write(":WAIT\n")
-                    bf.write('tasklist /FI "IMAGENAME eq goka_go.exe"'
-                             ' 2>NUL | find /I "goka_go.exe" >NUL\n')
-                    bf.write("if %ERRORLEVEL%==0 (\n")
-                    bf.write("  timeout /t 1 /nobreak >nul\n")
-                    bf.write("  goto WAIT\n")
-                    bf.write(")\n")
-                    bf.write('xcopy /s /y /q "{}\\*" "{}\\"\n'.format(
-                        extract_dir, app_dir))
-                    bf.write('start "" "{}"\n'.format(app_exe))
-                    bf.write("del /q \"%~f0\"\n")
 
                 _log("Batch: {}".format(bat_path))
                 self.root.after(0, lambda: self._launch_update(
