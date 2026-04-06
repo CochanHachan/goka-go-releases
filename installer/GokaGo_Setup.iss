@@ -42,6 +42,10 @@ Name: "desktopicon"; \
   GroupDescription: "{cm:AdditionalIcons}"; \
   Flags: unchecked
 
+[Dirs]
+; インストールフォルダに書き込み権限を付与（自動アップデートで管理者権限不要にする）
+Name: "{app}"; Permissions: users-modify
+
 [Files]
 ; ---- アプリ本体 (PyInstaller の出力フォルダをまるごと) ----
 Source: "..\dist\goka_go\*"; \
