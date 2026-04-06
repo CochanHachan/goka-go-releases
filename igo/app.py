@@ -738,7 +738,7 @@ class App:
                     # --- robocopy (第1手段) ---
                     bf.write(":COPY\n")
                     bf.write('echo [%time%] Trying robocopy >> "%LOGFILE%"\n')
-                    bf.write('robocopy "{}" "{}" /MIR /R:3 /W:2 /NFL /NDL /NJH /NJS >> "%LOGFILE%" 2>&1\n'.format(
+                    bf.write('robocopy "{}" "{}" /E /IS /IT /R:3 /W:2 /NFL /NDL /NJH /NJS >> "%LOGFILE%" 2>&1\n'.format(
                         extract_dir, app_dir))
                     bf.write("if %ERRORLEVEL% LSS 8 (\n")
                     bf.write('  echo [%time%] robocopy OK (exit=%ERRORLEVEL%) >> "%LOGFILE%"\n')
@@ -1530,8 +1530,9 @@ class App:
         """Start a game via cloud."""
         if not self.go_board:
             return
-        # 対局成立時に_hostingを先にリセットしてmatch_cancel送信を防止
-        self._hosting = False
+        # 対局成立時にダイアログの_hostingを先にリセットしてmatch_cancel送信を防止
+        if self._current_match_dialog:
+            self._current_match_dialog._hosting = False
         # Close any open match dialogs
         if self._current_match_dialog:
             try:
@@ -1559,8 +1560,9 @@ class App:
         """Start a game against AI bot using KataGo GTP."""
         if not self.go_board:
             return
-        # AI対局時も_hostingをリセットしてmatch_cancel送信を防止
-        self._hosting = False
+        # AI対局時もダイアログの_hostingをリセットしてmatch_cancel送信を防止
+        if self._current_match_dialog:
+            self._current_match_dialog._hosting = False
         # Close any open match dialogs
         if self._current_match_dialog:
             try:
