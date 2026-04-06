@@ -235,7 +235,9 @@ jobs:
               for root, dirs, files in os.walk(src):
                   for f in files:
                       fp = os.path.join(root, f)
-                      arcname = os.path.relpath(fp, "dist")
+                      # フラット構造: goka_go/ サブフォルダなしで直接ファイルを格納
+                      # 古いクライアント（inner-dir検出なし）でも正しくコピーできる
+                      arcname = os.path.relpath(fp, src)
                       try:
                           zf.write(fp, arcname)
                       except PermissionError as e:
