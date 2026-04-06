@@ -1564,6 +1564,10 @@ class App:
         # Close any open match dialogs
         if self._current_match_dialog:
             try:
+                # Prevent _on_close from sending match_cancel — the match
+                # was already accepted by the server so cancelling would
+                # incorrectly reset our status back to "ログイン".
+                self._current_match_dialog._hosting = False
                 self._current_match_dialog._on_close()
             except Exception:
                 pass
