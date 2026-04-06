@@ -112,6 +112,7 @@ class App:
         self._ai_color = None
 
         self._current_frame = None
+        self._update_dialog_shown = False  # 二重ダイアログ防止フラグ
         # 起動時にまず更新確認 → 完了後にログイン画面を表示
         self._check_for_update_then_login()
 
@@ -450,6 +451,10 @@ class App:
                         _write_log("Update skipped (too many attempts)")
                         self.root.after(0, self.show_login)
                         return
+                    if self._update_dialog_shown:
+                        _write_log("Update dialog already shown, skipping")
+                        return
+                    self._update_dialog_shown = True
                     _write_log("Showing update dialog")
                     self.root.after(0, lambda: self._show_update_dialog(
                         latest, dl_url, notes))
@@ -705,6 +710,13 @@ class App:
                 lines = []
                 lines.append("@echo off")
                 lines.append("chcp 65001 >nul")
+                # ── 管理者権限チェック＆昇格（C:\Program Files 書き込み対応） ──
+                lines.append("NET SESSION >nul 2>&1")
+                lines.append("if %errorLevel% neq 0 (")
+                lines.append("  powershell -Command \"Start-Process "
+                             "-FilePath '%~f0' -Verb RunAs\"")
+                lines.append("  exit /b")
+                lines.append(")")
                 lines.append('echo [%date% %time%] Update batch started > "{}"'.format(
                     bat_log))
                 # ── プロセス終了待機（最大30秒） ──
