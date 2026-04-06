@@ -729,6 +729,9 @@ class GoBoard:
 
     def handle_network_timeout(self, loser_color):
         """Handle timeout notification from network opponent."""
+        # If the game already ended (local timer also fired), ignore duplicate
+        if self.game.game_over:
+            return
         self.game.time_out(loser_color)
         self._timer_running = False
         winner_color = WHITE if loser_color == BLACK else BLACK
@@ -809,8 +812,11 @@ class GoBoard:
 
     def end_network_game(self):
         """Clean up after network game ends."""
-        self._last_my_color = self.my_color
-        self._last_opponent_elo = getattr(self, 'opponent_elo', 0)
+        # Only save color/elo if not already saved (prevent overwrite by duplicate calls)
+        if self.my_color is not None:
+            self._last_my_color = self.my_color
+        if getattr(self, 'opponent_elo', None) is not None:
+            self._last_opponent_elo = self.opponent_elo
         self.net_mode = False
         self.my_color = None
         self._timer_running = False
@@ -1142,6 +1148,9 @@ class GoBoard:
         self._replay_history = []
         self._nav_inner.pack_forget()
         self.nav_frame.place_forget()
+        # Reset status from "検討中" back to "ログイン"
+        if self.app:
+            self.app._send_status("ログイン")
 
     def _position_nav_bar(self):
         """Position nav_frame right below the board, following board position."""
