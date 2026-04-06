@@ -683,7 +683,7 @@ class App:
         init_size = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
         defaults = {
             "login": "500x400",
-            "register": "500x550",
+            "register": "{}x{}".format(*RegisterScreen.DEFAULT_SIZE),
             "game": "{}x{}".format(init_size, init_size + 120),
         }
         user_key = self._user_screen_name(screen_name)

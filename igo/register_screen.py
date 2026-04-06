@@ -18,6 +18,8 @@ from igo.ui_helpers import (
 
 
 class RegisterScreen:
+    DEFAULT_SIZE = (500, 550)
+
     def __init__(self, parent, app, on_close=None, on_register_success=None):
         self.parent = parent
         self.app = app
