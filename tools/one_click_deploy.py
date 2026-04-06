@@ -579,7 +579,8 @@ class OneClickDeployApp:
                     self.token)
                 self.root.after(0, lambda: self._show_merge_dialog(prs))
             except Exception as e:
-                self.root.after(0, lambda: self._merge_fetch_error(str(e)))
+                err_msg = str(e)
+                self.root.after(0, lambda: self._merge_fetch_error(err_msg))
 
         threading.Thread(target=_fetch, daemon=True).start()
 
@@ -702,6 +703,7 @@ class OneClickDeployApp:
     def _execute_merge_only(self, selected_prs):
         """選択されたPRをマージ（ビルドは実行しない）"""
         self.running = True
+        self.cancel_flag = False
         self.btn_go.configure(state="disabled")
         self.btn_merge.configure(state="disabled")
         self.btn_cancel.configure(state="normal")
