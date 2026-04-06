@@ -295,6 +295,22 @@ class OneClickDeployApp:
         )
         self.btn_go.pack(side="left")
 
+        self.btn_merge = tk.Button(
+            btn_frame,
+            text="\U0001F500  PRマージのみ",
+            font=(_FONT, 11, "bold"),
+            bg=_BTN_BG,
+            fg="white",
+            activebackground=_ACCENT,
+            activeforeground="white",
+            relief="flat",
+            padx=16,
+            pady=8,
+            command=self.start_merge_only,
+            cursor="hand2",
+        )
+        self.btn_merge.pack(side="left", padx=12)
+
         self.btn_cancel = tk.Button(
             btn_frame,
             text="キャンセル",
@@ -530,6 +546,7 @@ class OneClickDeployApp:
         self.running = True
         self.cancel_flag = False
         self.btn_go.configure(state="disabled")
+        self.btn_merge.configure(state="disabled")
         self.btn_cancel.configure(state="normal")
         self.version_entry.configure(state="disabled")
 
@@ -543,6 +560,207 @@ class OneClickDeployApp:
 
         threading.Thread(target=self._deploy_thread, daemon=True).start()
 
+    def start_merge_only(self):
+        """PRマージのみ実行（PR選択ダイアログ表示）"""
+        if self.running:
+            return
+        if not self.token:
+            messagebox.showwarning("エラー", "GitHub トークンが設定されていません。")
+            return
+
+        self.btn_go.configure(state="disabled")
+        self.btn_merge.configure(state="disabled")
+        self.set_status("PR一覧を取得中...", _ACCENT)
+
+        def _fetch():
+            try:
+                prs = api_request(
+                    "GET", "pulls?state=open&sort=created&direction=asc",
+                    self.token)
+                self.root.after(0, lambda: self._show_merge_dialog(prs))
+            except Exception as e:
+                self.root.after(0, lambda: self._merge_fetch_error(str(e)))
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _merge_fetch_error(self, err):
+        """PR取得エラー時"""
+        self.btn_go.configure(state="normal")
+        self.btn_merge.configure(state="normal")
+        self.set_status("待機中", _FG_DIM)
+        messagebox.showerror("エラー", "PR一覧の取得に失敗しました:\n{}".format(err))
+
+    def _show_merge_dialog(self, prs):
+        """PR選択ダイアログを表示"""
+        self.btn_go.configure(state="normal")
+        self.btn_merge.configure(state="normal")
+        self.set_status("待機中", _FG_DIM)
+
+        if not prs:
+            messagebox.showinfo("PRマージ", "オープン中のPRはありません。")
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("PRを選択してマージ")
+        dialog.geometry("560x400")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.configure(bg=_BG)
+
+        tk.Label(
+            dialog,
+            text="マージするPRを選択してください:",
+            font=(_FONT, 12, "bold"),
+            bg=_BG,
+            fg=_FG,
+            padx=16,
+            pady=12,
+        ).pack(fill="x")
+
+        list_frame = tk.Frame(dialog, bg=_BG_CARD, padx=8, pady=8)
+        list_frame.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+
+        canvas = tk.Canvas(list_frame, bg=_BG_CARD, highlightthickness=0)
+        scrollbar = tk.Scrollbar(list_frame, orient="vertical",
+                                 command=canvas.yview)
+        inner = tk.Frame(canvas, bg=_BG_CARD)
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        check_vars = []
+        for pr in prs:
+            var = tk.BooleanVar(value=True)
+            check_vars.append((var, pr))
+            cb = tk.Checkbutton(
+                inner,
+                text="#{} - {}".format(pr["number"], pr["title"]),
+                variable=var,
+                font=(_FONT, 10),
+                bg=_BG_CARD,
+                fg=_FG,
+                selectcolor=_BG,
+                activebackground=_BG_CARD,
+                activeforeground=_FG,
+                anchor="w",
+            )
+            cb.pack(fill="x", pady=2)
+
+        btn_area = tk.Frame(dialog, bg=_BG, padx=16, pady=8)
+        btn_area.pack(fill="x")
+
+        def _select_all():
+            for v, _ in check_vars:
+                v.set(True)
+
+        def _select_none():
+            for v, _ in check_vars:
+                v.set(False)
+
+        tk.Button(
+            btn_area, text="全選択", command=_select_all,
+            font=(_FONT, 9), bg=_BG_CARD, fg=_FG,
+            activebackground=_BTN_BG, activeforeground="white",
+            relief="flat", padx=8, pady=2, cursor="hand2",
+        ).pack(side="left")
+
+        tk.Button(
+            btn_area, text="全解除", command=_select_none,
+            font=(_FONT, 9), bg=_BG_CARD, fg=_FG,
+            activebackground=_BTN_BG, activeforeground="white",
+            relief="flat", padx=8, pady=2, cursor="hand2",
+        ).pack(side="left", padx=4)
+
+        def _do_merge():
+            selected = [(v, pr) for v, pr in check_vars if v.get()]
+            if not selected:
+                messagebox.showwarning(
+                    "選択なし", "マージするPRを選択してください。",
+                    parent=dialog)
+                return
+            dialog.destroy()
+            self._execute_merge_only(selected)
+
+        tk.Button(
+            btn_area, text="マージ実行", command=_do_merge,
+            font=(_FONT, 11, "bold"), bg=_BTN_BG_GO, fg="white",
+            activebackground="#1b5e20", activeforeground="white",
+            relief="flat", padx=16, pady=4, cursor="hand2",
+        ).pack(side="right")
+
+        tk.Button(
+            btn_area, text="キャンセル",
+            command=dialog.destroy,
+            font=(_FONT, 10), bg=_BG_CARD, fg=_FG_DIM,
+            activebackground=_ERROR, activeforeground="white",
+            relief="flat", padx=12, pady=4, cursor="hand2",
+        ).pack(side="right", padx=8)
+
+    def _execute_merge_only(self, selected_prs):
+        """選択されたPRをマージ（ビルドは実行しない）"""
+        self.running = True
+        self.btn_go.configure(state="disabled")
+        self.btn_merge.configure(state="disabled")
+        self.btn_cancel.configure(state="normal")
+
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.configure(state="disabled")
+
+        self.set_progress(0)
+        self.set_status("PRマージ中...", _ACCENT)
+        self.log("PRマージを開始します（{}件）".format(len(selected_prs)), "accent")
+
+        def _worker():
+            merged = 0
+            total = len(selected_prs)
+            for i, (_, pr) in enumerate(selected_prs):
+                if self.cancel_flag:
+                    self._on_cancel()
+                    return
+                num = pr["number"]
+                title = pr["title"]
+                self.log("PR #{}: {} をマージ中...".format(num, title), "info")
+                try:
+                    api_request(
+                        "PUT", "pulls/{}/merge".format(num),
+                        self.token, {"merge_method": "merge"})
+                    branch = pr["head"]["ref"]
+                    try:
+                        api_request(
+                            "DELETE",
+                            "git/refs/heads/{}".format(branch),
+                            self.token)
+                    except Exception:
+                        pass
+                    self.log("PR #{} マージ完了".format(num), "success")
+                    merged += 1
+                except Exception as e:
+                    self.log("PR #{} マージ失敗: {}".format(num, e), "error")
+                self.set_progress(int((i + 1) / total * 100))
+
+            self.log(
+                "{}件中{}件のPRをマージしました".format(total, merged),
+                "success" if merged > 0 else "warning")
+            self.set_status("マージ完了", _SUCCESS)
+            self.running = False
+            self.cancel_flag = False
+            self.root.after(0, lambda: self.btn_go.configure(state="normal"))
+            self.root.after(0, lambda: self.btn_merge.configure(state="normal"))
+            self.root.after(0, lambda: self.btn_cancel.configure(
+                state="disabled"))
+
+            self._fetch_current_version()
+
+            self.root.after(500, lambda: messagebox.showinfo(
+                "マージ完了",
+                "{}件中{}件のPRをマージしました。".format(total, merged)))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def cancel_deploy(self):
         """デプロイをキャンセル"""
         self.cancel_flag = True
@@ -553,6 +771,7 @@ class OneClickDeployApp:
         """デプロイ完了処理"""
         self.running = False
         self.root.after(0, lambda: self.btn_go.configure(state="normal"))
+        self.root.after(0, lambda: self.btn_merge.configure(state="normal"))
         self.root.after(0, lambda: self.btn_cancel.configure(state="disabled"))
         self.root.after(0, lambda: self.version_entry.configure(state="normal"))
 
@@ -790,6 +1009,7 @@ class OneClickDeployApp:
         self.set_status("キャンセル済み", _WARNING)
         self.running = False
         self.root.after(0, lambda: self.btn_go.configure(state="normal"))
+        self.root.after(0, lambda: self.btn_merge.configure(state="normal"))
         self.root.after(0, lambda: self.btn_cancel.configure(state="disabled"))
         self.root.after(0, lambda: self.version_entry.configure(state="normal"))
 
