@@ -591,6 +591,8 @@ class App:
             win.destroy()
             self.show_login()
 
+        win.protocol("WM_DELETE_WINDOW", _skip_update)
+
         _HoverButton(btn_frame, text="後でする",
                      btn_width=_btn_w, btn_height=_btn_h, radius=14,
                      base_color=_BTN_SEC, hover_color=_BTN_SEC_H,
