@@ -438,6 +438,15 @@ class App:
             _write_log("=== Update check started ===")
             _write_log("APP_VERSION: {}".format(APP_VERSION))
             _write_log("URL: {}".format(UPDATE_CHECK_URL))
+            # ── アップデート直後の再起動時はチェックをスキップ ──
+            # マーカーのバージョンと現在のバージョンが一致 → 更新成功直後
+            # HTTPリクエスト不要ですぐにログイン画面を表示する
+            _marker = self._read_marker()
+            if _marker.get("version") and _marker.get("version") == APP_VERSION:
+                _write_log("Just updated to v{}, skipping check".format(APP_VERSION))
+                self._delete_marker()
+                self.root.after(0, self.show_login)
+                return
             try:
                 data = _fetch_version_json()
                 latest = data.get("version", "")
@@ -661,9 +670,9 @@ class App:
                 zip_size = os.path.getsize(zip_path)
                 _log("Downloaded: {} bytes".format(zip_size))
 
-                # 「解凍中」を表示して0.5秒待つ
+                # 「解凍中」を表示して2.5秒待つ
                 self.root.after(0, lambda: prog["set_status"]("解凍中"))
-                _t.sleep(0.5)
+                _t.sleep(2.5)
 
                 extract_dir = os.path.join(tmp_dir, "extracted")
                 os.makedirs(extract_dir, exist_ok=True)
@@ -698,9 +707,9 @@ class App:
                             os.path.basename(app_exe), extract_dir))
                 _log("Source exe OK: {}".format(src_exe))
 
-                # 「インストール中」を表示して0.5秒待つ
+                # 「インストール中」を表示して2.5秒待つ
                 self.root.after(0, lambda: prog["set_status"]("インストール中"))
-                _t.sleep(0.5)
+                _t.sleep(2.5)
 
                 # ── 堅牢なバッチファイル生成 ──
                 bat_log = os.path.join(os.path.expanduser("~"),
