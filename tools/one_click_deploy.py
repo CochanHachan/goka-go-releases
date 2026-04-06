@@ -563,17 +563,10 @@ class OneClickDeployApp:
             self.log("全ての処理が正常に完了しました!", "success")
             self.log("HP: {}".format(HP_URL), "accent")
 
-            # 完了後にHPを自動で開く
-            import webbrowser
-            webbrowser.open(HP_URL)
-
             # 完了ダイアログ
             self.root.after(500, lambda: messagebox.showinfo(
                 "デプロイ完了",
-                "全ての処理が正常に完了しました!\n\n"
-                "HP: {}\n\n"
-                "ブラウザでHPを開きました。\n"
-                "インストーラーはHPからダウンロードできます。".format(HP_URL)
+                "全ての処理が正常に終了しました。"
             ))
 
     def _deploy_thread(self):
