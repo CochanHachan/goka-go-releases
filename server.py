@@ -808,34 +808,38 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             logger.info("Match declined: %s declined %s", handle, target)
 
     elif msg_type == "match_cancel":
-        # 申込キャンセル → ボット承諾タイマーもキャンセル
-        _cancel_bot_timers(handle)
-        # 個別申込の場合、相手のステータスを修正
-        offer_info = pending_offers.get(handle, {})
-        target_of_cancel = offer_info.get("target")
-        if target_of_cancel and target_of_cancel in connected_users:
-            _cur = user_status.get(target_of_cancel, "ログイン")
-            if _cur == "申請・受付":
-                user_status[target_of_cancel] = "対局申請中"
-            elif _cur == "対局受付中":
-                user_status[target_of_cancel] = "ログイン"
-        pending_offers.pop(handle, None)
-        # 申請・受付 → 申請を取り消すので「対局受付中」に戻る
-        _my = user_status.get(handle, "ログイン")
-        if _my == "申請・受付":
-            user_status[handle] = "対局受付中"
+        # 既に対局中なら無視（対局成立後にクライアントが遅れて送る場合がある）
+        if user_status.get(handle) == "対局中":
+            logger.debug("Ignoring match_cancel from %s (already in game)", handle)
         else:
-            user_status[handle] = "ログイン"
-        cancel_msg = json.dumps(
-            {"type": "match_cancelled", "from": handle}, ensure_ascii=False
-        )
-        for other_handle, other_ws in list(connected_users.items()):
-            if other_handle != handle:
-                try:
-                    await other_ws.send_text(cancel_msg)
-                except Exception:
-                    pass
-        logger.info("Match cancelled by: %s", handle)
+            # 申込キャンセル → ボット承諾タイマーもキャンセル
+            _cancel_bot_timers(handle)
+            # 個別申込の場合、相手のステータスを修正
+            offer_info = pending_offers.get(handle, {})
+            target_of_cancel = offer_info.get("target")
+            if target_of_cancel and target_of_cancel in connected_users:
+                _cur = user_status.get(target_of_cancel, "ログイン")
+                if _cur == "申請・受付":
+                    user_status[target_of_cancel] = "対局申請中"
+                elif _cur == "対局受付中":
+                    user_status[target_of_cancel] = "ログイン"
+            pending_offers.pop(handle, None)
+            # 申請・受付 → 申請を取り消すので「対局受付中」に戻る
+            _my = user_status.get(handle, "ログイン")
+            if _my == "申請・受付":
+                user_status[handle] = "対局受付中"
+            else:
+                user_status[handle] = "ログイン"
+            cancel_msg = json.dumps(
+                {"type": "match_cancelled", "from": handle}, ensure_ascii=False
+            )
+            for other_handle, other_ws in list(connected_users.items()):
+                if other_handle != handle:
+                    try:
+                        await other_ws.send_text(cancel_msg)
+                    except Exception:
+                        pass
+            logger.info("Match cancelled by: %s", handle)
 
     elif msg_type in ("move", "pass", "resign", "timeout", "score_result"):
         opponent = game_pairs.get(handle)
