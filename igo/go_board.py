@@ -815,7 +815,7 @@ class GoBoard:
         # Only save color/elo if not already saved (prevent overwrite by duplicate calls)
         if self.my_color is not None:
             self._last_my_color = self.my_color
-        if getattr(self, 'opponent_elo', 0):
+        if getattr(self, 'opponent_elo', None) is not None:
             self._last_opponent_elo = self.opponent_elo
         self.net_mode = False
         self.my_color = None
