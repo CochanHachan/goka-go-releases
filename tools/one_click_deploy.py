@@ -26,6 +26,7 @@ import os
 import threading
 import time
 import base64
+from datetime import datetime, timezone
 
 REPO = "CochanHachan/goka-go-releases"
 API_BASE = "https://api.github.com/repos/{}".format(REPO)
@@ -720,6 +721,7 @@ class OneClickDeployApp:
         def _worker():
             try:
                 # ── Phase 1: PRマージ ──
+                merge_start_utc = datetime.now(timezone.utc)
                 merged = 0
                 total = len(selected_prs)
                 for i, (_, pr) in enumerate(selected_prs):
@@ -805,29 +807,47 @@ class OneClickDeployApp:
                                 break
                         if run_id:
                             break
-                        # 完了済みでも直近のrunを取得（マージトリガーの可能性）
+                        # 完了済みでも直近のrunを取得（マージ後にトリガーされた場合）
                         if runs.get("workflow_runs"):
                             latest = runs["workflow_runs"][0]
-                            run_id = latest["id"]
+                            # created_at をパースしてマージ開始時刻と比較
+                            run_created = latest.get("created_at", "")
+                            try:
+                                run_ts = datetime.fromisoformat(
+                                    run_created.replace("Z", "+00:00"))
+                            except (ValueError, AttributeError):
+                                run_ts = None
+
                             if latest["status"] == "completed":
-                                self.log("最新ビルド Run #{} は既に完了しています".format(run_id), "info")
-                                conclusion = latest.get("conclusion", "")
-                                if conclusion == "success":
-                                    self.log("ビルド成功!", "success")
-                                    self.set_progress(100)
-                                    self.root.after(0, lambda: self.step_indicator.set_all_complete())
-                                    self.set_status("マージ＆ビルド完了!", _SUCCESS)
-                                    self._fetch_current_version()
-                                    self.root.after(500, lambda: messagebox.showinfo(
-                                        "完了",
-                                        "{}件のPRをマージし、ビルドが正常に完了しました。\n"
-                                        "アプリを起動すると自動アップデートが実行されます。".format(merged)))
+                                # マージ開始より前のrunは古い → スキップしてリトライ
+                                if run_ts and run_ts < merge_start_utc:
+                                    self.log(
+                                        "Run #{} はマージ前のビルドです（スキップ）".format(
+                                            latest["id"]), "info")
                                 else:
-                                    self.log("ビルド結果: {}".format(conclusion), "error")
-                                    self.set_status("ビルド失敗", _ERROR)
-                                    self.root.after(0, lambda: self.step_indicator.set_error(2))
-                                return
-                            break
+                                    # マージ後に完了した新しいrun
+                                    run_id = latest["id"]
+                                    self.log("最新ビルド Run #{} は既に完了しています".format(run_id), "info")
+                                    conclusion = latest.get("conclusion", "")
+                                    if conclusion == "success":
+                                        self.log("ビルド成功!", "success")
+                                        self.set_progress(100)
+                                        self.root.after(0, lambda: self.step_indicator.set_all_complete())
+                                        self.set_status("マージ＆ビルド完了!", _SUCCESS)
+                                        self._fetch_current_version()
+                                        self.root.after(500, lambda: messagebox.showinfo(
+                                            "完了",
+                                            "{}件のPRをマージし、ビルドが正常に完了しました。\n"
+                                            "アプリを起動すると自動アップデートが実行されます。".format(merged)))
+                                    else:
+                                        self.log("ビルド結果: {}".format(conclusion), "error")
+                                        self.set_status("ビルド失敗", _ERROR)
+                                        self.root.after(0, lambda: self.step_indicator.set_error(2))
+                                    return
+                            elif run_ts and run_ts >= merge_start_utc:
+                                # マージ後に作成されたアクティブなrun
+                                run_id = latest["id"]
+                                break
                     except Exception:
                         pass
                     time.sleep(5)
