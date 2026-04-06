@@ -146,12 +146,15 @@ def merge_select_prs(token):
     if choice == "a":
         selected = prs
     else:
+        seen = set()
         indices = []
         for part in choice.replace(" ", "").split(","):
             try:
                 idx = int(part)
                 if 1 <= idx <= len(prs):
-                    indices.append(idx - 1)
+                    if (idx - 1) not in seen:
+                        seen.add(idx - 1)
+                        indices.append(idx - 1)
                 else:
                     print(f"無効な番号: {part} (1〜{len(prs)}を指定してください)")
                     return 0
