@@ -25,7 +25,12 @@ class RegisterScreen:
         self._on_register_success = on_register_success
 
         container = tk.Frame(parent, bg=T("container_bg"), padx=20, pady=20)
-        container.place(relx=0.5, rely=0.5, anchor="center")
+        if on_close:
+            # ダイアログモード: pack で自動サイズ
+            container.pack(fill="both", expand=True)
+        else:
+            # 通常モード: 親ウィンドウの中央に配置
+            container.place(relx=0.5, rely=0.5, anchor="center")
 
         tk.Label(container, text=L("reg_title"),
                  font=("", 22, "bold"),
