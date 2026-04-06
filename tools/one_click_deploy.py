@@ -701,7 +701,7 @@ class OneClickDeployApp:
         ).pack(side="right", padx=8)
 
     def _execute_merge_only(self, selected_prs):
-        """選択されたPRをマージ（ビルドは実行しない）"""
+        """選択されたPRをマージし、ビルドが自動実行された場合は完了まで監視する"""
         self.running = True
         self.cancel_flag = False
         self.btn_go.configure(state="disabled")
@@ -713,11 +713,13 @@ class OneClickDeployApp:
         self.log_text.configure(state="disabled")
 
         self.set_progress(0)
+        self.root.after(0, lambda: self.step_indicator.set_active(0))
         self.set_status("PRマージ中...", _ACCENT)
         self.log("PRマージを開始します（{}件）".format(len(selected_prs)), "accent")
 
         def _worker():
             try:
+                # ── Phase 1: PRマージ ──
                 merged = 0
                 total = len(selected_prs)
                 for i, (_, pr) in enumerate(selected_prs):
@@ -743,16 +745,164 @@ class OneClickDeployApp:
                         merged += 1
                     except Exception as e:
                         self.log("PR #{} マージ失敗: {}".format(num, e), "error")
-                    self.set_progress(int((i + 1) / total * 100))
+                    self.set_progress(int((i + 1) / total * 30))
 
                 self.log(
                     "{}件中{}件のPRをマージしました".format(total, merged),
                     "success" if merged > 0 else "warning")
-                self.set_status("マージ完了", _SUCCESS)
-                self._fetch_current_version()
-                self.root.after(500, lambda: messagebox.showinfo(
-                    "マージ完了",
-                    "{}件中{}件のPRをマージしました。".format(total, merged)))
+
+                if merged == 0:
+                    self.set_status("マージ完了（ビルドなし）", _WARNING)
+                    self._fetch_current_version()
+                    self.root.after(500, lambda: messagebox.showinfo(
+                        "マージ完了",
+                        "マージされたPRがないため、ビルドは実行されません。"))
+                    return
+
+                # ── Phase 2: ビルド監視 ──
+                self.set_progress(35)
+                self.root.after(0, lambda: self.step_indicator.set_active(2))
+                self.set_status("ビルド開始を待機中...", _ACCENT)
+                self.log("GitHub Actionsのビルド開始を待機中（15秒）...", "info")
+                time.sleep(15)
+
+                if self.cancel_flag:
+                    self._on_cancel()
+                    return
+
+                # ワークフローID取得
+                wf_id = None
+                try:
+                    workflows = api_request("GET", "actions/workflows", self.token)
+                    for wf in workflows.get("workflows", []):
+                        if wf["name"] == WORKFLOW_NAME:
+                            wf_id = wf["id"]
+                            break
+                except Exception as e:
+                    self.log("ワークフロー取得エラー: {}".format(e), "warning")
+
+                if not wf_id:
+                    self.log("ワークフロー '{}' が見つかりません".format(WORKFLOW_NAME), "warning")
+                    self.log("ビルドの監視をスキップします", "warning")
+                    self.set_status("マージ完了（ビルド監視スキップ）", _WARNING)
+                    self._fetch_current_version()
+                    return
+
+                # 最新のrunを検索
+                run_id = None
+                for attempt in range(5):
+                    if self.cancel_flag:
+                        self._on_cancel()
+                        return
+                    try:
+                        runs = api_request(
+                            "GET",
+                            "actions/workflows/{}/runs?per_page=3&branch=main".format(wf_id),
+                            self.token)
+                        for run in runs.get("workflow_runs", []):
+                            if run["status"] in ("queued", "in_progress"):
+                                run_id = run["id"]
+                                break
+                        if run_id:
+                            break
+                        # 完了済みでも直近のrunを取得（マージトリガーの可能性）
+                        if runs.get("workflow_runs"):
+                            latest = runs["workflow_runs"][0]
+                            run_id = latest["id"]
+                            if latest["status"] == "completed":
+                                self.log("最新ビルド Run #{} は既に完了しています".format(run_id), "info")
+                                conclusion = latest.get("conclusion", "")
+                                if conclusion == "success":
+                                    self.log("ビルド成功!", "success")
+                                    self.set_progress(100)
+                                    self.root.after(0, lambda: self.step_indicator.set_all_complete())
+                                    self.set_status("マージ＆ビルド完了!", _SUCCESS)
+                                    self._fetch_current_version()
+                                    self.root.after(500, lambda: messagebox.showinfo(
+                                        "完了",
+                                        "{}件のPRをマージし、ビルドが正常に完了しました。\n"
+                                        "アプリを起動すると自動アップデートが実行されます。".format(merged)))
+                                else:
+                                    self.log("ビルド結果: {}".format(conclusion), "error")
+                                    self.set_status("ビルド失敗", _ERROR)
+                                    self.root.after(0, lambda: self.step_indicator.set_error(2))
+                                return
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(5)
+
+                if not run_id:
+                    self.log("ビルドのRunが見つかりません（ビルドがトリガーされなかった可能性があります）", "warning")
+                    self.set_status("マージ完了（ビルド未検出）", _WARNING)
+                    self._fetch_current_version()
+                    self.root.after(500, lambda: messagebox.showinfo(
+                        "マージ完了",
+                        "{}件のPRをマージしました。\n"
+                        "ビルドが自動実行されなかった可能性があります。\n"
+                        "GitHub Actionsを確認してください。".format(merged)))
+                    return
+
+                self.log("ビルド Run #{} を監視中...".format(run_id), "accent")
+                self.set_status("ビルド中...", _ACCENT)
+
+                # ポーリング（最大30分）
+                start_time = time.time()
+                poll_interval = 20
+                max_polls = 90
+                for i in range(max_polls):
+                    if self.cancel_flag:
+                        self._on_cancel()
+                        return
+
+                    time.sleep(poll_interval)
+                    elapsed = int(time.time() - start_time)
+                    minutes = elapsed // 60
+                    seconds = elapsed % 60
+
+                    try:
+                        run = api_request("GET", "actions/runs/{}".format(run_id), self.token)
+                        status = run["status"]
+                        conclusion = run.get("conclusion", "")
+
+                        progress_pct = min(35 + int(elapsed / 900 * 60), 95)
+                        self.set_progress(progress_pct)
+                        self.set_status("ビルド中... [{:02d}:{:02d}]".format(minutes, seconds), _ACCENT)
+
+                        if status == "completed":
+                            if conclusion == "success":
+                                self.log("[{:02d}:{:02d}] ビルド成功!".format(minutes, seconds), "success")
+                                self.set_progress(100)
+                                self.root.after(0, lambda: self.step_indicator.set_all_complete())
+                                self.set_status("マージ＆ビルド完了!", _SUCCESS)
+                                self._fetch_current_version()
+                                self.root.after(500, lambda m=merged: messagebox.showinfo(
+                                    "完了",
+                                    "{}件のPRをマージし、ビルドが正常に完了しました。\n"
+                                    "アプリを起動すると自動アップデートが実行されます。".format(m)))
+                                return
+                            else:
+                                self.log(
+                                    "[{:02d}:{:02d}] ビルド失敗 (結果: {})".format(
+                                        minutes, seconds, conclusion), "error")
+                                self.log(
+                                    "詳細: https://github.com/{}/actions/runs/{}".format(
+                                        REPO, run_id), "error")
+                                self.root.after(0, lambda: self.step_indicator.set_error(2))
+                                self.set_status("ビルド失敗", _ERROR)
+                                return
+                        else:
+                            if i % 3 == 0:
+                                self.log(
+                                    "[{:02d}:{:02d}] ビルド実行中... (ステータス: {})".format(
+                                        minutes, seconds, status), "info")
+                    except Exception as e:
+                        self.log("API エラー: {} (リトライ)".format(e), "warning")
+                else:
+                    self.log("タイムアウト（30分経過）", "error")
+                    self.root.after(0, lambda: self.step_indicator.set_error(2))
+                    self.set_status("タイムアウト", _ERROR)
+
             except Exception as e:
                 self.log("予期しないエラー: {}".format(e), "error")
                 self.set_status("エラー", _ERROR)
