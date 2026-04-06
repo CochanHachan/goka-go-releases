@@ -803,8 +803,16 @@ class OneClickDeployApp:
                             self.token)
                         for run in runs.get("workflow_runs", []):
                             if run["status"] in ("queued", "in_progress"):
-                                run_id = run["id"]
-                                break
+                                # タイムスタンプ比較: マージ後のrunのみ対象
+                                rc = run.get("created_at", "")
+                                try:
+                                    rt = datetime.fromisoformat(
+                                        rc.replace("Z", "+00:00"))
+                                except (ValueError, AttributeError):
+                                    rt = None
+                                if rt and rt >= merge_start_utc:
+                                    run_id = run["id"]
+                                    break
                         if run_id:
                             break
                         # 完了済みでも直近のrunを取得（マージ後にトリガーされた場合）
