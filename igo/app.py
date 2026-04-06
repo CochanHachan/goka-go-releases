@@ -711,12 +711,17 @@ class App:
                 lines.append("@echo off")
                 lines.append("chcp 65001 >nul")
                 # ── 管理者権限チェック＆昇格（C:\Program Files 書き込み対応） ──
+                # センチネル引数で無限再帰を防止
+                lines.append('if "%~1"=="__ELEVATED__" goto AFTER_UAC')
                 lines.append("NET SESSION >nul 2>&1")
                 lines.append("if %errorLevel% neq 0 (")
                 lines.append("  powershell -Command \"Start-Process "
-                             "-FilePath '%~f0' -Verb RunAs\"")
+                             "-FilePath '%~f0' "
+                             "-ArgumentList '__ELEVATED__' "
+                             "-Verb RunAs\"")
                 lines.append("  exit /b")
                 lines.append(")")
+                lines.append(":AFTER_UAC")
                 lines.append('echo [%date% %time%] Update batch started > "{}"'.format(
                     bat_log))
                 # ── プロセス終了待機（最大30秒） ──
