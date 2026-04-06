@@ -661,9 +661,9 @@ class App:
                 zip_size = os.path.getsize(zip_path)
                 _log("Downloaded: {} bytes".format(zip_size))
 
-                # 「解凍中」を表示して2秒待つ
+                # 「解凍中」を表示して0.5秒待つ
                 self.root.after(0, lambda: prog["set_status"]("解凍中"))
-                _t.sleep(2)
+                _t.sleep(0.5)
 
                 extract_dir = os.path.join(tmp_dir, "extracted")
                 os.makedirs(extract_dir, exist_ok=True)
@@ -698,9 +698,9 @@ class App:
                             os.path.basename(app_exe), extract_dir))
                 _log("Source exe OK: {}".format(src_exe))
 
-                # 「インストール中」を表示して2秒待つ
+                # 「インストール中」を表示して0.5秒待つ
                 self.root.after(0, lambda: prog["set_status"]("インストール中"))
-                _t.sleep(2)
+                _t.sleep(0.5)
 
                 # ── 堅牢なバッチファイル生成 ──
                 bat_log = os.path.join(os.path.expanduser("~"),
