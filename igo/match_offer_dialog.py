@@ -144,12 +144,12 @@ class MatchOfferDialog:
         px = parent_root.winfo_x()
         py = parent_root.winfo_y()
         if self._saved_size:
-            # saved_size is "WxH" or "WxH+X+Y" or "WxH-X+Y", extract W and H only
-            import re as _re
-            m = _re.match(r"(\d+)x(\d+)", self._saved_size)
-            if m:
+            # saved_size is "WxH" or "WxH+X+Y", extract W and H only
+            size_part = self._saved_size.split("+")[0]
+            parts = size_part.split("x")
+            if len(parts) == 2:
                 try:
-                    dw, dh = int(m.group(1)), int(m.group(2))
+                    dw, dh = int(parts[0]), int(parts[1])
                 except ValueError:
                     dw, dh = 440, 420
             else:

@@ -441,7 +441,6 @@ class App:
             _write_log("APP_VERSION: {}".format(APP_VERSION))
             _write_log("URL: {}".format(UPDATE_CHECK_URL))
             # ── アップデート直後の再起動時はチェックをスキップ ──
-            # マーカーのバージョンと現在のバージョンが一致 → 更新成功直後
             _marker = self._read_marker()
             if _marker.get("version") and _marker.get("version") == APP_VERSION:
                 _write_log("Just updated to v{}, skipping check".format(APP_VERSION))
@@ -679,13 +678,10 @@ class App:
                 _log("Extracted OK")
 
                 # ── ZIP内のトップレベルサブフォルダ自動検出 ──
-                # 「goka_go/」等の単一サブフォルダがある場合、
-                # そこをコピー元にする（ネスト防止）。
                 entries = [e for e in os.listdir(extract_dir)
                            if os.path.isdir(os.path.join(extract_dir, e))]
                 if len(entries) == 1:
                     candidate = os.path.join(extract_dir, entries[0])
-                    # サブフォルダ内に exe があるか確認
                     if any(f.endswith(".exe") for f in os.listdir(candidate)
                            if os.path.isfile(os.path.join(candidate, f))):
                         extract_dir = candidate
@@ -708,102 +704,78 @@ class App:
                 self.root.after(0, lambda: prog["set_status"]("インストール中"))
                 _t.sleep(2.5)
 
-                # ── 堅牢なバッチファイル生成 ──
-                bat_log = os.path.join(os.path.expanduser("~"),
-                                       "goka_update_batch.log")
-                bat_path = os.path.join(tmp_dir, "goka_update.bat")
-                exe_name = os.path.basename(app_exe)
-
-                lines = []
-                lines.append("@echo off")
-                lines.append("chcp 65001 >nul")
-                # ── 管理者権限チェック＆昇格（コピー失敗時のみ） ──
-                # robocopy/xcopy が権限不足で失敗した場合だけ UAC 昇格する
-                # ユーザー書き込み可能ディレクトリでは不要な UAC プロンプトを出さない
-                lines.append('if "%~1"=="__ELEVATED__" goto COPY')
-                lines.append('echo [%date% %time%] Update batch started > "{}"'.format(
-                    bat_log))
-                # ── プロセス終了待機（最大30秒） ──
-                lines.append("set WAIT_COUNT=0")
-                lines.append(":WAIT")
-                lines.append('tasklist /FI "IMAGENAME eq {}"'
-                             ' 2>NUL | find /I "{}" >NUL'.format(
-                                 exe_name, exe_name))
-                lines.append("if %ERRORLEVEL% NEQ 0 goto COPY")
-                lines.append("set /a WAIT_COUNT+=1")
-                lines.append("if %WAIT_COUNT% GEQ 30 (")
-                lines.append('  echo [%date% %time%] TIMEOUT: process did '
-                             'not exit after 30s >> "{}"'.format(bat_log))
-                lines.append("  goto COPY")
-                lines.append(")")
-                lines.append("timeout /t 1 /nobreak >nul")
-                lines.append("goto WAIT")
-                # ── ファイルコピー（robocopy優先 → xcopy fallback） ──
-                lines.append(":COPY")
-                lines.append('echo [%date% %time%] Copying files... >> "{}"'.format(
-                    bat_log))
-                # robocopy: 終了コード 0-7 は正常
-                lines.append('robocopy "{}" "{}" /E /IS /IT /NFL /NDL '
-                             '/NJH /NJS /R:3 /W:2 >> "{}" 2>&1'.format(
-                                 extract_dir, app_dir, bat_log))
-                lines.append("if %ERRORLEVEL% LEQ 7 (")
-                lines.append('  echo [%date% %time%] robocopy OK '
-                             '>> "{}"'.format(bat_log))
-                lines.append("  goto VERIFY")
-                lines.append(")")
-                # robocopy失敗時 → xcopy fallback
-                lines.append('echo [%date% %time%] robocopy failed '
-                             '(code=%ERRORLEVEL%), trying xcopy '
-                             '>> "{}"'.format(bat_log))
-                lines.append('xcopy /s /y /q "{}\\*" "{}\\" '
-                             '>> "{}" 2>&1'.format(
-                                 extract_dir, app_dir, bat_log))
-                lines.append("if %ERRORLEVEL% NEQ 0 (")
-                lines.append('  echo [%date% %time%] xcopy also failed '
-                             '>> "{}"'.format(bat_log))
-                lines.append("  goto ELEVATE")
-                lines.append(")")
-                # ── コピー後の検証 ──
-                lines.append(":VERIFY")
-                lines.append('if not exist "{}" ('.format(app_exe))
-                lines.append('  echo [%date% %time%] VERIFY FAIL: '
-                             'exe missing >> "{}"'.format(bat_log))
-                lines.append("  goto FAIL")
-                lines.append(")")
-                lines.append('echo [%date% %time%] Verified OK, '
-                             'restarting >> "{}"'.format(bat_log))
-                lines.append('start "" "{}"'.format(app_exe))
-                lines.append("goto CLEANUP")
-                # ── コピー失敗時: UAC昇格を試行（未昇格時のみ） ──
-                lines.append(":ELEVATE")
-                lines.append('if "%~1"=="__ELEVATED__" (')
-                lines.append('  echo [%date% %time%] Already elevated '
-                             'but copy still failed >> "{}"'.format(bat_log))
-                lines.append("  goto FAIL")
-                lines.append(")")
-                lines.append('echo [%date% %time%] Attempting UAC elevation '
-                             '>> "{}"'.format(bat_log))
-                lines.append("powershell -Command \"Start-Process "
-                             "-FilePath '%~f0' "
-                             "-ArgumentList '__ELEVATED__' "
-                             "-Verb RunAs\"")
-                lines.append("goto CLEANUP")
-                # ── 失敗時: 再起動しない（ループ防止） ──
-                lines.append(":FAIL")
-                lines.append('echo [%date% %time%] UPDATE FAILED - '
-                             'NOT restarting >> "{}"'.format(bat_log))
-                lines.append(":CLEANUP")
-                lines.append("del /q \"%~f0\"")
-
-                with open(bat_path, "w", encoding="utf-8") as bf:
-                    bf.write("\n".join(lines) + "\n")
-
                 # 「アップデートは正常に終了しました。」を表示して1.5秒待つ
                 if "show_complete" in prog:
                     self.root.after(0, lambda: prog["show_complete"]())
                 else:
                     self.root.after(0, lambda: prog["set_status"]("アップデート完了"))
                 _t.sleep(1.5)
+
+                bat_path = os.path.join(tmp_dir, "goka_update.bat")
+                _log_file = os.path.join(
+                    os.path.expanduser("~"), "goka_update_batch.log")
+                with open(bat_path, "w", encoding="utf-8") as bf:
+                    bf.write("@echo off\n")
+                    bf.write("chcp 65001 >nul\n")
+                    bf.write('set "LOGFILE={}"\n'.format(_log_file))
+                    bf.write('echo [%date% %time%] === Update batch start === >> "%LOGFILE%"\n')
+                    bf.write('echo SRC={} >> "%LOGFILE%"\n'.format(extract_dir))
+                    bf.write('echo DST={} >> "%LOGFILE%"\n'.format(app_dir))
+                    bf.write('echo EXE={} >> "%LOGFILE%"\n'.format(app_exe))
+                    # --- プロセス終了待機 (最大30秒) ---
+                    bf.write("set WAIT_COUNT=0\n")
+                    bf.write(":WAIT\n")
+                    bf.write('tasklist /FI "IMAGENAME eq goka_go.exe"'
+                             ' 2>NUL | find /I "goka_go.exe" >NUL\n')
+                    bf.write("if %ERRORLEVEL% NEQ 0 goto COPY\n")
+                    bf.write("set /a WAIT_COUNT+=1\n")
+                    bf.write("if %WAIT_COUNT% GEQ 30 (\n")
+                    bf.write('  echo [%time%] Timeout waiting for process >> "%LOGFILE%"\n')
+                    bf.write("  goto COPY\n")
+                    bf.write(")\n")
+                    bf.write("timeout /t 1 /nobreak >nul\n")
+                    bf.write("goto WAIT\n")
+                    # --- robocopy (第1手段) ---
+                    bf.write(":COPY\n")
+                    bf.write('echo [%time%] Trying robocopy >> "%LOGFILE%"\n')
+                    bf.write('robocopy "{}" "{}" /E /IS /IT /R:3 /W:2 /NFL /NDL /NJH /NJS >> "%LOGFILE%" 2>&1\n'.format(
+                        extract_dir, app_dir))
+                    bf.write("if %ERRORLEVEL% LSS 8 (\n")
+                    bf.write('  echo [%time%] robocopy OK (exit=%ERRORLEVEL%) >> "%LOGFILE%"\n')
+                    bf.write("  goto VERIFY\n")
+                    bf.write(")\n")
+                    # --- xcopy フォールバック (第2手段) ---
+                    bf.write('echo [%time%] robocopy failed (%ERRORLEVEL%), trying xcopy >> "%LOGFILE%"\n')
+                    bf.write('xcopy /s /y /q "{}\\*" "{}\\" >> "%LOGFILE%" 2>&1\n'.format(
+                        extract_dir, app_dir))
+                    bf.write("if %ERRORLEVEL% EQU 0 (\n")
+                    bf.write('  echo [%time%] xcopy OK >> "%LOGFILE%"\n')
+                    bf.write("  goto VERIFY\n")
+                    bf.write(")\n")
+                    # --- コピー失敗時: UAC昇格でリトライ ---
+                    bf.write('echo [%time%] xcopy failed, trying UAC elevation >> "%LOGFILE%"\n')
+                    bf.write('if "%~1"=="__ELEVATED__" (\n')
+                    bf.write('  echo [%time%] Already elevated, giving up >> "%LOGFILE%"\n')
+                    bf.write("  goto FAIL\n")
+                    bf.write(")\n")
+                    bf.write('powershell -Command "Start-Process cmd -ArgumentList '
+                             "'/c \"%~f0\" __ELEVATED__'"
+                             ' -Verb RunAs" 2>> "%LOGFILE%"\n')
+                    bf.write("goto END\n")
+                    # --- 検証: exe が更新されたか確認 ---
+                    bf.write(":VERIFY\n")
+                    bf.write('if exist "{}" (\n'.format(app_exe))
+                    bf.write('  echo [%time%] Verified: exe exists >> "%LOGFILE%"\n')
+                    bf.write('  start "" "{}"\n'.format(app_exe))
+                    bf.write('  echo [%time%] App restarted >> "%LOGFILE%"\n')
+                    bf.write(") else (\n")
+                    bf.write('  echo [%time%] VERIFY FAILED: exe not found >> "%LOGFILE%"\n')
+                    bf.write(")\n")
+                    bf.write("goto END\n")
+                    bf.write(":FAIL\n")
+                    bf.write('echo [%time%] Update FAILED >> "%LOGFILE%"\n')
+                    bf.write(":END\n")
+                    bf.write('echo [%time%] === Update batch end === >> "%LOGFILE%"\n')
 
                 _log("Batch: {}".format(bat_path))
                 self.root.after(0, lambda: self._launch_update(
@@ -1558,13 +1530,12 @@ class App:
         """Start a game via cloud."""
         if not self.go_board:
             return
+        # 対局成立時にダイアログの_hostingを先にリセットしてmatch_cancel送信を防止
+        if self._current_match_dialog:
+            self._current_match_dialog._hosting = False
         # Close any open match dialogs
         if self._current_match_dialog:
             try:
-                # Prevent _on_close from sending match_cancel — the match
-                # was already accepted by the server so cancelling would
-                # incorrectly reset our status back to "ログイン".
-                self._current_match_dialog._hosting = False
                 self._current_match_dialog._on_close()
             except Exception:
                 pass
@@ -1589,12 +1560,12 @@ class App:
         """Start a game against AI bot using KataGo GTP."""
         if not self.go_board:
             return
+        # AI対局時もダイアログの_hostingをリセットしてmatch_cancel送信を防止
+        if self._current_match_dialog:
+            self._current_match_dialog._hosting = False
         # Close any open match dialogs
         if self._current_match_dialog:
             try:
-                # Prevent _on_close from sending match_cancel — the AI
-                # game is starting so cancelling would be incorrect.
-                self._current_match_dialog._hosting = False
                 self._current_match_dialog._on_close()
             except Exception:
                 pass

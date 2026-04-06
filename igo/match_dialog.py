@@ -43,11 +43,11 @@ class MatchDialog:
         dw = 460
         dh = 600
         if saved_geom and isinstance(saved_geom, str):
-            import re as _re
-            m = _re.match(r"(\d+)x(\d+)", saved_geom)
-            if m:
+            size_part = saved_geom.split("+")[0]
+            parts = size_part.split("x")
+            if len(parts) == 2:
                 try:
-                    dw, dh = int(m.group(1)), int(m.group(2))
+                    dw, dh = int(parts[0]), int(parts[1])
                 except ValueError:
                     dw, dh = 460, 600
         # Center on parent window
