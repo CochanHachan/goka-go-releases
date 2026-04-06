@@ -16,7 +16,7 @@ from pathlib import Path
 from window_settings import WindowSettings
 from cryptography.fernet import Fernet
 from igo_game import T, get_current_theme_name, THEMES, elo_to_display_rank
-from igo.elo import rank_to_initial_elo, elo_to_rank, get_localized_go_ranks, localized_rank_to_internal
+from igo.register_screen import RegisterScreen
 from glossy_pill_button import GlossyButton
 
 # ---------------------------------------------------------------------------
@@ -543,116 +543,25 @@ class AdminApp:
     # ユーザー新規登録ダイアログ
     # =================================================================
     def _open_register_dialog(self):
-        """管理者画面からユーザーを新規登録するダイアログを表示"""
+        """管理者画面から既存の RegisterScreen をダイアログとして表示"""
         dlg = tk.Toplevel(self.root)
         dlg.title("ユーザー新規登録")
-        dlg.resizable(False, False)
         dlg.transient(self.root)
         dlg.grab_set()
+        dlg.geometry("{}x{}".format(*RegisterScreen.DEFAULT_SIZE))
+        dlg.resizable(False, False)
 
-        main_frame = tk.Frame(dlg, padx=20, pady=15)
-        main_frame.pack(fill="both", expand=True)
-
-        tk.Label(main_frame, text="ユーザー新規登録",
-                 font=("Yu Gothic UI", 14, "bold")).grid(
-            row=0, column=0, columnspan=2, pady=(0, 12))
-
-        labels = ["氏名", "ハンドルネーム", "メール", "パスワード", "パスワード確認", "棋力"]
-        entries = {}
-
-        for i, label_text in enumerate(labels[:5]):
-            tk.Label(main_frame, text=label_text + ":",
-                     font=("Yu Gothic UI", 11), anchor="e").grid(
-                row=i + 1, column=0, padx=(0, 8), pady=4, sticky="e")
-            show = "*" if "パスワード" in label_text else None
-            e = tk.Entry(main_frame, font=("Yu Gothic UI", 11), width=25,
-                         show=show)
-            e.grid(row=i + 1, column=1, pady=4, sticky="w")
-            entries[label_text] = e
-
-        # 棋力ドロップダウン
-        tk.Label(main_frame, text="棋力:",
-                 font=("Yu Gothic UI", 11), anchor="e").grid(
-            row=6, column=0, padx=(0, 8), pady=4, sticky="e")
-        loc_ranks = get_localized_go_ranks()
-        rank_var = tk.StringVar(value=loc_ranks[len(loc_ranks) // 2] if loc_ranks else "")
-        rank_cb = ttk.Combobox(main_frame, textvariable=rank_var,
-            values=loc_ranks, state="readonly",
-            font=("Yu Gothic UI", 11), width=22)
-        rank_cb.grid(row=6, column=1, pady=4, sticky="w")
-
-        # エラー表示ラベル
-        error_label = tk.Label(main_frame, text="", font=("Yu Gothic UI", 10),
-                               fg="red")
-        error_label.grid(row=7, column=0, columnspan=2, pady=(4, 0))
-
-        def do_register():
-            name = entries["氏名"].get().strip()
-            handle = entries["ハンドルネーム"].get().strip()
-            email = entries["メール"].get().strip()
-            pw = entries["パスワード"].get().strip()
-            pw2 = entries["パスワード確認"].get().strip()
-            rank = localized_rank_to_internal(rank_var.get())
-
-            if not name or not handle or not pw:
-                error_label.config(text="氏名・ハンドルネーム・パスワードは必須です")
-                return
-            if len(handle) > 20:
-                error_label.config(text="ハンドルネームは20文字以内です")
-                return
-            if len(pw) < 4:
-                error_label.config(text="パスワードは4文字以上で入力してください")
-                return
-            if pw != pw2:
-                error_label.config(text="パスワードが一致しません")
-                return
-
-            initial_elo = rank_to_initial_elo(rank)
-            base_rank = elo_to_rank(initial_elo)
-
-            try:
-                data = json.dumps({
-                    "real_name": name,
-                    "handle_name": handle,
-                    "password": pw,
-                    "rank": base_rank,
-                    "elo": initial_elo,
-                    "email": email,
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    API_BASE_URL + "/api/register",
-                    data=data,
-                    headers={"Content-Type": "application/json"},
-                    method="POST"
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    result = json.loads(resp.read().decode("utf-8"))
-                ok = result.get("success", False)
-                err = result.get("message", "エラーが発生しました")
-            except Exception:
-                ok = False
-                err = "サーバーに接続できません"
-
-            if not ok:
-                error_label.config(text=err)
-                return
-
+        def _on_success(handle):
             dlg.destroy()
             messagebox.showinfo("完了",
                 "ユーザー '{}' を登録しました。".format(handle))
             self._refresh()
 
-        btn_frame = tk.Frame(main_frame)
-        btn_frame.grid(row=8, column=0, columnspan=2, pady=(10, 0))
-        tk.Button(btn_frame, text="登録", font=("Yu Gothic UI", 11), width=8,
-                  command=do_register).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="キャンセル", font=("Yu Gothic UI", 11), width=8,
-                  command=dlg.destroy).pack(side="left", padx=5)
-
-        dlg.bind("<Return>", lambda e: do_register())
-
-        # 最初のフィールドにフォーカス
-        entries["氏名"].focus_set()
+        RegisterScreen(
+            dlg, self,
+            on_close=dlg.destroy,
+            on_register_success=_on_success,
+        )
 
         # ダイアログを親ウィンドウの中央に配置
         dlg.update_idletasks()

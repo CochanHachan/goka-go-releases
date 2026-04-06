@@ -18,9 +18,13 @@ from igo.ui_helpers import (
 
 
 class RegisterScreen:
-    def __init__(self, parent, app):
+    DEFAULT_SIZE = (500, 550)
+
+    def __init__(self, parent, app, on_close=None, on_register_success=None):
         self.parent = parent
         self.app = app
+        self._on_close = on_close
+        self._on_register_success = on_register_success
 
         container = tk.Frame(parent, bg=T("container_bg"), padx=20, pady=20)
         container.place(relx=0.5, rely=0.5, anchor="center")
@@ -103,10 +107,12 @@ class RegisterScreen:
                   command=self._do_register, bg=T("container_bg"))
         self._register_btn.pack(side="left", padx=(0, 12))
 
-        self._back_btn = GlossyButton(btn_frame, text=L("reg_back"),
+        _back_text = L("btn_close") if on_close else L("reg_back")
+        _back_cmd = on_close if on_close else lambda: self.app.show_login()
+        self._back_btn = GlossyButton(btn_frame, text=_back_text,
                   width=100, height=40, base_color=(50, 150, 50),
                   focus_border_color=(40, 120, 40),
-                  command=lambda: self.app.show_login(), bg=T("container_bg"))
+                  command=_back_cmd, bg=T("container_bg"))
         self._back_btn.pack(side="left")
 
         # Set initial focus to name entry
@@ -171,11 +177,15 @@ class RegisterScreen:
             return
 
         self.error_label.config(text="")
-        messagebox.showinfo("\u5b8c\u4e86",
-            "\u30a2\u30ab\u30a6\u30f3\u30c8\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f\u3002\u30ed\u30b0\u30a4\u30f3\u3057\u3066\u304f\u3060\u3055\u3044\u3002")
-        self.app.show_login()
+        if self._on_register_success:
+            self._on_register_success(handle)
+        else:
+            messagebox.showinfo("\u5b8c\u4e86",
+                "\u30a2\u30ab\u30a6\u30f3\u30c8\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f\u3002\u30ed\u30b0\u30a4\u30f3\u3057\u3066\u304f\u3060\u3055\u3044\u3002")
+            self.app.show_login()
 
     def reset(self):
         for e in self.entries.values():
             e.delete(0, "end")
         self.error_label.config(text="")
+
