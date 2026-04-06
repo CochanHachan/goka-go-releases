@@ -107,7 +107,7 @@ class RegisterScreen:
                   command=self._do_register, bg=T("container_bg"))
         self._register_btn.pack(side="left", padx=(0, 12))
 
-        _back_text = L("btn_close") if on_close else L("reg_back")
+        _back_text = "\u9589\u3058\u308b" if on_close else L("reg_back")
         _back_cmd = on_close if on_close else lambda: self.app.show_login()
         self._back_btn = GlossyButton(btn_frame, text=_back_text,
                   width=100, height=40, base_color=(50, 150, 50),
