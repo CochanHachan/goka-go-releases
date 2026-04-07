@@ -143,57 +143,42 @@ def _get_katago_data_dir():
 
 
 def _ensure_analysis_config(katago_dir):
-    """Ensure analysis_example.cfg exists; create a minimal default if missing.
+    """Return a path to a complete analysis config for KataGo v1.16.4+.
 
-    Older installers shipped only default_gtp.cfg.  When the analysis
-    config is absent KataGo analysis mode fails silently, breaking
-    winrate display and score calculation.
-
-    If the katago directory is read-only (e.g. C:\\Program Files),
-    the config is written to a user-writable directory instead.
+    ALWAYS writes our own config to a user-writable directory so that
+    every required key (especially nnMaxBatchSize) is guaranteed present.
+    The stock analysis_example.cfg shipped with KataGo is intentionally
+    NOT used because it lacks nnMaxBatchSize and has a logDir that
+    points to a read-only path under Program Files.
     """
-    cfg_path = os.path.join(katago_dir, "analysis_example.cfg")
-    if os.path.exists(cfg_path):
-        return cfg_path
-    # Create a minimal analysis config that works with KataGo >= 1.11
-    # logToStderr=false + no logDir/logFile = disable all logging (avoid
-    # write-permission errors when katago_dir is read-only).
-    # reportAnalysisWinratesAs=BLACK matches the official example default.
-    # Do NOT set homeDataDir here — KataGo's default (%APPDATA%/KataGoData)
-    # is always writable and shares the OpenCL tuning cache with GTP mode.
-    # logDir is overridden at launch time via -override-config, so we omit
-    # it from this file to avoid conflicts.
     data_dir = _get_katago_data_dir()
-    minimal = (
-        "# Auto-generated minimal analysis config\n"
+    log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
+    cfg_path = os.path.join(data_dir, "goka_analysis.cfg")
+    config_text = (
+        "# Goka Go analysis config (auto-managed, do not edit)\n"
         "logToStderr = false\n"
         "logSearchInfo = false\n"
         "logAllRequests = false\n"
         "logAllResponses = false\n"
+        "logDir = {log_dir}\n"
         "reportAnalysisWinratesAs = BLACK\n"
         "numSearchThreads = 1\n"
         "numAnalysisThreads = 1\n"
         "nnMaxBatchSize = 1\n"
         "nnCacheSizePowerOfTwo = 18\n"
         "maxVisits = 500\n"
-    )
-    # Try katago_dir first
+    ).format(log_dir=log_dir)
     try:
+        os.makedirs(data_dir, exist_ok=True)
         with open(cfg_path, "w", encoding="utf-8") as f:
-            f.write(minimal)
+            f.write(config_text)
         return cfg_path
     except OSError:
         pass
-    # Fallback: write to user-writable data directory
-    fallback_cfg = os.path.join(data_dir, "goka_analysis_example.cfg")
-    try:
-        with open(fallback_cfg, "w", encoding="utf-8") as f:
-            f.write(minimal)
-        return fallback_cfg
-    except OSError:
-        pass
-    # Both writes failed — return cfg_path anyway; caller will get
-    # a RuntimeError from KataGo and fall back to simple counting.
+    # Last resort: return stock config (will likely fail on nnMaxBatchSize)
+    stock = os.path.join(katago_dir, "analysis_example.cfg")
+    if os.path.exists(stock):
+        return stock
     return cfg_path
 
 
@@ -265,36 +250,11 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": True,
     }
 
-    # Override only logDir via -override-config.
-    #
-    # The stock analysis_example.cfg shipped with KataGo v1.16.4 contains:
-    #   logDir = analysis_logs
-    # This relative path resolves to C:\Program Files\GokaGo\katago\analysis_logs\
-    # which is read-only for regular users, causing KataGo to crash on startup.
-    # Overriding logDir redirects log output to a user-writable directory.
-    #
-    # IMPORTANT: Do NOT override homeDataDir here.  KataGo's default
-    # homeDataDir is %APPDATA%/KataGoData (always writable).  The GTP mode
-    # (AI games) also uses this default, so OpenCL tuning data cached by
-    # GTP mode is reused by analysis mode.  Overriding homeDataDir to a
-    # different location forces KataGo to re-run OpenCL tuning from scratch
-    # (takes minutes), which causes the 30s/120s analysis timeout to fire
-    # and silently falls back to simple counting.
-    data_dir = _get_katago_data_dir()
-    log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
-    # Override logDir AND nnMaxBatchSize.
-    # logDir: the stock analysis_example.cfg has logDir=analysis_logs which
-    #   resolves to a read-only path under Program Files.
-    # nnMaxBatchSize: KataGo v1.16.4 requires this key.  The auto-generated
-    #   minimal config may already have it, but older configs on disk might
-    #   not (they were written before we knew it was required).  Overriding
-    #   via the command line ensures it is always present regardless of the
-    #   config file contents.
-    override = "logDir={},nnMaxBatchSize=1".format(log_dir)
-
+    # Our own config (written by _ensure_analysis_config to a user-writable
+    # directory) already contains logDir, nnMaxBatchSize, and all other
+    # required keys.  No -override-config is needed.
     proc = subprocess.Popen(
-        [katago_exe, "analysis", "-config", config_file, "-model", model_file,
-         "-override-config", override],
+        [katago_exe, "analysis", "-config", config_file, "-model", model_file],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -399,14 +359,9 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": False,
     }
 
-    # Override logDir AND nnMaxBatchSize (see _katago_score for detailed explanation).
-    data_dir = _get_katago_data_dir()
-    log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
-    override = "logDir={},nnMaxBatchSize=1".format(log_dir)
-
+    # Our own config already contains all required keys (see _katago_score).
     proc = subprocess.Popen(
-        [katago_exe, "analysis", "-config", config_file, "-model", model_file,
-         "-override-config", override],
+        [katago_exe, "analysis", "-config", config_file, "-model", model_file],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
