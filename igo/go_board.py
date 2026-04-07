@@ -799,6 +799,7 @@ class GoBoard:
         self.net_mode = True
         self.my_color = my_color
         self._komi = komi
+        self._rules = "chinese"
         self.timer_black = ByoyomiTimer(main_time, byo_time, byo_periods)
         self.timer_white = ByoyomiTimer(main_time, byo_time, byo_periods)
         self.game = GoGame()
@@ -1246,7 +1247,8 @@ class GoBoard:
         komi = getattr(self, '_komi', 6.5)
         def _run():
             try:
-                bwr, wwr = _katago_winrate(move_history, komi=komi)
+                bwr, wwr = _katago_winrate(move_history, komi=komi,
+                                                       rules=self._rules)
                 if bwr is not None:
                     self.root.after(0, lambda: self._display_winrate(bwr, wwr))
             except Exception:
