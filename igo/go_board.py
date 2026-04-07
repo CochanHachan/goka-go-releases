@@ -1246,7 +1246,8 @@ class GoBoard:
         komi = getattr(self, '_komi', 6.5)
         def _run():
             try:
-                bwr, wwr = _katago_winrate(move_history, komi=komi)
+                bwr, wwr = _katago_winrate(move_history, komi=komi,
+                                                       rules=self._rules)
                 if bwr is not None:
                     self.root.after(0, lambda: self._display_winrate(bwr, wwr))
             except Exception:
