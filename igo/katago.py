@@ -121,6 +121,27 @@ class KataGoGTP:
         return "{}{}".format(col_letter, row_num)
 
 
+def _get_katago_data_dir():
+    """Return a writable directory for KataGo data (OpenCL tuning etc.).
+
+    Uses %LOCALAPPDATA%/GokaGo/katago on Windows, ~/.local/share/GokaGo/katago
+    on Linux.  Falls back to a temp directory if creation fails.
+    """
+    if platform.system() == "Windows":
+        base = os.environ.get("LOCALAPPDATA", "")
+        if not base:
+            base = os.path.expanduser("~")
+        data_dir = os.path.join(base, "GokaGo", "katago")
+    else:
+        data_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "GokaGo", "katago")
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
+    except OSError:
+        import tempfile
+        return tempfile.gettempdir()
+
+
 def _ensure_analysis_config(katago_dir):
     """Ensure analysis_example.cfg exists; create a minimal default if missing.
 
@@ -129,7 +150,7 @@ def _ensure_analysis_config(katago_dir):
     winrate display and score calculation.
 
     If the katago directory is read-only (e.g. C:\\Program Files),
-    the config is written to a temp directory instead.
+    the config is written to a user-writable directory instead.
     """
     cfg_path = os.path.join(katago_dir, "analysis_example.cfg")
     if os.path.exists(cfg_path):
@@ -138,6 +159,9 @@ def _ensure_analysis_config(katago_dir):
     # logToStderr=false + no logDir/logFile = disable all logging (avoid
     # write-permission errors when katago_dir is read-only).
     # reportAnalysisWinratesAs=BLACK matches the official example default.
+    # homeDataDir points to a user-writable directory so KataGo can store
+    # OpenCL tuning data even when katago_dir is under Program Files.
+    data_dir = _get_katago_data_dir()
     minimal = (
         "# Auto-generated minimal analysis config\n"
         "logToStderr = false\n"
@@ -147,6 +171,7 @@ def _ensure_analysis_config(katago_dir):
         "reportAnalysisWinratesAs = BLACK\n"
         "numSearchThreads = 1\n"
         "numAnalysisThreads = 1\n"
+        "homeDataDir = {}\n".format(data_dir.replace("\\", "/"))
     )
     # Try katago_dir first
     try:
@@ -155,18 +180,38 @@ def _ensure_analysis_config(katago_dir):
         return cfg_path
     except OSError:
         pass
-    # Fallback: write to temp directory (always writable)
-    import tempfile
-    tmp_cfg = os.path.join(tempfile.gettempdir(), "goka_analysis_example.cfg")
+    # Fallback: write to user-writable data directory
+    fallback_cfg = os.path.join(data_dir, "goka_analysis_example.cfg")
     try:
-        with open(tmp_cfg, "w", encoding="utf-8") as f:
+        with open(fallback_cfg, "w", encoding="utf-8") as f:
             f.write(minimal)
-        return tmp_cfg
+        return fallback_cfg
     except OSError:
         pass
     # Both writes failed — return cfg_path anyway; caller will get
     # a RuntimeError from KataGo and fall back to simple counting.
     return cfg_path
+
+
+def _log_katago_stderr(stderr_lines):
+    """Write captured KataGo stderr to a diagnostic log file.
+
+    This helps diagnose why KataGo analysis fails (e.g. missing OpenCL,
+    permission errors, config problems).  The log is written to the
+    user's home directory so it is always writable.
+    """
+    if not stderr_lines:
+        return
+    try:
+        log_path = os.path.join(os.path.expanduser("~"), "goka_katago_log.txt")
+        with open(log_path, "a", encoding="utf-8", errors="replace") as f:
+            from datetime import datetime
+            f.write("\n--- KataGo stderr {} ---\n".format(
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            for raw in stderr_lines:
+                f.write(raw.decode("utf-8", errors="replace"))
+    except Exception:
+        pass
 
 
 def _moves_to_katago(move_history, size=19):
@@ -222,10 +267,25 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=katago_dir,
-        creationflags=subprocess.CREATE_NO_WINDOW,
+        creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0,
     )
 
     try:
+        # Drain stderr in a background thread to prevent pipe-buffer
+        # deadlock.  KataGo writes OpenCL initialisation messages to
+        # stderr; if the 64 KB pipe buffer fills up before we read it,
+        # KataGo blocks and the whole analysis hangs.
+        stderr_lines = []
+
+        def _drain_stderr():
+            try:
+                for raw in proc.stderr:
+                    stderr_lines.append(raw)
+            except Exception:
+                pass
+
+        threading.Thread(target=_drain_stderr, daemon=True).start()
+
         query_str = json.dumps(query) + "\n"
         proc.stdin.write(query_str.encode("utf-8"))
         proc.stdin.flush()
@@ -252,9 +312,11 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
                 line = line_q.get(timeout=2.0)
             except _queue.Empty:
                 if proc.poll() is not None:
+                    _log_katago_stderr(stderr_lines)
                     raise RuntimeError("KataGoが予期せず終了しました")
                 continue
             if line is None:
+                _log_katago_stderr(stderr_lines)
                 raise RuntimeError("KataGoが予期せず終了しました")
             text = line.decode("utf-8").strip()
             if text:
@@ -268,6 +330,7 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
                 except json.JSONDecodeError:
                     pass
 
+        _log_katago_stderr(stderr_lines)
         raise RuntimeError("応答タイムアウト")
     finally:
         proc.terminate()
@@ -310,10 +373,22 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         cwd=katago_dir,
-        creationflags=subprocess.CREATE_NO_WINDOW,
+        creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0,
     )
 
     try:
+        # Drain stderr to prevent pipe-buffer deadlock (see _katago_score).
+        stderr_lines = []
+
+        def _drain_stderr():
+            try:
+                for raw in proc.stderr:
+                    stderr_lines.append(raw)
+            except Exception:
+                pass
+
+        threading.Thread(target=_drain_stderr, daemon=True).start()
+
         query_str = json.dumps(query) + "\n"
         proc.stdin.write(query_str.encode("utf-8"))
         proc.stdin.flush()
@@ -339,9 +414,11 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
                 line = line_q.get(timeout=2.0)
             except _queue.Empty:
                 if proc.poll() is not None:
+                    _log_katago_stderr(stderr_lines)
                     break
                 continue
             if line is None:
+                _log_katago_stderr(stderr_lines)
                 break
             text = line.decode("utf-8").strip()
             if text:
