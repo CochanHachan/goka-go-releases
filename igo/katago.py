@@ -159,8 +159,10 @@ def _ensure_analysis_config(katago_dir):
     # logToStderr=false + no logDir/logFile = disable all logging (avoid
     # write-permission errors when katago_dir is read-only).
     # reportAnalysisWinratesAs=BLACK matches the official example default.
-    # homeDataDir points to a user-writable directory so KataGo can store
-    # OpenCL tuning data even when katago_dir is under Program Files.
+    # Do NOT set homeDataDir here — KataGo's default (%APPDATA%/KataGoData)
+    # is always writable and shares the OpenCL tuning cache with GTP mode.
+    # logDir is overridden at launch time via -override-config, so we omit
+    # it from this file to avoid conflicts.
     data_dir = _get_katago_data_dir()
     minimal = (
         "# Auto-generated minimal analysis config\n"
@@ -171,7 +173,6 @@ def _ensure_analysis_config(katago_dir):
         "reportAnalysisWinratesAs = BLACK\n"
         "numSearchThreads = 1\n"
         "numAnalysisThreads = 1\n"
-        "homeDataDir = {}\n".format(data_dir.replace("\\", "/"))
     )
     # Try katago_dir first
     try:
@@ -261,19 +262,24 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": True,
     }
 
-    # Always pass homeDataDir and logDir via -override-config so KataGo
-    # can write OpenCL tuning data and log files even when the katago
-    # directory is read-only (e.g. C:\Program Files\GokaGo\katago\).
+    # Override only logDir via -override-config.
     #
     # The stock analysis_example.cfg shipped with KataGo v1.16.4 contains:
     #   logDir = analysis_logs
-    # This causes KataGo to try to create analysis_logs/ inside the
-    # read-only katago directory, crashing on startup.  Overriding logDir
-    # redirects log output to the user-writable data directory.
+    # This relative path resolves to C:\Program Files\GokaGo\katago\analysis_logs\
+    # which is read-only for regular users, causing KataGo to crash on startup.
+    # Overriding logDir redirects log output to a user-writable directory.
+    #
+    # IMPORTANT: Do NOT override homeDataDir here.  KataGo's default
+    # homeDataDir is %APPDATA%/KataGoData (always writable).  The GTP mode
+    # (AI games) also uses this default, so OpenCL tuning data cached by
+    # GTP mode is reused by analysis mode.  Overriding homeDataDir to a
+    # different location forces KataGo to re-run OpenCL tuning from scratch
+    # (takes minutes), which causes the 30s/120s analysis timeout to fire
+    # and silently falls back to simple counting.
     data_dir = _get_katago_data_dir()
     log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
-    override = "homeDataDir={},logDir={}".format(
-        data_dir.replace("\\", "/"), log_dir)
+    override = "logDir={}".format(log_dir)
 
     proc = subprocess.Popen(
         [katago_exe, "analysis", "-config", config_file, "-model", model_file,
@@ -382,12 +388,10 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": False,
     }
 
-    # Always pass homeDataDir and logDir via -override-config
-    # (see _katago_score for detailed explanation).
+    # Override only logDir (see _katago_score for detailed explanation).
     data_dir = _get_katago_data_dir()
     log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
-    override = "homeDataDir={},logDir={}".format(
-        data_dir.replace("\\", "/"), log_dir)
+    override = "logDir={}".format(log_dir)
 
     proc = subprocess.Popen(
         [katago_exe, "analysis", "-config", config_file, "-model", model_file,
