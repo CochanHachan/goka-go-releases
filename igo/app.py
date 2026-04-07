@@ -406,8 +406,8 @@ class App:
 
     # ── 更新チェック本体 ───────────────────────
     def _check_for_update_background(self):
-        """バックグラウンドで更新確認。更新があればアップデート画面を表示する。
-        更新がなければログイン画面を表示する。"""
+        """更新確認。アップデート直後ならスキップして即ログイン。
+        それ以外はバックグラウンドでHTTPチェックを行う。"""
         _log_path = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
 
         def _write_log(msg):
@@ -417,13 +417,21 @@ class App:
             except Exception:
                 pass
 
+        # ── アップデート直後の再起動時は同期的にスキップ（高速化） ──
+        _marker = self._read_marker()
+        if _marker.get("version") and _marker.get("version") == APP_VERSION:
+            _write_log("Just updated to v{}, skipping check".format(APP_VERSION))
+            self._delete_marker()
+            self.show_login()
+            return
+
         def _fetch_version_json():
             """version.json を取得。SSL検証 → 失敗時はSSL検証なしでリトライ。"""
             import urllib.request, ssl
             # 1回目: SSL検証あり
             try:
                 ctx = ssl.create_default_context()
-                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=8, context=ctx) as r:
+                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx) as r:
                     return json.loads(r.read().decode("utf-8"))
             except Exception as e1:
                 _write_log("SSL verified request failed: {}".format(e1))
@@ -432,20 +440,13 @@ class App:
             ctx2 = ssl.create_default_context()
             ctx2.check_hostname = False
             ctx2.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=8, context=ctx2) as r:
+            with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx2) as r:
                 return json.loads(r.read().decode("utf-8"))
 
         def _worker():
             _write_log("=== Update check started ===")
             _write_log("APP_VERSION: {}".format(APP_VERSION))
             _write_log("URL: {}".format(UPDATE_CHECK_URL))
-            # ── アップデート直後の再起動時はチェックをスキップ ──
-            _marker = self._read_marker()
-            if _marker.get("version") and _marker.get("version") == APP_VERSION:
-                _write_log("Just updated to v{}, skipping check".format(APP_VERSION))
-                self._delete_marker()
-                self.root.after(0, self.show_login)
-                return
             try:
                 data = _fetch_version_json()
                 latest = data.get("version", "")
