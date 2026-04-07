@@ -246,7 +246,7 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
         "boardYSize": size,
         "moves": katago_moves,
         "analyzeTurns": [len(katago_moves)],
-        "maxVisits": 200,
+        "maxVisits": 2000,
         "includeOwnership": True,
     }
 
@@ -451,7 +451,7 @@ def calculate_territory_chinese(board, komi=6.5, move_history=None, rules="chine
             # When komi is half-integer (X.5), score difference is always X.5
             komi_frac = komi - int(komi)
             if abs(komi_frac - 0.5) < 0.01:
-                diff = math.floor(raw_diff) + 0.5
+                diff = round(raw_diff - 0.5) + 0.5
             else:
                 diff = round(raw_diff)
             if diff <= 0:
