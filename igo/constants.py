@@ -3,8 +3,8 @@
 自動アップデート対応版"""
 
 APP_NAME        = "碁華 Goka GO"
-APP_VERSION     = "1.2.21"
-APP_BUILD       = "20260406"
+APP_VERSION     = "1.2.22"
+APP_BUILD       = "20260407"
 UPDATE_CHECK_URL = "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/version.json"
 
 BOARD_SIZE = 19
