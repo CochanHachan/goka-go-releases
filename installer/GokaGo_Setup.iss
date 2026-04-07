@@ -4,7 +4,7 @@
 ; =====================================================
 
 #define AppName      "碁華 Goka GO"
-#define AppVersion   "1.2.28"
+#define AppVersion   "1.2.29"
 #define AppPublisher "CochanHachan"
 #define AppURL       "https://goka-go.com"
 #define AppExeName   "goka_go.exe"
