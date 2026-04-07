@@ -731,7 +731,7 @@ class GoBoard:
             self._pass_disconnect = True
             self.end_network_game()
             # Delay score calculation so pass notification is visible
-            self.root.after(3000, self._calculate_score)
+            self._delayed_score_after_id = self.root.after(3000, self._calculate_score)
 
     def handle_network_timeout(self, loser_color):
         """Handle timeout notification from network opponent."""
@@ -810,6 +810,10 @@ class GoBoard:
             self.resign_btn.config(state="normal")
         if hasattr(self, "score_btn"):
             self.score_btn.config(state="disabled")
+        # Cancel any pending delayed score calculation from previous game
+        if getattr(self, '_delayed_score_after_id', None):
+            self.root.after_cancel(self._delayed_score_after_id)
+            self._delayed_score_after_id = None
         # Ensure overlay is cleared and normal click binding is restored
         self._hide_overlay()
         self.canvas.bind("<Button-1>", self.on_click)
@@ -844,6 +848,10 @@ class GoBoard:
     def _calculate_score(self):
         """Calculate territory using KataGo and show result."""
         from tkinter import messagebox as _mb
+        # Cancel any pending delayed score callback
+        if getattr(self, '_delayed_score_after_id', None):
+            self.root.after_cancel(self._delayed_score_after_id)
+            self._delayed_score_after_id = None
         # Guard against double calls
         if hasattr(self, '_score_progress') and self._score_progress:
             return
@@ -937,6 +945,10 @@ class GoBoard:
 
     def _prepare_for_new_game(self):
         """対局開始前の共通処理：棋譜クリア・棋譜選択画面を閉じる・ボタン状態リセット。"""
+        # Cancel any pending delayed score calculation
+        if getattr(self, '_delayed_score_after_id', None):
+            self.root.after_cancel(self._delayed_score_after_id)
+            self._delayed_score_after_id = None
         # 棋譜選択画面を閉じる
         if self.app and self.app._current_kifu_dialog:
             try:
@@ -973,7 +985,7 @@ class GoBoard:
             self._pass_disconnect = True
             self.end_network_game()
             # Delay score calculation so opponent can see pass notification
-            self.root.after(3000, self._calculate_score)
+            self._delayed_score_after_id = self.root.after(3000, self._calculate_score)
 
     def _resign(self):
         if not self.net_mode or self.game.game_over:

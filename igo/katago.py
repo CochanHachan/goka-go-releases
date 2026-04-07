@@ -135,10 +135,16 @@ def _ensure_analysis_config(katago_dir):
     if os.path.exists(cfg_path):
         return cfg_path
     # Create a minimal analysis config that works with KataGo >= 1.11
+    # logToStderr=false + no logDir/logFile = disable all logging (avoid
+    # write-permission errors when katago_dir is read-only).
+    # reportAnalysisWinratesAs=BLACK matches the official example default.
     minimal = (
         "# Auto-generated minimal analysis config\n"
+        "logToStderr = false\n"
         "logSearchInfo = false\n"
         "logAllRequests = false\n"
+        "logAllResponses = false\n"
+        "reportAnalysisWinratesAs = BLACK\n"
         "numSearchThreads = 1\n"
         "numAnalysisThreads = 1\n"
     )
@@ -158,6 +164,8 @@ def _ensure_analysis_config(katago_dir):
         return tmp_cfg
     except OSError:
         pass
+    # Both writes failed — return cfg_path anyway; caller will get
+    # a RuntimeError from KataGo and fall back to simple counting.
     return cfg_path
 
 
