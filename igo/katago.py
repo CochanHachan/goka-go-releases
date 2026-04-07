@@ -261,13 +261,19 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": True,
     }
 
-    # Always pass homeDataDir via -override-config so KataGo can write
-    # OpenCL tuning data even when the config file (e.g. the stock
-    # analysis_example.cfg from the installer) does not contain it.
-    # This is critical for installations under C:\Program Files where
-    # the katago directory is read-only for regular users.
+    # Always pass homeDataDir and logDir via -override-config so KataGo
+    # can write OpenCL tuning data and log files even when the katago
+    # directory is read-only (e.g. C:\Program Files\GokaGo\katago\).
+    #
+    # The stock analysis_example.cfg shipped with KataGo v1.16.4 contains:
+    #   logDir = analysis_logs
+    # This causes KataGo to try to create analysis_logs/ inside the
+    # read-only katago directory, crashing on startup.  Overriding logDir
+    # redirects log output to the user-writable data directory.
     data_dir = _get_katago_data_dir()
-    override = "homeDataDir={}".format(data_dir.replace("\\", "/"))
+    log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
+    override = "homeDataDir={},logDir={}".format(
+        data_dir.replace("\\", "/"), log_dir)
 
     proc = subprocess.Popen(
         [katago_exe, "analysis", "-config", config_file, "-model", model_file,
@@ -376,9 +382,12 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": False,
     }
 
-    # Always pass homeDataDir via -override-config (see _katago_score).
+    # Always pass homeDataDir and logDir via -override-config
+    # (see _katago_score for detailed explanation).
     data_dir = _get_katago_data_dir()
-    override = "homeDataDir={}".format(data_dir.replace("\\", "/"))
+    log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
+    override = "homeDataDir={},logDir={}".format(
+        data_dir.replace("\\", "/"), log_dir)
 
     proc = subprocess.Popen(
         [katago_exe, "analysis", "-config", config_file, "-model", model_file,
