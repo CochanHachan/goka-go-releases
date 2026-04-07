@@ -121,6 +121,32 @@ class KataGoGTP:
         return "{}{}".format(col_letter, row_num)
 
 
+def _ensure_analysis_config(katago_dir):
+    """Ensure analysis_example.cfg exists; create a minimal default if missing.
+
+    Older installers shipped only default_gtp.cfg.  When the analysis
+    config is absent KataGo analysis mode fails silently, breaking
+    winrate display and score calculation.
+    """
+    cfg_path = os.path.join(katago_dir, "analysis_example.cfg")
+    if os.path.exists(cfg_path):
+        return cfg_path
+    # Create a minimal analysis config that works with KataGo >= 1.11
+    minimal = (
+        "# Auto-generated minimal analysis config\n"
+        "logSearchInfo = false\n"
+        "logAllRequests = false\n"
+        "numSearchThreads = 1\n"
+        "numAnalysisThreads = 1\n"
+    )
+    try:
+        with open(cfg_path, "w", encoding="utf-8") as f:
+            f.write(minimal)
+    except OSError:
+        pass
+    return cfg_path
+
+
 def _moves_to_katago(move_history, size=19):
     """Convert GoGame move_history to KataGo moves format."""
     moves = []
@@ -147,7 +173,7 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
     _exe = "katago.exe" if platform.system() == "Windows" else "katago"
     katago_exe = os.path.join(katago_dir, _exe)
     model_file = os.path.join(katago_dir, "model.bin")
-    config_file = os.path.join(katago_dir, "analysis_example.cfg")
+    config_file = _ensure_analysis_config(katago_dir)
 
     if not os.path.exists(katago_exe):
         raise RuntimeError("KataGoが見つかりません: " + katago_exe)
@@ -237,7 +263,7 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
     _exe = "katago.exe" if platform.system() == "Windows" else "katago"
     katago_exe = os.path.join(katago_dir, _exe)
     model_file = os.path.join(katago_dir, "model.bin")
-    config_file = os.path.join(katago_dir, "analysis_example.cfg")
+    config_file = _ensure_analysis_config(katago_dir)
 
     if not os.path.exists(katago_exe) or not os.path.exists(model_file):
         return None, None

@@ -71,6 +71,7 @@ Source: "..\katago\vcruntime140.dll";              DestDir: "{app}\katago"; Flag
 Source: "..\katago\vcruntime140_1.dll";            DestDir: "{app}\katago"; Flags: ignoreversion
 Source: "..\katago\cacert.pem";                    DestDir: "{app}\katago"; Flags: ignoreversion
 Source: "..\katago\default_gtp.cfg";               DestDir: "{app}\katago"; Flags: ignoreversion
+Source: "..\katago\analysis_example.cfg";          DestDir: "{app}\katago"; Flags: ignoreversion
 
 ; ---- KataGo モデル ----
 Source: "..\katago\model.bin"; \
