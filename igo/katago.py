@@ -127,6 +127,9 @@ def _ensure_analysis_config(katago_dir):
     Older installers shipped only default_gtp.cfg.  When the analysis
     config is absent KataGo analysis mode fails silently, breaking
     winrate display and score calculation.
+
+    If the katago directory is read-only (e.g. C:\\Program Files),
+    the config is written to a temp directory instead.
     """
     cfg_path = os.path.join(katago_dir, "analysis_example.cfg")
     if os.path.exists(cfg_path):
@@ -139,9 +142,20 @@ def _ensure_analysis_config(katago_dir):
         "numSearchThreads = 1\n"
         "numAnalysisThreads = 1\n"
     )
+    # Try katago_dir first
     try:
         with open(cfg_path, "w", encoding="utf-8") as f:
             f.write(minimal)
+        return cfg_path
+    except OSError:
+        pass
+    # Fallback: write to temp directory (always writable)
+    import tempfile
+    tmp_cfg = os.path.join(tempfile.gettempdir(), "goka_analysis_example.cfg")
+    try:
+        with open(tmp_cfg, "w", encoding="utf-8") as f:
+            f.write(minimal)
+        return tmp_cfg
     except OSError:
         pass
     return cfg_path
