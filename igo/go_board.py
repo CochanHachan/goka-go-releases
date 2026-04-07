@@ -127,8 +127,9 @@ class GoBoard:
             fg=T("cap_fg"), bg=T("container_bg"))
         self.black_cap_label.pack(side="right")
 
-        bp_bottom = tk.Frame(self.black_panel, bg=T("container_bg"))
+        bp_bottom = tk.Frame(self.black_panel, bg=T("container_bg"), height=38)
         bp_bottom.pack(fill="x", padx=8, pady=(0, 2))
+        bp_bottom.pack_propagate(False)
         self.black_time_label = tk.Label(
             bp_bottom, text="00:00", font=("Consolas", 18, "bold"),
             fg=T("timer_active"), bg=T("container_bg"), anchor="w")
@@ -170,8 +171,9 @@ class GoBoard:
         tk.Label(wp_top, image=self._panel_white_img,
                  bg=T("container_bg")).pack(side="right", padx=(0, 5))
 
-        wp_bottom = tk.Frame(self.white_panel, bg=T("container_bg"))
+        wp_bottom = tk.Frame(self.white_panel, bg=T("container_bg"), height=38)
         wp_bottom.pack(fill="x", padx=8, pady=(0, 2))
+        wp_bottom.pack_propagate(False)
         self.white_time_label = tk.Label(
             wp_bottom, text="00:00", font=("Consolas", 18, "bold"),
             fg=T("timer_inactive"), bg=T("container_bg"), anchor="e")
@@ -358,8 +360,8 @@ class GoBoard:
             self.black_time_label.config(text=bt_text)
             self.white_time_label.config(text=wt_text)
             # Font size: smaller for byoyomi text
-            bf = ("Consolas", 14, "bold") if self.timer_black.in_byoyomi else ("Consolas", 22, "bold")
-            wf = ("Consolas", 14, "bold") if self.timer_white.in_byoyomi else ("Consolas", 22, "bold")
+            bf = ("Yu Gothic UI", 14, "bold") if self.timer_black.in_byoyomi else ("Consolas", 22, "bold")
+            wf = ("Yu Gothic UI", 14, "bold") if self.timer_white.in_byoyomi else ("Consolas", 22, "bold")
             self.black_time_label.config(font=bf)
             self.white_time_label.config(font=wf)
             # Colors
@@ -1256,11 +1258,11 @@ class GoBoard:
     def _display_winrate(self, black_wr, white_wr):
         """Display win rate on the panel labels."""
         if black_wr >= white_wr:
-            self.black_winrate_label.config(text="{:.1f}%".format(black_wr), fg="#4CAF50")
-            self.white_winrate_label.config(text="{:.1f}%".format(white_wr), fg="#999999")
+            self.black_winrate_label.config(text="{:.1f}%".format(black_wr), fg="#ff6347")
+            self.white_winrate_label.config(text="{:.1f}%".format(white_wr), fg="#008000")
         else:
-            self.black_winrate_label.config(text="{:.1f}%".format(black_wr), fg="#999999")
-            self.white_winrate_label.config(text="{:.1f}%".format(white_wr), fg="#4CAF50")
+            self.black_winrate_label.config(text="{:.1f}%".format(black_wr), fg="#008000")
+            self.white_winrate_label.config(text="{:.1f}%".format(white_wr), fg="#ff6347")
 
     def _nav_first(self):
         self._replay_to(0)
