@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>遊び方 - 碁華 Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Yu Gothic UI", "Yu Mincho", "游明朝", "Hiragino Sans", sans-serif;
+    color: #e0e0e0;
+    background: #1a1a2e;
+    min-height: 100vh;
+  }
+  /* Header */
+  .header {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.05em;
+    margin-left: 12px;
+    font-weight: 400;
+  }
+  .header-back {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s;
+  }
+  .header-back:hover { color: #f0c860; }
+
+  /* Main */
+  .main {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+  .page-title {
+    font-size: 2.4rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+  .divider {
+    width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 auto 60px;
+  }
+
+  /* Steps */
+  .step {
+    margin-bottom: 56px;
+    position: relative;
+    padding-left: 56px;
+  }
+  .step-number {
+    position: absolute;
+    left: 0;
+    top: -4px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f0c860, #c8a030);
+    color: #1a1a2e;
+    font-size: 1.1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step h2 {
+    font-size: 1.3rem;
+    color: #fff;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .step p {
+    font-size: 0.95rem;
+    line-height: 1.85;
+    color: rgba(255,255,255,0.7);
+  }
+  .step .note {
+    margin-top: 10px;
+    padding: 12px 16px;
+    background: rgba(240,200,96,0.08);
+    border-left: 3px solid #f0c860;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.88rem;
+    color: rgba(255,255,255,0.6);
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 20px; }
+    .main { padding: 40px 16px 80px; }
+    .page-title { font-size: 1.8rem; }
+    .step { padding-left: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="header-logo">碁華 <span>Goka GO</span></a>
+  <a href="index.html" class="header-back">← トップに戻る</a>
+</div>
+
+<div class="main">
+  <h1 class="page-title">遊び方</h1>
+  <p class="page-subtitle">How to Play</p>
+  <div class="divider"></div>
+
+  <div class="step">
+    <div class="step-number">1</div>
+    <h2>ダウンロードとインストール</h2>
+    <p>
+      トップページの「ダウンロード」ボタンからインストーラーをダウンロードし、実行してください。
+      画面の指示に従うだけで、KataGo AIエンジンも含めて自動的にインストールされます。
+    </p>
+    <div class="note">
+      初回インストール時、WindowsのSmartScreen警告が表示される場合があります。「詳細情報」→「実行」で進めてください。
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">2</div>
+    <h2>アカウント作成</h2>
+    <p>
+      初回起動時にログイン画面が表示されます。「新規登録」ボタンからアカウントを作成してください。
+      氏名、ハンドルネーム（対局時に表示される名前）、メールアドレス、パスワード、棋力を入力します。
+    </p>
+    <div class="note">
+      ハンドルネームは20文字以内で設定してください。棋力は20級〜9段まで選択できます。
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">3</div>
+    <h2>ログイン</h2>
+    <p>
+      登録したメールアドレスとパスワードでログインします。
+      ログイン後、メイン画面（碁盤）が表示されます。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">4</div>
+    <h2>対局を始める</h2>
+    <p>
+      対局には2つの方法があります。
+    </p>
+    <p style="margin-top: 10px;">
+      <strong style="color: #f0c860;">● AI対局</strong> — メニューから「AI対局」を選択。
+      KataGoの30段階のレベルから対戦相手を選べます。一人で練習したいときに最適です。
+    </p>
+    <p style="margin-top: 8px;">
+      <strong style="color: #f0c860;">● ネット対局</strong> — ログイン中の他のプレイヤーに挑戦状を送るか、
+      相手からの挑戦状を受けて対局します。リアルタイムで世界中のプレイヤーと対戦できます。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">5</div>
+    <h2>対局のルール</h2>
+    <p>
+      碁華では日本ルールを採用しています。コミは6目半がデフォルトです。
+      対局中はリアルタイムで形勢判断（勝率%）が表示されるので、局面の有利不利を把握できます。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">6</div>
+    <h2>持ち時間と秒読み</h2>
+    <p>
+      対局には持ち時間が設定されます。持ち時間を使い切ると秒読みに入ります。
+      秒読みでは音声カウントダウンが鳴り、制限時間内に着手しないと時間切れ負けとなります。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">7</div>
+    <h2>対局の終了と棋譜検討</h2>
+    <p>
+      両者がパスすると地合計算が行われ、結果が表示されます。
+      対局終了後は棋譜検討モードで対局を振り返ることができます。
+      ナビゲーションバーで手を進めたり戻したりして、局面を確認できます。
+    </p>
+  </div>
+</div>
+
+<div class="footer">
+  &copy; 2026 碁華 Goka GO. All rights reserved.
+</div>
+
+</body>
+</html>
