@@ -261,8 +261,17 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": True,
     }
 
+    # Always pass homeDataDir via -override-config so KataGo can write
+    # OpenCL tuning data even when the config file (e.g. the stock
+    # analysis_example.cfg from the installer) does not contain it.
+    # This is critical for installations under C:\Program Files where
+    # the katago directory is read-only for regular users.
+    data_dir = _get_katago_data_dir()
+    override = "homeDataDir={}".format(data_dir.replace("\\", "/"))
+
     proc = subprocess.Popen(
-        [katago_exe, "analysis", "-config", config_file, "-model", model_file],
+        [katago_exe, "analysis", "-config", config_file, "-model", model_file,
+         "-override-config", override],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -367,8 +376,13 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": False,
     }
 
+    # Always pass homeDataDir via -override-config (see _katago_score).
+    data_dir = _get_katago_data_dir()
+    override = "homeDataDir={}".format(data_dir.replace("\\", "/"))
+
     proc = subprocess.Popen(
-        [katago_exe, "analysis", "-config", config_file, "-model", model_file],
+        [katago_exe, "analysis", "-config", config_file, "-model", model_file,
+         "-override-config", override],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
