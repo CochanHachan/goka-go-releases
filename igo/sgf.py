@@ -69,7 +69,7 @@ def load_sgf(filepath):
         content = f.read()
     metadata = {}
     import re as _re
-    for tag in ["PB", "PW", "BR", "WR", "SZ", "KM", "RE", "DT"]:
+    for tag in ["PB", "PW", "BR", "WR", "SZ", "KM", "RE", "DT", "RU"]:
         m = _re.search(tag + r"\[([^\]]*)\]", content)
         if m:
             metadata[tag] = m.group(1)

@@ -488,6 +488,7 @@ def calculate_territory_chinese(board, komi=6.5, move_history=None, rules="chine
     If move_history is provided, uses KataGo for accurate scoring.
     Falls back to simple counting if KataGo is unavailable.
     """
+    _used_fallback = False
     if move_history is not None:
         try:
             score_lead, _ = _katago_score(move_history, komi, rules=rules)
@@ -510,8 +511,19 @@ def calculate_territory_chinese(board, komi=6.5, move_history=None, rules="chine
                 return ("黒", diff_str + "勝ち")
             else:
                 return ("白", diff_str + "勝ち")
-        except Exception:
-            pass  # Fall through to simple counting
+        except Exception as exc:
+            # Log the failure so it can be diagnosed
+            try:
+                log_path = os.path.join(os.path.expanduser("~"), "goka_katago_log.txt")
+                with open(log_path, "a", encoding="utf-8", errors="replace") as f:
+                    from datetime import datetime
+                    f.write("\n--- KataGo score fallback {} ---\n".format(
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                    f.write("Error: {}\n".format(exc))
+                    f.write("Falling back to simple counting (dead stones NOT detected)\n")
+            except Exception:
+                pass
+            _used_fallback = True
 
     # Fallback: simple Chinese counting (no dead stone detection)
     size = len(board)
@@ -560,10 +572,13 @@ def calculate_territory_chinese(board, komi=6.5, move_history=None, rules="chine
     else:
         diff_str = "{}目半".format(int(diff))
 
+    # When using fallback, append label so the user knows dead stones
+    # were NOT detected and the result may be inaccurate.
+    _suffix = "（簡易計算）" if _used_fallback else ""
     if black_score > white_score:
-        return ("黒", diff_str + "勝ち")
+        return ("黒", diff_str + "勝ち" + _suffix)
     elif white_score > black_score:
-        return ("白", diff_str + "勝ち")
+        return ("白", diff_str + "勝ち" + _suffix)
     else:
-        return ("引き分け", "持碁")
+        return ("引き分け", "持碁" + _suffix)
 
