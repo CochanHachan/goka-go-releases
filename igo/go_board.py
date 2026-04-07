@@ -695,18 +695,23 @@ class GoBoard:
 
     def _show_temp_overlay(self, text, duration=2000):
         """Show a temporary message overlay on the board that fades after duration ms."""
+        self.canvas.update_idletasks()
         cx = self.canvas.winfo_width() // 2
         cy = self.canvas.winfo_height() // 2
+        if cx < 10 or cy < 10:
+            return
+        tag = "_temp_overlay"
         bg = self.canvas.create_rectangle(
             cx - 200, cy - 30, cx + 200, cy + 30,
-            fill="#000000", stipple="gray50", outline="")
+            fill="#000000", stipple="gray50", outline="",
+            tags=tag)
         txt = self.canvas.create_text(
             cx, cy, text=text, fill="#ffffff",
-            font=("", 18, "bold"))
+            font=("", 18, "bold"), tags=tag)
+        self.canvas.tag_raise(tag)
         def _remove():
             try:
-                self.canvas.delete(bg)
-                self.canvas.delete(txt)
+                self.canvas.delete(tag)
             except Exception:
                 pass
         self.root.after(duration, _remove)
@@ -725,7 +730,8 @@ class GoBoard:
             self._timer_running = False
             self._pass_disconnect = True
             self.end_network_game()
-            self._calculate_score()
+            # Delay score calculation so pass notification is visible
+            self._delayed_score_after_id = self.root.after(3000, self._calculate_score)
 
     def handle_network_timeout(self, loser_color):
         """Handle timeout notification from network opponent."""
@@ -804,6 +810,10 @@ class GoBoard:
             self.resign_btn.config(state="normal")
         if hasattr(self, "score_btn"):
             self.score_btn.config(state="disabled")
+        # Cancel any pending delayed score calculation from previous game
+        if getattr(self, '_delayed_score_after_id', None):
+            self.root.after_cancel(self._delayed_score_after_id)
+            self._delayed_score_after_id = None
         # Ensure overlay is cleared and normal click binding is restored
         self._hide_overlay()
         self.canvas.bind("<Button-1>", self.on_click)
@@ -838,9 +848,18 @@ class GoBoard:
     def _calculate_score(self):
         """Calculate territory using KataGo and show result."""
         from tkinter import messagebox as _mb
+        # Cancel any pending delayed score callback
+        if getattr(self, '_delayed_score_after_id', None):
+            self.root.after_cancel(self._delayed_score_after_id)
+            self._delayed_score_after_id = None
         # Guard against double calls
         if hasattr(self, '_score_progress') and self._score_progress:
             return
+        # Remove pass notification overlay before showing progress dialog
+        try:
+            self.canvas.delete("_temp_overlay")
+        except Exception:
+            pass
         self.score_btn.config(state="disabled")
         # Show progress centered on main window
         self._score_progress = tk.Toplevel(self.root)
@@ -926,6 +945,10 @@ class GoBoard:
 
     def _prepare_for_new_game(self):
         """対局開始前の共通処理：棋譜クリア・棋譜選択画面を閉じる・ボタン状態リセット。"""
+        # Cancel any pending delayed score calculation
+        if getattr(self, '_delayed_score_after_id', None):
+            self.root.after_cancel(self._delayed_score_after_id)
+            self._delayed_score_after_id = None
         # 棋譜選択画面を閉じる
         if self.app and self.app._current_kifu_dialog:
             try:
@@ -961,7 +984,8 @@ class GoBoard:
             self._timer_running = False
             self._pass_disconnect = True
             self.end_network_game()
-            self._calculate_score()
+            # Delay score calculation so opponent can see pass notification
+            self._delayed_score_after_id = self.root.after(3000, self._calculate_score)
 
     def _resign(self):
         if not self.net_mode or self.game.game_over:
