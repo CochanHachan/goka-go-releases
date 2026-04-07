@@ -114,16 +114,16 @@ class GoBoard:
         tk.Label(bp_top, image=self._panel_black_img,
                  bg=T("container_bg")).pack(side="left", padx=(0, 5))
         self.black_name_label = tk.Label(
-            bp_top, text=self.black_name, font=("BIZ UDGothic", 12, "bold"),
+            bp_top, text=self.black_name, font=("Yu Gothic UI", 12, "bold"),
             fg=T("text_primary"), bg=T("container_bg"), anchor="w")
         self.black_name_label.pack(side="left")
         self.black_rank_label = tk.Label(
-            bp_top, text=self.black_rank, font=("", 10, "bold"),
+            bp_top, text=self.black_rank, font=("Yu Gothic UI", 10, "bold"),
             fg=T("rank_fg"), bg=T("container_bg"), anchor="w")
         self.black_rank_label.pack(side="left", padx=(4, 0))
 
         self.black_cap_label = tk.Label(
-            bp_top, text="\u2191 0", font=("", 10),
+            bp_top, text="\u2191 0", font=("Yu Gothic UI", 10),
             fg=T("cap_fg"), bg=T("container_bg"))
         self.black_cap_label.pack(side="right")
 
@@ -131,17 +131,17 @@ class GoBoard:
         bp_bottom.pack(fill="x", padx=8, pady=(0, 2))
         bp_bottom.pack_propagate(False)
         self.black_time_label = tk.Label(
-            bp_bottom, text="00:00", font=("Consolas", 18, "bold"),
+            bp_bottom, text="00:00", font=("Yu Gothic UI", 18, "bold"),
             fg=T("timer_active"), bg=T("container_bg"), anchor="w")
         self.black_time_label.pack(side="left")
         self._komi = 6.5
         self._rules = "japanese"
         self.komi_label = tk.Label(
-            bp_bottom, text="", font=("", 9),
+            bp_bottom, text="", font=("Yu Gothic UI", 9),
             fg=T("text_disabled"), bg=T("container_bg"), anchor="e")
         self.komi_label.pack(side="right")
         self.black_winrate_label = tk.Label(
-            bp_bottom, text="", font=("", 11, "bold"),
+            bp_bottom, text="", font=("Yu Gothic UI", 11, "bold"),
             fg="#4CAF50", bg=T("container_bg"), anchor="e")
         self.black_winrate_label.pack(side="right", padx=(0, 0))
 
@@ -155,16 +155,16 @@ class GoBoard:
         wp_top.pack(fill="x", padx=8, pady=(3, 0))
 
         self.white_cap_label = tk.Label(
-            wp_top, text="\u2191 0", font=("", 10),
+            wp_top, text="\u2191 0", font=("Yu Gothic UI", 10),
             fg=T("cap_fg"), bg=T("container_bg"))
         self.white_cap_label.pack(side="left")
 
         self.white_rank_label = tk.Label(
-            wp_top, text=self.white_rank, font=("", 10, "bold"),
+            wp_top, text=self.white_rank, font=("Yu Gothic UI", 10, "bold"),
             fg=T("rank_fg"), bg=T("container_bg"), anchor="e")
         self.white_rank_label.pack(side="right", padx=(4, 0))
         self.white_name_label = tk.Label(
-            wp_top, text=self.white_name, font=("BIZ UDGothic", 12, "bold"),
+            wp_top, text=self.white_name, font=("Yu Gothic UI", 12, "bold"),
             fg=T("text_primary"), bg=T("container_bg"), anchor="e")
         self.white_name_label.pack(side="right")
         self._panel_white_img = _make_stone_photoimage(self.root, 10, False, panel_bg)
@@ -175,11 +175,11 @@ class GoBoard:
         wp_bottom.pack(fill="x", padx=8, pady=(0, 2))
         wp_bottom.pack_propagate(False)
         self.white_time_label = tk.Label(
-            wp_bottom, text="00:00", font=("Consolas", 18, "bold"),
+            wp_bottom, text="00:00", font=("Yu Gothic UI", 18, "bold"),
             fg=T("timer_inactive"), bg=T("container_bg"), anchor="e")
         self.white_time_label.pack(side="right")
         self.white_winrate_label = tk.Label(
-            wp_bottom, text="", font=("", 11, "bold"),
+            wp_bottom, text="", font=("Yu Gothic UI", 11, "bold"),
             fg="#4CAF50", bg=T("container_bg"), anchor="w")
         self.white_winrate_label.pack(side="left", padx=(8, 0))
 
@@ -360,8 +360,8 @@ class GoBoard:
             self.black_time_label.config(text=bt_text)
             self.white_time_label.config(text=wt_text)
             # Font size: smaller for byoyomi text
-            bf = ("Yu Gothic UI", 14, "bold") if self.timer_black.in_byoyomi else ("Consolas", 22, "bold")
-            wf = ("Yu Gothic UI", 14, "bold") if self.timer_white.in_byoyomi else ("Consolas", 22, "bold")
+            bf = ("Yu Gothic UI", 12, "bold") if self.timer_black.in_byoyomi else ("Yu Gothic UI", 22, "bold")
+            wf = ("Yu Gothic UI", 12, "bold") if self.timer_white.in_byoyomi else ("Yu Gothic UI", 22, "bold")
             self.black_time_label.config(font=bf)
             self.white_time_label.config(font=wf)
             # Colors
@@ -377,10 +377,10 @@ class GoBoard:
             # タイマー未設定（対局前/初期化後）は00:00表示
             if self.timer_black is None or self.timer_white is None:
                 self.black_time_label.config(
-                    text="00:00", font=("Consolas", 18, "bold"),
+                    text="00:00", font=("Yu Gothic UI", 18, "bold"),
                     fg=T("timer_inactive"))
                 self.white_time_label.config(
-                    text="00:00", font=("Consolas", 18, "bold"),
+                    text="00:00", font=("Yu Gothic UI", 18, "bold"),
                     fg=T("timer_inactive"))
             else:
                 bt = self.game.time_black
@@ -1258,11 +1258,11 @@ class GoBoard:
     def _display_winrate(self, black_wr, white_wr):
         """Display win rate on the panel labels."""
         if black_wr >= white_wr:
-            self.black_winrate_label.config(text="{:.1f}%".format(black_wr), fg="#ff6347")
+            self.black_winrate_label.config(text="{:.1f}%".format(black_wr), fg="#ff4500")
             self.white_winrate_label.config(text="{:.1f}%".format(white_wr), fg="#008000")
         else:
             self.black_winrate_label.config(text="{:.1f}%".format(black_wr), fg="#008000")
-            self.white_winrate_label.config(text="{:.1f}%".format(white_wr), fg="#ff6347")
+            self.white_winrate_label.config(text="{:.1f}%".format(white_wr), fg="#ff4500")
 
     def _nav_first(self):
         self._replay_to(0)
