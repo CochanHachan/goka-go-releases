@@ -127,7 +127,7 @@ class GoBoard:
             fg=T("cap_fg"), bg=T("container_bg"))
         self.black_cap_label.pack(side="right")
 
-        bp_bottom = tk.Frame(self.black_panel, bg=T("container_bg"), height=32)
+        bp_bottom = tk.Frame(self.black_panel, bg=T("container_bg"), height=38)
         bp_bottom.pack(fill="x", padx=8, pady=(0, 2))
         bp_bottom.pack_propagate(False)
         self.black_time_label = tk.Label(
@@ -171,7 +171,7 @@ class GoBoard:
         tk.Label(wp_top, image=self._panel_white_img,
                  bg=T("container_bg")).pack(side="right", padx=(0, 5))
 
-        wp_bottom = tk.Frame(self.white_panel, bg=T("container_bg"), height=32)
+        wp_bottom = tk.Frame(self.white_panel, bg=T("container_bg"), height=38)
         wp_bottom.pack(fill="x", padx=8, pady=(0, 2))
         wp_bottom.pack_propagate(False)
         self.white_time_label = tk.Label(
