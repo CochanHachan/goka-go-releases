@@ -799,6 +799,7 @@ class GoBoard:
         self.net_mode = True
         self.my_color = my_color
         self._komi = komi
+        self._rules = "chinese"
         self.timer_black = ByoyomiTimer(main_time, byo_time, byo_periods)
         self.timer_white = ByoyomiTimer(main_time, byo_time, byo_periods)
         self.game = GoGame()
