@@ -173,6 +173,9 @@ def _ensure_analysis_config(katago_dir):
         "reportAnalysisWinratesAs = BLACK\n"
         "numSearchThreads = 1\n"
         "numAnalysisThreads = 1\n"
+        "nnMaxBatchSize = 1\n"
+        "nnCacheSizePowerOfTwo = 18\n"
+        "maxVisits = 500\n"
     )
     # Try katago_dir first
     try:
@@ -279,7 +282,15 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
     # and silently falls back to simple counting.
     data_dir = _get_katago_data_dir()
     log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
-    override = "logDir={}".format(log_dir)
+    # Override logDir AND nnMaxBatchSize.
+    # logDir: the stock analysis_example.cfg has logDir=analysis_logs which
+    #   resolves to a read-only path under Program Files.
+    # nnMaxBatchSize: KataGo v1.16.4 requires this key.  The auto-generated
+    #   minimal config may already have it, but older configs on disk might
+    #   not (they were written before we knew it was required).  Overriding
+    #   via the command line ensures it is always present regardless of the
+    #   config file contents.
+    override = "logDir={},nnMaxBatchSize=1".format(log_dir)
 
     proc = subprocess.Popen(
         [katago_exe, "analysis", "-config", config_file, "-model", model_file,
@@ -388,10 +399,10 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
         "includeOwnership": False,
     }
 
-    # Override only logDir (see _katago_score for detailed explanation).
+    # Override logDir AND nnMaxBatchSize (see _katago_score for detailed explanation).
     data_dir = _get_katago_data_dir()
     log_dir = os.path.join(data_dir, "analysis_logs").replace("\\", "/")
-    override = "logDir={}".format(log_dir)
+    override = "logDir={},nnMaxBatchSize=1".format(log_dir)
 
     proc = subprocess.Popen(
         [katago_exe, "analysis", "-config", config_file, "-model", model_file,
