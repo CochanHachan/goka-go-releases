@@ -132,13 +132,13 @@ BOT_AUTO_DELAY = 60  # 秒（デフォルト値、設定から上書きされる
 
 
 def _get_offer_timeout_sec() -> int:
-    """管理者画面の offer_timeout_min 設定を秒単位で返す（デフォルト: 60秒）。"""
+    """管理者画面の offer_timeout_min 設定を秒単位で返す（デフォルト: 180秒）。"""
     try:
         settings = _load_settings()
         minutes = int(settings.get("offer_timeout_min", 3))
         return max(1, minutes) * 60
     except Exception:
-        return BOT_AUTO_DELAY
+        return 180
 
 
 def _find_closest_bot(elo: float) -> Optional[str]:
