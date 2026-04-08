@@ -454,10 +454,11 @@ class MatchDialog:
                     if name not in self._offers:
                         self._offers[name] = offer
         now = _time.time()
-        # Remove stale offers: LAN >8s, Cloud >60s (safety net)
+        # Remove stale offers: LAN >8s, Cloud > offer_timeout setting (safety net)
+        cloud_timeout = get_offer_timeout_ms() / 1000
         stale = [k for k, v in self._offers.items()
                  if (v.get("_addr") is not None and now - v.get("_time", 0) > 8)
-                 or (v.get("_addr") is None and now - v.get("_time", 0) > 60)]
+                 or (v.get("_addr") is None and now - v.get("_time", 0) > cloud_timeout)]
         for k in stale:
             del self._offers[k]
         rows = []
