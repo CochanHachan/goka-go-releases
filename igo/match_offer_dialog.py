@@ -10,6 +10,7 @@ import time as _time
 from igo.lang import L, get_language
 from igo.window_settings import WindowSettings
 from igo.constants import NET_UDP_PORT, BLACK, WHITE
+from igo.config import get_offer_timeout_ms
 from igo.theme import T
 from igo.elo import elo_to_display_rank
 
@@ -237,8 +238,8 @@ class MatchOfferDialog:
 
     def _refresh_list(self):
         now = _time.time()
-        # Remove stale offers: LAN >8s, Cloud >60s (safety net)
-        timeout = 60 if self._cloud_mode else 8
+        # Remove stale offers: LAN >8s, Cloud > offer_timeout setting (safety net)
+        timeout = (get_offer_timeout_ms() / 1000) if self._cloud_mode else 8
         stale = [k for k, v in self._offers.items() if now - v.get("_time", 0) > timeout]
         for k in stale:
             del self._offers[k]

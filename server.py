@@ -128,7 +128,17 @@ bot_accept_timers: Dict[str, asyncio.Task] = {}
 # handle -> pending offer info (タイムアウト時にボットが承諾するための情報)
 pending_offers: Dict[str, dict] = {}
 
-BOT_AUTO_DELAY = 60  # 秒
+BOT_AUTO_DELAY = 60  # 秒（デフォルト値、設定から上書きされる）
+
+
+def _get_offer_timeout_sec() -> int:
+    """管理者画面の offer_timeout_min 設定を秒単位で返す（デフォルト: 60秒）。"""
+    try:
+        settings = _load_settings()
+        minutes = int(settings.get("offer_timeout_min", 1))
+        return max(1, minutes) * 60
+    except Exception:
+        return BOT_AUTO_DELAY
 
 
 def _find_closest_bot(elo: float) -> Optional[str]:
@@ -551,9 +561,9 @@ async def ws_disconnect(handle: str):
 
 
 async def _bot_auto_offer(handle: str):
-    """ログイン後 BOT_AUTO_DELAY 秒で棋力の近いボットが対局申込を送る。"""
+    """ログイン後、設定されたタイムアウト秒で棋力の近いボットが対局申込を送る。"""
     try:
-        await asyncio.sleep(BOT_AUTO_DELAY)
+        await asyncio.sleep(_get_offer_timeout_sec())
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
             return
@@ -592,9 +602,9 @@ async def _bot_auto_offer(handle: str):
 
 
 async def _bot_auto_accept(handle: str):
-    """対局申込後 BOT_AUTO_DELAY 秒で承諾がなければボットが挑戦状を送る。"""
+    """対局申込後、設定されたタイムアウト秒で承諾がなければボットが挑戦状を送る。"""
     try:
-        await asyncio.sleep(BOT_AUTO_DELAY)
+        await asyncio.sleep(_get_offer_timeout_sec())
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
             return
