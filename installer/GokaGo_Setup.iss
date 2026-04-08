@@ -24,7 +24,7 @@ AllowNoIcons=yes
 ; OutputDir はbuild.batから上書きするため省略可
 OutputDir=..\dist\installer
 OutputBaseFilename=GokaGo_Setup_{#AppVersion}
-; SetupIconFile=..\goka.ico
+SetupIconFile=..\goka_go.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -56,6 +56,7 @@ Source: "..\dist\goka_go\*"; \
 ; ---- デフォルト設定ファイル (初回起動時に %APPDATA%\GokaGo にコピーされる) ----
 Source: "..\igo_config.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\stone_click.wav"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\goka_go.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 ; ---- KataGo 本体 ----
 Source: "..\katago\katago.exe";                    DestDir: "{app}\katago"; Flags: ignoreversion
@@ -85,9 +86,9 @@ Source: "..\katago\KataGoData\*"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#AppName}";                       Filename: "{app}\{#AppExeName}"
+Name: "{group}\{#AppName}";                       Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}";                 Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}";                 Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#AppExeName}"; \
