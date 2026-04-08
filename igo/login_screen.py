@@ -180,4 +180,6 @@ class LoginScreen:
             self.login_handle.delete(0, "end")
             self.login_password.delete(0, "end")
         self.error_label.config(text="")
+        # ハンドルネーム入力欄にカーソルを移動（deiconify後に確実にフォーカスするためafter使用）
+        self.parent.after(100, self.login_handle.focus_set)
 
