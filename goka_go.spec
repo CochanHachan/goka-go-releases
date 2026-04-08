@@ -136,7 +136,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='goka.ico',      # アイコンファイルがあれば有効化
+    icon='goka_go.ico',
 )
 
 coll = COLLECT(
