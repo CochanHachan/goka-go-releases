@@ -210,6 +210,7 @@ jobs:
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
           file_path: dist/goka_go/goka_go.exe
           output_path: dist/goka_go
+          environment_name: PROD
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -245,6 +246,7 @@ jobs:
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
           file_path: dist/installer/GokaGo_Setup_${{ steps.version.outputs.version }}.exe
           output_path: dist/installer
+          environment_name: PROD
 
       - name: Create update ZIP
         shell: python
