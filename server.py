@@ -732,10 +732,10 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 except Exception:
                     pass
         logger.info("Match offer broadcast from: %s", handle)
-        # 1分後にボットが自動承諾するタイマー開始
         pending_offers[handle] = {"broadcast": True}
-        bot_accept_timers[handle] = asyncio.create_task(
-            _bot_auto_accept(handle)
+        # 対局申請後 BOT_AUTO_DELAY 秒で棋力の近いボットが挑戦状を送る
+        bot_offer_timers[handle] = asyncio.create_task(
+            _bot_auto_offer(handle)
         )
 
     elif msg_type == "match_accept":
