@@ -246,7 +246,7 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
         "boardYSize": size,
         "moves": katago_moves,
         "analyzeTurns": [len(katago_moves)],
-        "maxVisits": 2000,
+        "maxVisits": 500,
         "includeOwnership": True,
     }
 
