@@ -889,12 +889,9 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             await ws_send(opponent, {"type": "opponent_disconnected", "handle": handle})
         pending_offers.pop(handle, None)
         user_status[handle] = "ログイン"
-        # ボットタイマーを再起動（ログイン時と同じ動作）
+        # ボットタイマーをキャンセル（対局申請時に再開される）
         _cancel_bot_timers(handle)
-        bot_offer_timers[handle] = asyncio.create_task(
-            _bot_auto_offer(handle)
-        )
-        logger.info("State reset: %s (bot timer restarted)", handle)
+        logger.info("State reset: %s", handle)
 
     elif msg_type == "set_status":
         # クライアントから明示的にステータスを設定
@@ -951,11 +948,8 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
     )
     await ws_broadcast_online_list()
 
-    # ログイン後 BOT_AUTO_DELAY 秒で棋力の近いボットが対局申込
-    _cancel_bot_timers(handle_name)
-    bot_offer_timers[handle_name] = asyncio.create_task(
-        _bot_auto_offer(handle_name)
-    )
+    # ボットの自動挑戦はログイン時ではなく、対局申請ボタンを押した後に開始
+    # （match_offer_broadcast / match_offer 受信時に bot_accept_timers で開始）
 
     try:
         while True:
