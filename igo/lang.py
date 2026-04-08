@@ -37,7 +37,7 @@ STRINGS = {
         "btn_reject":       "拒否",
         "btn_cancel":       "取消",
         "btn_apply":        "対局申込",
-        "btn_host":         "申込開始",
+        "btn_host":         "対局申請",
         "btn_show":         "表示",
 
         # --- Menu: File ---
