@@ -209,8 +209,14 @@ jobs:
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
           file_path: dist/goka_go/goka_go.exe
-          output_path: dist/goka_go
+          output_path: dist/goka_go_signed
           environment_name: PROD
+
+      - name: Replace exe with signed version
+        shell: bash
+        run: |
+          cp -f dist/goka_go_signed/goka_go.exe dist/goka_go/goka_go.exe
+          echo "Replaced exe with signed version"
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -245,8 +251,14 @@ jobs:
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
           file_path: dist/installer/GokaGo_Setup_${{ steps.version.outputs.version }}.exe
-          output_path: dist/installer
+          output_path: dist/installer_signed
           environment_name: PROD
+
+      - name: Replace installer with signed version
+        shell: bash
+        run: |
+          cp -f "dist/installer_signed/GokaGo_Setup_${{ steps.version.outputs.version }}.exe" "dist/installer/GokaGo_Setup_${{ steps.version.outputs.version }}.exe"
+          echo "Replaced installer with signed version"
 
       - name: Create update ZIP
         shell: python
