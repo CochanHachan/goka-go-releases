@@ -184,7 +184,7 @@ STRINGS = {
         "login_server_error":   "サーバーに接続できません",
         "login_failed":         "ログインに失敗しました",
         "btn_create_account":   "アカウント作成",
-        "lang_restart":         "再起動すると言語が切り替わります。",
+        "lang_restart":         "言語を切り替えました。一部の表示は再起動後に反映されます。",
     },
 
     "en": {
@@ -369,7 +369,7 @@ STRINGS = {
         "login_server_error":   "Cannot connect to server.",
         "login_failed":         "Login failed.",
         "btn_create_account":   "Create Account",
-        "lang_restart":         "Language will change after restart.",
+        "lang_restart":         "Language changed. Some elements will update after restart.",
     },
 
     "zh": {
@@ -554,7 +554,7 @@ STRINGS = {
         "login_server_error":   "无法连接服务器。",
         "login_failed":         "登录失败。",
         "btn_create_account":   "创建账户",
-        "lang_restart":         "重启后语言将切换。",
+        "lang_restart":         "语言已切换。部分界面将在重启后更新。",
     },
 
     "ko": {
@@ -725,7 +725,7 @@ STRINGS = {
         "login_server_error":   "서버에 연결할 수 없습니다.",
         "login_failed":         "로그인에 실패했습니다.",
         "btn_create_account":   "계정 만들기",
-        "lang_restart":         "재시작 후 언어가 변경됩니다.",
+        "lang_restart":         "언어가 변경되었습니다. 일부 항목은 재시작 후 반영됩니다.",
     },
 }
 
