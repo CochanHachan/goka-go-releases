@@ -219,6 +219,8 @@ class App:
         # メニューバーを新しい言語で即時再構築
         self._build_menubar()
         self.root.config(menu=self._menubar)
+        if self.go_board:
+            self._sync_game_menu_state()
         messagebox.showinfo(
             L("menu_language"),
             L("lang_restart")
