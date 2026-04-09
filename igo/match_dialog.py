@@ -151,10 +151,13 @@ class MatchDialog:
 
         COMBO_W = 6
 
+        # Restore saved match conditions
+        saved = self._ws.load("match_conditions", {})
+
         # Use grid layout for precise alignment
         tk.Label(left_frame, text="\u6301\u3061\u6642\u9593", font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=0, column=0, sticky="e", padx=(0, 4), pady=4)
-        self.main_time_var = tk.StringVar(value="10\u5206")
+        self.main_time_var = tk.StringVar(value=saved.get("main_time", "10\u5206"))
         main_vals = ["{}\u5206".format(i) for i in range(1, 61)]
         cb1 = ttk.Combobox(left_frame, textvariable=self.main_time_var,
             values=main_vals, state="readonly", style="Groove.TCombobox",
@@ -162,7 +165,7 @@ class MatchDialog:
         cb1.grid(row=0, column=1, padx=2, pady=4)
         tk.Label(left_frame, text="\u30b3\u30df", font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=0, column=2, sticky="e", padx=(8, 4), pady=4)
-        self.komi_var = tk.StringVar(value="7\u76ee\u534a")
+        self.komi_var = tk.StringVar(value=saved.get("komi", "7\u76ee\u534a"))
         komi_vals = ["5\u76ee\u534a", "6\u76ee\u534a", "7\u76ee\u534a"]
         cb4 = ttk.Combobox(left_frame, textvariable=self.komi_var,
             values=komi_vals, state="readonly", style="Groove.TCombobox",
@@ -171,7 +174,7 @@ class MatchDialog:
 
         tk.Label(left_frame, text="\u79d2\u8aad\u307f", font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
-        self.byo_time_var = tk.StringVar(value="30\u79d2")
+        self.byo_time_var = tk.StringVar(value=saved.get("byo_time", "30\u79d2"))
         byo_vals = ["{}\u79d2".format(i) for i in [10, 20, 30, 40, 50, 60]]
         cb2 = ttk.Combobox(left_frame, textvariable=self.byo_time_var,
             values=byo_vals, state="readonly", style="Groove.TCombobox",
@@ -179,7 +182,7 @@ class MatchDialog:
         cb2.grid(row=1, column=1, padx=2, pady=4)
         tk.Label(left_frame, text="\u56de\u6570", font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=1, column=2, sticky="e", padx=(8, 4), pady=4)
-        self.byo_periods_var = tk.StringVar(value="5\u56de")
+        self.byo_periods_var = tk.StringVar(value=saved.get("byo_periods", "5\u56de"))
         period_vals = ["\u221e"] + ["{}\u56de".format(i) for i in range(1, 11)]
         cb3 = ttk.Combobox(left_frame, textvariable=self.byo_periods_var,
             values=period_vals, state="readonly", style="Groove.TCombobox",
@@ -207,7 +210,7 @@ class MatchDialog:
         self.host_status.pack(pady=(2, 0))
 
         # Winrate checkbox
-        self.winrate_var = tk.BooleanVar(value=True)
+        self.winrate_var = tk.BooleanVar(value=saved.get("winrate", True))
         winrate_check = tk.Checkbutton(self.win, text="\u5f62\u52e2\u5224\u65ad\u3092\u8868\u793a\u3059\u308b",
                                         variable=self.winrate_var,
                                         font=("", 9), fg=fg, bg=bg,
@@ -323,6 +326,14 @@ class MatchDialog:
         self.cancel_btn.config(state="normal")
         # Save winrate preference to app
         self.app._show_winrate = self.winrate_var.get()
+        # Save match conditions for next time
+        self._ws.save("match_conditions", {
+            "main_time": self.main_time_var.get(),
+            "byo_time": self.byo_time_var.get(),
+            "byo_periods": self.byo_periods_var.get(),
+            "komi": self.komi_var.get(),
+            "winrate": self.winrate_var.get(),
+        })
         self.app.start_hosting(main_t, byo_t, byo_p, komi, self._on_opponent_found)
         self._host_timeout_id = self.win.after(get_offer_timeout_ms(), self._hosting_timeout)
 
