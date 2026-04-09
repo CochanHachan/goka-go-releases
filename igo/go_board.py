@@ -49,9 +49,9 @@ class GoBoard:
         self.timer_black = None  # ByoyomiTimer
         self.timer_white = None
 
-        self.black_name = "\u5bfe\u5c40\u8005"
+        self.black_name = L("player_default")
         self.black_rank = ""
-        self.white_name = "\u5bfe\u5c40\u8005"
+        self.white_name = L("player_default")
         self.white_rank = ""
 
         # Toolbar (ShogiGUI style, right below menubar)
@@ -134,7 +134,7 @@ class GoBoard:
             bp_bottom, text="00:00", font=("Yu Gothic UI", 18, "bold"),
             fg=T("timer_active"), bg=T("container_bg"), anchor="w")
         self.black_time_label.pack(side="left")
-        self._komi = 6.5
+        self._komi = 7.5
         self._rules = "japanese"
         self.komi_label = tk.Label(
             bp_bottom, text="", font=("Yu Gothic UI", 9),
@@ -431,15 +431,15 @@ class GoBoard:
         if self.net_mode and self.my_color == winner_color:
             # I won - opponent timed out
             if self.my_color == BLACK:
-                opp_name = getattr(self, "white_name", "相手")
+                opp_name = getattr(self, "white_name", L("opponent_default"))
             else:
-                opp_name = getattr(self, "black_name", "相手")
-            msg = "{}の時間切れです。\nあなたの勝ちです。".format(opp_name)
+                opp_name = getattr(self, "black_name", L("opponent_default"))
+            msg = L("timeout_opponent", opp_name)
         elif self.net_mode:
-            msg = "時間切れです。\nあなたの負けです。"
+            msg = L("timeout_self")
         else:
-            winner = "白" if loser == BLACK else "黒"
-            msg = "時間切れ  {}の勝ち".format(winner)
+            winner = L("color_white") if loser == BLACK else L("color_black")
+            msg = L("timeout_winner", winner)
         # Save game record before closing network
         if self.app:
             result = "白時間切れ勝ち" if winner_color == WHITE else "黒時間切れ勝ち"
@@ -454,7 +454,7 @@ class GoBoard:
             if self.app:
                 self.app._update_elo_after_game(winner_color)
             self.show_nav_bar()
-        self._show_centered_msgbox("時間切れ", msg, callback=_after_timeout_ok)
+        self._show_centered_msgbox(L("timeout_title"), msg, callback=_after_timeout_ok)
 
     # --- Drawing ---
 
@@ -722,10 +722,10 @@ class GoBoard:
         """Handle pass from network opponent."""
         # Show pass notification
         if self.my_color == BLACK:
-            opp_name = getattr(self, "white_name", "相手")
+            opp_name = getattr(self, "white_name", L("opponent_default"))
         else:
-            opp_name = getattr(self, "black_name", "相手")
-        self._show_temp_overlay("{}がパスをしました".format(opp_name), duration=5000)
+            opp_name = getattr(self, "black_name", L("opponent_default"))
+        self._show_temp_overlay(L("opponent_passed", opp_name), duration=5000)
         self.game.pass_turn()
         self._update_time_display()
         if self.game.game_over:
@@ -745,12 +745,12 @@ class GoBoard:
         winner_color = WHITE if loser_color == BLACK else BLACK
         if self.my_color == winner_color:
             if self.my_color == BLACK:
-                opp_name = getattr(self, "white_name", "相手")
+                opp_name = getattr(self, "white_name", L("opponent_default"))
             else:
-                opp_name = getattr(self, "black_name", "相手")
-            msg = "{}の時間切れです。\nあなたの勝ちです。".format(opp_name)
+                opp_name = getattr(self, "black_name", L("opponent_default"))
+            msg = L("timeout_opponent", opp_name)
         else:
-            msg = "時間切れです。\nあなたの負けです。"
+            msg = L("timeout_self")
         # Save game record before closing network
         if self.app:
             result = "白時間切れ勝ち" if winner_color == WHITE else "黒時間切れ勝ち"
@@ -764,7 +764,7 @@ class GoBoard:
             if self.app:
                 self.app._update_elo_after_game(winner_color)
             self.show_nav_bar()
-        self._show_centered_msgbox("時間切れ", msg, callback=_after_timeout_ok2)
+        self._show_centered_msgbox(L("timeout_title"), msg, callback=_after_timeout_ok2)
 
     def handle_network_resign(self, loser_color):
         """Handle resignation from network opponent."""
@@ -772,9 +772,9 @@ class GoBoard:
         self._timer_running = False
         # Determine opponent name
         if self.my_color == BLACK:
-            opp_name = getattr(self, "white_name", "相手")
+            opp_name = getattr(self, "white_name", L("opponent_default"))
         else:
-            opp_name = getattr(self, "black_name", "相手")
+            opp_name = getattr(self, "black_name", L("opponent_default"))
         # Save game record before closing network
         winner_color = BLACK if loser_color == WHITE else WHITE
         if self.app:
@@ -790,11 +790,11 @@ class GoBoard:
             if self.app:
                 self.app._update_elo_after_game(winner_color)
             self.show_nav_bar()
-        self._show_centered_msgbox("投了",
-            "{}が投了しました。\nあなたの勝ちです。".format(opp_name),
+        self._show_centered_msgbox(L("resign_title"),
+            L("resign_opponent", opp_name),
             callback=_after_resign_ok)
 
-    def setup_network_game(self, my_color, main_time, byo_time, byo_periods, komi=6.5):
+    def setup_network_game(self, my_color, main_time, byo_time, byo_periods, komi=7.5):
         """Initialize board for network play."""
         self.net_mode = True
         self.my_color = my_color
@@ -866,11 +866,11 @@ class GoBoard:
         self.score_btn.config(state="disabled")
         # Show progress centered on main window
         self._score_progress = tk.Toplevel(self.root)
-        self._score_progress.title("地合計算")
+        self._score_progress.title(L("score_title"))
         self._score_progress.resizable(False, False)
         self._score_progress.transient(self.root)
         self._score_progress.grab_set()
-        tk.Label(self._score_progress, text="計算中です。少しお待ちください...",
+        tk.Label(self._score_progress, text=L("score_calculating"),
                  font=("", 12)).pack(expand=True, padx=20, pady=20)
         self._score_progress.update_idletasks()
         pw = self._score_progress.winfo_reqwidth()
@@ -903,7 +903,7 @@ class GoBoard:
             self._score_progress.destroy()
             self._score_progress = None
         if winner is None:
-            _mb.showerror("エラー", "地合計算に失敗しました:\n" + result_text)
+            _mb.showerror(L("msg_error"), L("msg_score_fail", result_text))
             self.score_btn.config(state="normal")
             return
         self.score_btn.config(state="normal")
@@ -927,7 +927,7 @@ class GoBoard:
             # Stop match listener after scoring
             if self.app:
                 self.app._stop_match_listener()
-        self._show_centered_msgbox("\u5730\u5408\u8a08\u7b97", msg, callback=_after_score_ok)
+        self._show_centered_msgbox(L("score_title"), msg, callback=_after_score_ok)
         # Ensure nav bar stays visible
         if not self._reviewing:
             self.show_nav_bar()
@@ -1008,15 +1008,15 @@ class GoBoard:
             fill="", outline="#ffffff", width=2)
         msg_text = self.canvas.create_text(
             cx, cy - 20,
-            text="\u6295\u4e86\u3057\u307e\u3059\u304b\uff1f",
+            text=L("resign_confirm"),
             font=("", 18, "bold"), fill="#ffffff", anchor="center")
         # Yes/No buttons as canvas widgets
         btn_frame = tk.Frame(self.canvas, bg="#333333")
-        yes_btn = tk.Button(btn_frame, text="\u306f\u3044",
+        yes_btn = tk.Button(btn_frame, text=L("resign_yes"),
             font=("", 12, "bold"), bg="#cc4444", fg="#ffffff",
             activebackground="#aa2222", relief="flat", padx=20, pady=4)
         yes_btn.pack(side="left", padx=(0, 12))
-        no_btn = tk.Button(btn_frame, text="\u3044\u3044\u3048",
+        no_btn = tk.Button(btn_frame, text=L("resign_no"),
             font=("", 12, "bold"), bg="#666666", fg="#ffffff",
             activebackground="#444444", relief="flat", padx=20, pady=4)
         no_btn.pack(side="left")
@@ -1244,7 +1244,7 @@ class GoBoard:
             self.white_winrate_label.config(text="")
             return
         self._winrate_running = True
-        komi = getattr(self, '_komi', 6.5)
+        komi = getattr(self, '_komi', 7.5)
         def _run():
             try:
                 bwr, wwr = _katago_winrate(move_history, komi=komi,

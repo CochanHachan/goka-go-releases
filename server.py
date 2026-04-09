@@ -394,6 +394,29 @@ async def update_elo(handle_name: str, req: UpdateEloRequest):
     return {"success": True}
 
 
+class UpdateLanguageRequest(BaseModel):
+    handle_name: str
+    language: str
+    token: str
+
+@app.put("/api/user/language")
+async def update_user_language(req: UpdateLanguageRequest):
+    """ユーザーの言語設定を更新する。"""
+    if req.token not in active_tokens or active_tokens[req.token] != req.handle_name:
+        return {"success": False, "message": "Unauthorized"}
+    if req.language not in ("ja", "en", "zh", "ko"):
+        return {"success": False, "message": "Invalid language code"}
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE users SET language = ? WHERE handle_name = ?",
+                     (req.language, req.handle_name))
+        conn.commit()
+    finally:
+        conn.close()
+    logger.info("Language updated: %s -> %s", req.handle_name, req.language)
+    return {"success": True}
+
+
 class UpdatePasswordEncRequest(BaseModel):
     handle_name: str
     password_enc: str
@@ -589,7 +612,7 @@ async def _bot_auto_offer(handle: str):
             "main_time": 600,
             "byo_time": 30,
             "byo_periods": 5,
-            "komi": 6.5,
+            "komi": 7.5,
             "is_bot": True,
         })
         logger.info("Bot auto-offer: %s -> %s", bot_name, handle)
@@ -634,7 +657,7 @@ async def _bot_auto_accept(handle: str):
             "main_time": 600,
             "byo_time": 30,
             "byo_periods": 5,
-            "komi": 6.5,
+            "komi": 7.5,
             "is_bot": True,
         })
         logger.info("Bot auto-offer (after timeout): %s -> %s", bot_name, handle)
@@ -706,7 +729,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "main_time": msg.get("main_time", 600),
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
-                "komi": msg.get("komi", 6.5),
+                "komi": msg.get("komi", 7.5),
             })
             logger.info("Match offer: %s -> %s", handle, target)
             # 1分後にボットが自動承諾するタイマー開始
@@ -732,7 +755,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             "main_time": msg.get("main_time", 600),
             "byo_time": msg.get("byo_time", 30),
             "byo_periods": msg.get("byo_periods", 5),
-            "komi": msg.get("komi", 6.5),
+            "komi": msg.get("komi", 7.5),
         }
         payload = json.dumps(offer_msg, ensure_ascii=False)
         for other_handle, other_ws in list(connected_users.items()):

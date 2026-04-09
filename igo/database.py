@@ -112,7 +112,7 @@ class UserDatabase:
                 white_name TEXT NOT NULL,
                 white_rank TEXT NOT NULL DEFAULT '',
                 result TEXT NOT NULL DEFAULT '',
-                komi REAL NOT NULL DEFAULT 6.5,
+                komi REAL NOT NULL DEFAULT 7.5,
                 move_count INTEGER NOT NULL DEFAULT 0,
                 sgf_text TEXT NOT NULL DEFAULT ''
             )

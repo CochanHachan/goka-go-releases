@@ -33,7 +33,7 @@ def _parse_sgf_text(content):
 # --------------- SGF Utilities ---------------
 
 def save_sgf(filepath, move_history, black_name="", white_name="",
-             black_rank="", white_rank="", board_size=19, komi=6.5, result=""):
+             black_rank="", white_rank="", board_size=19, komi=7.5, result=""):
     """Save game record as SGF file."""
     sgf = "(;GM[1]FF[4]CA[UTF-8]SZ[{}]".format(board_size)
     sgf += "KM[{}]".format(komi)

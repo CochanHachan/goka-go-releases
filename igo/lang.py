@@ -147,6 +147,44 @@ STRINGS = {
         "ai_resigned":      "AIが投了しました。\nあなたの勝ちです。",
         "ai_pass":          "AIがパスしました。",
         "ai_not_found":     "KataGoが見つかりません。\nkatagoフォルダを確認してください。",
+
+        # --- Game results / resign / timeout ---
+        "resign_title":         "投了",
+        "resign_confirm":       "投了しますか？",
+        "resign_yes":           "はい",
+        "resign_no":            "いいえ",
+        "resign_opponent":      "{}が投了しました。\nあなたの勝ちです。",
+        "result_white_resign":  "白中押し勝ち",
+        "result_black_resign":  "黒中押し勝ち",
+        "timeout_title":        "時間切れ",
+        "timeout_opponent":     "{}の時間切れです。\nあなたの勝ちです。",
+        "timeout_self":         "時間切れです。\nあなたの負けです。",
+        "timeout_winner":       "時間切れ  {}の勝ち",
+        "result_white_timeout": "白時間切れ勝ち",
+        "result_black_timeout": "黒時間切れ勝ち",
+        "opponent_default":     "相手",
+        "opponent_passed":      "{}がパスをしました",
+        "color_black":          "黒",
+        "color_white":          "白",
+        "player_default":       "対局者",
+
+        # --- Menu: Settings submenus ---
+        "menu_ai_robot":        "AIロボ",
+        "menu_ai_on":           "対局する",
+        "menu_ai_off":          "対局しない",
+        "menu_byoyomi_voice":   "秒読み",
+        "menu_voice_on":        "よむ",
+        "menu_voice_off":       "よまない",
+        "menu_board_dark":      "濃いめ",
+        "menu_board_light":     "薄め",
+        "menu_speed_sec":       "{}秒",
+
+        # --- Login screen ---
+        "login_empty":          "ハンドルネームとパスワードを入力してください",
+        "login_server_error":   "サーバーに接続できません",
+        "login_failed":         "ログインに失敗しました",
+        "btn_create_account":   "アカウント作成",
+        "lang_restart":         "言語を切り替えました。一部の表示は再起動後に反映されます。",
     },
 
     "en": {
@@ -294,6 +332,44 @@ STRINGS = {
         "ai_resigned":      "AI resigned.\nYou win!",
         "ai_pass":          "AI passed.",
         "ai_not_found":     "KataGo not found.\nPlease check the katago folder.",
+
+        # --- Game results / resign / timeout ---
+        "resign_title":         "Resign",
+        "resign_confirm":       "Are you sure you want to resign?",
+        "resign_yes":           "Yes",
+        "resign_no":            "No",
+        "resign_opponent":      "{} resigned.\nYou win!",
+        "result_white_resign":  "White wins by resignation",
+        "result_black_resign":  "Black wins by resignation",
+        "timeout_title":        "Time Out",
+        "timeout_opponent":     "{} ran out of time.\nYou win!",
+        "timeout_self":         "Time is up.\nYou lose.",
+        "timeout_winner":       "Time out — {} wins",
+        "result_white_timeout": "White wins on time",
+        "result_black_timeout": "Black wins on time",
+        "opponent_default":     "Opponent",
+        "opponent_passed":      "{} passed",
+        "color_black":          "Black",
+        "color_white":          "White",
+        "player_default":       "Player",
+
+        # --- Menu: Settings submenus ---
+        "menu_ai_robot":        "AI Robot",
+        "menu_ai_on":           "Play",
+        "menu_ai_off":          "Don't play",
+        "menu_byoyomi_voice":   "Byoyomi",
+        "menu_voice_on":        "Read aloud",
+        "menu_voice_off":       "Silent",
+        "menu_board_dark":      "Dark",
+        "menu_board_light":     "Light",
+        "menu_speed_sec":       "{}s",
+
+        # --- Login screen ---
+        "login_empty":          "Please enter handle name and password.",
+        "login_server_error":   "Cannot connect to server.",
+        "login_failed":         "Login failed.",
+        "btn_create_account":   "Create Account",
+        "lang_restart":         "Language changed. Some elements will update after restart.",
     },
 
     "zh": {
@@ -441,6 +517,44 @@ STRINGS = {
         "ai_resigned":      "AI认输了。\n你赢了！",
         "ai_pass":          "AI跳过了。",
         "ai_not_found":     "未找到KataGo。\n请检查katago文件夹。",
+
+        # --- Game results / resign / timeout ---
+        "resign_title":         "投降",
+        "resign_confirm":       "确定要投降吗？",
+        "resign_yes":           "是",
+        "resign_no":            "否",
+        "resign_opponent":      "{}投降了。\n你赢了！",
+        "result_white_resign":  "白方中盘胜",
+        "result_black_resign":  "黑方中盘胜",
+        "timeout_title":        "超时",
+        "timeout_opponent":     "{}超时了。\n你赢了！",
+        "timeout_self":         "超时了。\n你输了。",
+        "timeout_winner":       "超时  {}胜",
+        "result_white_timeout": "白方超时胜",
+        "result_black_timeout": "黑方超时胜",
+        "opponent_default":     "对手",
+        "opponent_passed":      "{}停了一手",
+        "color_black":          "黑",
+        "color_white":          "白",
+        "player_default":       "对局者",
+
+        # --- Menu: Settings submenus ---
+        "menu_ai_robot":        "AI对局",
+        "menu_ai_on":           "开启",
+        "menu_ai_off":          "关闭",
+        "menu_byoyomi_voice":   "读秒",
+        "menu_voice_on":        "开启",
+        "menu_voice_off":       "关闭",
+        "menu_board_dark":      "深色",
+        "menu_board_light":     "浅色",
+        "menu_speed_sec":       "{}秒",
+
+        # --- Login screen ---
+        "login_empty":          "请输入昵称和密码。",
+        "login_server_error":   "无法连接服务器。",
+        "login_failed":         "登录失败。",
+        "btn_create_account":   "创建账户",
+        "lang_restart":         "语言已切换。部分界面将在重启后更新。",
     },
 
     "ko": {
@@ -574,6 +688,44 @@ STRINGS = {
         "promo_template_kyu":        "{}님\n{}으로 승급했습니다\n\n축하합니다!",
         "promo_template_dan_noname": "{}에 승단했습니다\n\n축하합니다!",
         "promo_template_kyu_noname": "{}으로 승급했습니다\n\n축하합니다!",
+
+        # --- Game results / resign / timeout ---
+        "resign_title":         "기권",
+        "resign_confirm":       "기권하시겠습니까?",
+        "resign_yes":           "예",
+        "resign_no":            "아니오",
+        "resign_opponent":      "{}이(가) 기권했습니다.\n당신이 이겼습니다!",
+        "result_white_resign":  "백 중앙승",
+        "result_black_resign":  "흑 중앙승",
+        "timeout_title":        "시간 초과",
+        "timeout_opponent":     "{}의 시간이 초과되었습니다.\n당신이 이겼습니다!",
+        "timeout_self":         "시간 초과입니다.\n당신이 졌습니다.",
+        "timeout_winner":       "시간 초과  {}의 승리",
+        "result_white_timeout": "백 시간승",
+        "result_black_timeout": "흑 시간승",
+        "opponent_default":     "상대방",
+        "opponent_passed":      "{}이(가) 패스했습니다",
+        "color_black":          "흑",
+        "color_white":          "백",
+        "player_default":       "대국자",
+
+        # --- Menu: Settings submenus ---
+        "menu_ai_robot":        "AI 대국",
+        "menu_ai_on":           "하기",
+        "menu_ai_off":          "안 하기",
+        "menu_byoyomi_voice":   "초읽기",
+        "menu_voice_on":        "읽기",
+        "menu_voice_off":       "읽지 않기",
+        "menu_board_dark":      "진하게",
+        "menu_board_light":     "연하게",
+        "menu_speed_sec":       "{}초",
+
+        # --- Login screen ---
+        "login_empty":          "핸들 이름과 비밀번호를 입력하세요.",
+        "login_server_error":   "서버에 연결할 수 없습니다.",
+        "login_failed":         "로그인에 실패했습니다.",
+        "btn_create_account":   "계정 만들기",
+        "lang_restart":         "언어가 변경되었습니다. 일부 항목은 재시작 후 반영됩니다.",
     },
 }
 

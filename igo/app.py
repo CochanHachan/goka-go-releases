@@ -136,46 +136,53 @@ class App:
         settings_menu = tk.Menu(menubar, tearoff=0)
         # 再生スピード(S)サブメニュー
         speed_menu = tk.Menu(settings_menu, tearoff=0)
-        self._auto_speed_var = tk.StringVar(value="2")
+        if not hasattr(self, '_auto_speed_var'):
+            self._auto_speed_var = tk.StringVar(value="2")
         for sec in ["1", "2", "3", "5", "10"]:
-            speed_menu.add_radiobutton(label="{}\u79d2".format(sec),
+            speed_menu.add_radiobutton(label=L("menu_speed_sec", sec),
                 variable=self._auto_speed_var, value=sec)
         settings_menu.add_cascade(label=L("menu_speed"), menu=speed_menu)
         # 言語(L)サブメニュー
         lang_menu = tk.Menu(settings_menu, tearoff=0)
-        self._lang_var = tk.StringVar(value=get_language())
+        if not hasattr(self, '_lang_var'):
+            self._lang_var = tk.StringVar(value=get_language())
+        else:
+            self._lang_var.set(get_language())
         for code, label in [("ja", "日本語"), ("en", "English"), ("zh", "中文"), ("ko", "한국어")]:
             lang_menu.add_radiobutton(label=label, variable=self._lang_var, value=code,
                 command=lambda c=code: self._change_language(c))
         settings_menu.add_cascade(label=L("menu_language"), menu=lang_menu)
         # AIロボ サブメニュー
         ai_menu = tk.Menu(settings_menu, tearoff=0)
-        self._ai_enabled_var = tk.StringVar(value=self._load_ai_setting())
-        ai_menu.add_radiobutton(label="対局する", variable=self._ai_enabled_var,
+        if not hasattr(self, '_ai_enabled_var'):
+            self._ai_enabled_var = tk.StringVar(value=self._load_ai_setting())
+        ai_menu.add_radiobutton(label=L("menu_ai_on"), variable=self._ai_enabled_var,
             value="on", command=self._change_ai_setting)
-        ai_menu.add_radiobutton(label="対局しない", variable=self._ai_enabled_var,
+        ai_menu.add_radiobutton(label=L("menu_ai_off"), variable=self._ai_enabled_var,
             value="off", command=self._change_ai_setting)
-        settings_menu.add_cascade(label="AIロボ", menu=ai_menu)
+        settings_menu.add_cascade(label=L("menu_ai_robot"), menu=ai_menu)
         # 秒読みサブメニュー
         byoyomi_menu = tk.Menu(settings_menu, tearoff=0)
-        self._byoyomi_voice_var = tk.StringVar(value=self._load_byoyomi_voice_setting())
+        if not hasattr(self, '_byoyomi_voice_var'):
+            self._byoyomi_voice_var = tk.StringVar(value=self._load_byoyomi_voice_setting())
         self._byoyomi_voice_enabled = self._byoyomi_voice_var.get() == "on"
-        byoyomi_menu.add_radiobutton(label="よむ", variable=self._byoyomi_voice_var,
+        byoyomi_menu.add_radiobutton(label=L("menu_voice_on"), variable=self._byoyomi_voice_var,
             value="on", command=self._change_byoyomi_voice_setting)
-        byoyomi_menu.add_radiobutton(label="よまない", variable=self._byoyomi_voice_var,
+        byoyomi_menu.add_radiobutton(label=L("menu_voice_off"), variable=self._byoyomi_voice_var,
             value="off", command=self._change_byoyomi_voice_setting)
-        settings_menu.add_cascade(label="秒読み", menu=byoyomi_menu)
+        settings_menu.add_cascade(label=L("menu_byoyomi_voice"), menu=byoyomi_menu)
         menubar.add_cascade(label=L("menu_settings"), menu=settings_menu)
 
         # 表示(V)
         view_menu = tk.Menu(menubar, tearoff=0)
         # 碁盤選択サブメニュー
         board_select_menu = tk.Menu(view_menu, tearoff=0)
-        self._board_type_var = tk.StringVar(value="dark")
-        board_select_menu.add_radiobutton(label="\u6fc3\u3044\u3081",
+        if not hasattr(self, '_board_type_var'):
+            self._board_type_var = tk.StringVar(value="dark")
+        board_select_menu.add_radiobutton(label=L("menu_board_dark"),
             variable=self._board_type_var, value="dark",
             command=self._change_board_texture)
-        board_select_menu.add_radiobutton(label="\u8584\u3081",
+        board_select_menu.add_radiobutton(label=L("menu_board_light"),
             variable=self._board_type_var, value="light",
             command=self._change_board_texture)
         view_menu.add_cascade(label=L("menu_board"), menu=board_select_menu)
@@ -203,17 +210,20 @@ class App:
         help_menu.add_command(label=L("menu_about"), command=self._show_about)
 
     def _change_language(self, lang_code):
-        """言語を変更してDBとconfigに保存。再起動で適用される。"""
+        """言語を変更してDBとconfigに保存。メニューバーを即時再構築。"""
         _save_language_to_config(lang_code)
         set_language(lang_code)
         if self.current_user:
             self.db.set_user_language(self.current_user["id"], lang_code)
+            self._api_update_language(self.current_user.get("handle_name", ""), lang_code)
+        # メニューバーを新しい言語で即時再構築
+        self._build_menubar()
+        self.root.config(menu=self._menubar)
+        if self.go_board:
+            self._sync_game_menu_state()
         messagebox.showinfo(
             L("menu_language"),
-            {"ja": "再起動すると言語が切り替わります。",
-             "en": "Language will change after restart.",
-             "zh": "重启后语言将切换。",
-             "ko": "재시작 후 언어가 변경됩니다."}.get(lang_code, "Restart to apply language change.")
+            L("lang_restart")
         )
 
     def _set_title(self, center_text=""):
@@ -885,18 +895,41 @@ class App:
         self._switch_frame(self._register_frame)
         self._apply_geometry("register")
 
+    def _api_update_language(self, handle, lang_code):
+        """Update language on the server (non-blocking)."""
+        if not self._auth_token:
+            return
+        import urllib.request as _urlreq
+        import json as _json, threading as _thr
+        def _do():
+            try:
+                _data = _json.dumps({
+                    "handle_name": handle,
+                    "language": lang_code,
+                    "token": self._auth_token,
+                }).encode("utf-8")
+                _req = _urlreq.Request(
+                    API_BASE_URL + "/api/user/language",
+                    data=_data,
+                    headers={"Content-Type": "application/json"},
+                    method="PUT"
+                )
+                _urlreq.urlopen(_req, timeout=5).close()
+            except Exception as _e:
+                print("[Language update failed]", _e)
+        _thr.Thread(target=_do, daemon=True).start()
+
     def on_login_success(self, user):
         self.current_user = user
-        # ユーザーの言語設定をDBから適用
-        try:
-            user_lang = user["language"] if user["language"] else get_language()
-        except Exception:
-            user_lang = get_language()
-        if not user_lang:
-            user_lang = get_language()
-            _save_language_to_config(user_lang)
-        set_language(user_lang)
-        _save_language_to_config(user_lang)
+        # ログイン画面で選んだ言語を優先する（サーバーDBのデフォルト"ja"で上書きしない）
+        login_lang = get_language()  # ログイン画面で既に設定済み
+        set_language(login_lang)
+        _save_language_to_config(login_lang)
+        user["language"] = login_lang
+        # サーバーDBに言語を保存（次回ログイン時に復元用）
+        self._api_update_language(user.get("handle_name", ""), login_lang)
+        # メニューバーを現在の言語で再構築
+        self._build_menubar()
         self.root.resizable(True, True)
         self.root.config(menu=self._menubar)
         # Restore board texture preference
@@ -1048,7 +1081,7 @@ class App:
                     mt = msg.get("main_time", 600)
                     bt = msg.get("byo_time", 30)
                     bp = msg.get("byo_periods", 5)
-                    km = msg.get("komi", 6.5)
+                    km = msg.get("komi", 7.5)
                     opponent_name = offer.get("name", "?")
                     opponent_rank = offer.get("rank", "?")
                     opponent_elo = offer.get("elo", rank_to_initial_elo(opponent_rank))
@@ -1063,7 +1096,7 @@ class App:
                     "\u30a8\u30e9\u30fc", "\u63a5\u7d9a\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: {}".format(e)))
         threading.Thread(target=_connect, daemon=True).start()
 
-    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=6.5, opponent_elo=0):
+    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=7.5, opponent_elo=0):
         if not self.go_board:
             return
         user = self.current_user
@@ -1449,7 +1482,7 @@ class App:
                 "main_time": msg.get("main_time", 600),
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
-                "komi": msg.get("komi", 6.5),
+                "komi": msg.get("komi", 7.5),
             }
             # Case 1: MatchDialog is open (user is hosting/browsing) -> add to its list
             if self._current_match_dialog:
@@ -1558,7 +1591,7 @@ class App:
         main_time = getattr(self, '_cloud_main_time', 600)
         byo_time = getattr(self, '_cloud_byo_time', 30)
         byo_periods = getattr(self, '_cloud_byo_periods', 5)
-        komi = getattr(self, '_cloud_komi', 6.5)
+        komi = getattr(self, '_cloud_komi', 7.5)
 
         self._start_network_game(my_color, opponent_name, opponent_rank,
                                   main_time, byo_time, byo_periods, komi, opponent_elo)
@@ -1593,7 +1626,7 @@ class App:
         main_time = getattr(self, '_cloud_main_time', 600)
         byo_time = getattr(self, '_cloud_byo_time', 30)
         byo_periods = getattr(self, '_cloud_byo_periods', 5)
-        komi = getattr(self, '_cloud_komi', 6.5)
+        komi = getattr(self, '_cloud_komi', 7.5)
 
         self._start_network_game(my_color, opponent_name, opponent_rank,
                                   main_time, byo_time, byo_periods, komi, opponent_elo)
@@ -1843,21 +1876,21 @@ class App:
         # 投了・パス
         resign_state = "normal" if in_game else "disabled"
         pass_state = resign_state
-        self._game_menu.entryconfig("\u6295\u4e86", state=resign_state)
-        self._game_menu.entryconfig("\u30d1\u30b9", state=pass_state)
+        self._game_menu.entryconfig(L("menu_resign"), state=resign_state)
+        self._game_menu.entryconfig(L("menu_pass"), state=pass_state)
         # 地合計算
         score_state = str(gb.score_btn.cget("state")) if hasattr(gb, "score_btn") else "disabled"
-        self._game_menu.entryconfig("\u5730\u5408\u8a08\u7b97", state=score_state)
+        self._game_menu.entryconfig(L("menu_score"), state=score_state)
         # 検討: active when not in game, not in offer dialog, not already reviewing
         if not in_game and not in_review and not self._offer_dialog_open:
-            self._game_menu.entryconfig("\u691c\u8a0e", state="normal")
+            self._game_menu.entryconfig(L("menu_review"), state="normal")
         else:
-            self._game_menu.entryconfig("\u691c\u8a0e", state="disabled")
+            self._game_menu.entryconfig(L("menu_review"), state="disabled")
         # 検討終了: active only when in review mode
         if in_review:
-            self._game_menu.entryconfig("\u691c\u8a0e\u7d42\u4e86", state="normal")
+            self._game_menu.entryconfig(L("menu_review_end"), state="normal")
         else:
-            self._game_menu.entryconfig("\u691c\u8a0e\u7d42\u4e86", state="disabled")
+            self._game_menu.entryconfig(L("menu_review_end"), state="disabled")
         # 初期化ボタン: disabled during active game
         if hasattr(gb, 'reset_btn'):
             gb.reset_btn.config(state="disabled" if in_game else "normal")
