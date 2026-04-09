@@ -302,6 +302,8 @@ class MatchDialog:
         v = self.komi_var.get()
         if "5" in v:
             return 5.5
+        elif "6" in v:
+            return 6.5
         elif "7" in v:
             return 7.5
         return 7.5
