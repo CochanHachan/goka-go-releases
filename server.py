@@ -708,6 +708,17 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "bot_visits": bot_info["visits"],
             })
             logger.info("AI match auto-accepted: %s vs %s", handle, target)
+            # ボット対局でも他ユーザーに通知して挑戦状リストから消す
+            taken_msg = json.dumps(
+                {"type": "match_taken", "offerer": handle, "accepter": ""},
+                ensure_ascii=False
+            )
+            for other_handle, other_ws in list(connected_users.items()):
+                if other_handle != handle:
+                    try:
+                        await other_ws.send_text(taken_msg)
+                    except Exception:
+                        pass
         elif target and target in connected_users:
             # 個別申込 → 既に受付中なら「申請・受付」、そうでなければ「対局申請中」
             _my = user_status.get(handle, "ログイン")
@@ -796,6 +807,17 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "bot_visits": bot_info["visits"],
             })
             logger.info("User accepted bot offer: %s vs %s", handle, target)
+            # ボット対局でも他ユーザーに通知して挑戦状リストから消す
+            taken_msg = json.dumps(
+                {"type": "match_taken", "offerer": handle, "accepter": ""},
+                ensure_ascii=False
+            )
+            for other_handle, other_ws in list(connected_users.items()):
+                if other_handle != handle:
+                    try:
+                        await other_ws.send_text(taken_msg)
+                    except Exception:
+                        pass
         elif target and target in connected_users:
             game_pairs[handle] = target
             game_pairs[target] = handle
