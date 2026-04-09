@@ -136,21 +136,26 @@ class App:
         settings_menu = tk.Menu(menubar, tearoff=0)
         # 再生スピード(S)サブメニュー
         speed_menu = tk.Menu(settings_menu, tearoff=0)
-        self._auto_speed_var = tk.StringVar(value="2")
+        if not hasattr(self, '_auto_speed_var'):
+            self._auto_speed_var = tk.StringVar(value="2")
         for sec in ["1", "2", "3", "5", "10"]:
             speed_menu.add_radiobutton(label=L("menu_speed_sec", sec),
                 variable=self._auto_speed_var, value=sec)
         settings_menu.add_cascade(label=L("menu_speed"), menu=speed_menu)
         # 言語(L)サブメニュー
         lang_menu = tk.Menu(settings_menu, tearoff=0)
-        self._lang_var = tk.StringVar(value=get_language())
+        if not hasattr(self, '_lang_var'):
+            self._lang_var = tk.StringVar(value=get_language())
+        else:
+            self._lang_var.set(get_language())
         for code, label in [("ja", "日本語"), ("en", "English"), ("zh", "中文"), ("ko", "한국어")]:
             lang_menu.add_radiobutton(label=label, variable=self._lang_var, value=code,
                 command=lambda c=code: self._change_language(c))
         settings_menu.add_cascade(label=L("menu_language"), menu=lang_menu)
         # AIロボ サブメニュー
         ai_menu = tk.Menu(settings_menu, tearoff=0)
-        self._ai_enabled_var = tk.StringVar(value=self._load_ai_setting())
+        if not hasattr(self, '_ai_enabled_var'):
+            self._ai_enabled_var = tk.StringVar(value=self._load_ai_setting())
         ai_menu.add_radiobutton(label=L("menu_ai_on"), variable=self._ai_enabled_var,
             value="on", command=self._change_ai_setting)
         ai_menu.add_radiobutton(label=L("menu_ai_off"), variable=self._ai_enabled_var,
@@ -158,7 +163,8 @@ class App:
         settings_menu.add_cascade(label=L("menu_ai_robot"), menu=ai_menu)
         # 秒読みサブメニュー
         byoyomi_menu = tk.Menu(settings_menu, tearoff=0)
-        self._byoyomi_voice_var = tk.StringVar(value=self._load_byoyomi_voice_setting())
+        if not hasattr(self, '_byoyomi_voice_var'):
+            self._byoyomi_voice_var = tk.StringVar(value=self._load_byoyomi_voice_setting())
         self._byoyomi_voice_enabled = self._byoyomi_voice_var.get() == "on"
         byoyomi_menu.add_radiobutton(label=L("menu_voice_on"), variable=self._byoyomi_voice_var,
             value="on", command=self._change_byoyomi_voice_setting)
@@ -171,7 +177,8 @@ class App:
         view_menu = tk.Menu(menubar, tearoff=0)
         # 碁盤選択サブメニュー
         board_select_menu = tk.Menu(view_menu, tearoff=0)
-        self._board_type_var = tk.StringVar(value="dark")
+        if not hasattr(self, '_board_type_var'):
+            self._board_type_var = tk.StringVar(value="dark")
         board_select_menu.add_radiobutton(label=L("menu_board_dark"),
             variable=self._board_type_var, value="dark",
             command=self._change_board_texture)
