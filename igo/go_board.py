@@ -134,7 +134,7 @@ class GoBoard:
             bp_bottom, text="00:00", font=("Yu Gothic UI", 18, "bold"),
             fg=T("timer_active"), bg=T("container_bg"), anchor="w")
         self.black_time_label.pack(side="left")
-        self._komi = 6.5
+        self._komi = 7.5
         self._rules = "japanese"
         self.komi_label = tk.Label(
             bp_bottom, text="", font=("Yu Gothic UI", 9),
@@ -794,7 +794,7 @@ class GoBoard:
             "{}が投了しました。\nあなたの勝ちです。".format(opp_name),
             callback=_after_resign_ok)
 
-    def setup_network_game(self, my_color, main_time, byo_time, byo_periods, komi=6.5):
+    def setup_network_game(self, my_color, main_time, byo_time, byo_periods, komi=7.5):
         """Initialize board for network play."""
         self.net_mode = True
         self.my_color = my_color
@@ -1244,7 +1244,7 @@ class GoBoard:
             self.white_winrate_label.config(text="")
             return
         self._winrate_running = True
-        komi = getattr(self, '_komi', 6.5)
+        komi = getattr(self, '_komi', 7.5)
         def _run():
             try:
                 bwr, wwr = _katago_winrate(move_history, komi=komi,
@@ -1362,7 +1362,7 @@ class GoBoard:
         try:
             self._komi = float(metadata.get("KM", "6.5"))
         except (ValueError, TypeError):
-            self._komi = 6.5
+            self._komi = 7.5
         self._update_komi_label()
         # Set rules from SGF metadata (default: japanese)
         ru = metadata.get("RU", "").lower()

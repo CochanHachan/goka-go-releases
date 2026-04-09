@@ -1048,7 +1048,7 @@ class App:
                     mt = msg.get("main_time", 600)
                     bt = msg.get("byo_time", 30)
                     bp = msg.get("byo_periods", 5)
-                    km = msg.get("komi", 6.5)
+                    km = msg.get("komi", 7.5)
                     opponent_name = offer.get("name", "?")
                     opponent_rank = offer.get("rank", "?")
                     opponent_elo = offer.get("elo", rank_to_initial_elo(opponent_rank))
@@ -1063,7 +1063,7 @@ class App:
                     "\u30a8\u30e9\u30fc", "\u63a5\u7d9a\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: {}".format(e)))
         threading.Thread(target=_connect, daemon=True).start()
 
-    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=6.5, opponent_elo=0):
+    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=7.5, opponent_elo=0):
         if not self.go_board:
             return
         user = self.current_user
@@ -1449,7 +1449,7 @@ class App:
                 "main_time": msg.get("main_time", 600),
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
-                "komi": msg.get("komi", 6.5),
+                "komi": msg.get("komi", 7.5),
             }
             # Case 1: MatchDialog is open (user is hosting/browsing) -> add to its list
             if self._current_match_dialog:
@@ -1558,7 +1558,7 @@ class App:
         main_time = getattr(self, '_cloud_main_time', 600)
         byo_time = getattr(self, '_cloud_byo_time', 30)
         byo_periods = getattr(self, '_cloud_byo_periods', 5)
-        komi = getattr(self, '_cloud_komi', 6.5)
+        komi = getattr(self, '_cloud_komi', 7.5)
 
         self._start_network_game(my_color, opponent_name, opponent_rank,
                                   main_time, byo_time, byo_periods, komi, opponent_elo)
@@ -1593,7 +1593,7 @@ class App:
         main_time = getattr(self, '_cloud_main_time', 600)
         byo_time = getattr(self, '_cloud_byo_time', 30)
         byo_periods = getattr(self, '_cloud_byo_periods', 5)
-        komi = getattr(self, '_cloud_komi', 6.5)
+        komi = getattr(self, '_cloud_komi', 7.5)
 
         self._start_network_game(my_color, opponent_name, opponent_rank,
                                   main_time, byo_time, byo_periods, komi, opponent_elo)

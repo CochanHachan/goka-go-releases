@@ -96,7 +96,7 @@ class KataGoGTP:
     def set_boardsize(self, size=19):
         self.send_command("boardsize {}".format(size))
 
-    def set_komi(self, komi=6.5):
+    def set_komi(self, komi=7.5):
         self.send_command("komi {}".format(komi))
 
     def clear_board(self):
@@ -164,7 +164,7 @@ def _moves_to_katago(move_history, size=19):
     return moves
 
 
-def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
+def _katago_score(move_history, komi=7.5, size=19, rules="chinese"):
     """Run KataGo analysis to get score.
 
     Returns (score_lead, ownership_list) or raises RuntimeError.
@@ -256,7 +256,7 @@ def _katago_score(move_history, komi=6.5, size=19, rules="chinese"):
             proc.kill()
 
 
-def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
+def _katago_winrate(move_history, komi=7.5, size=19, rules="chinese"):
     """Run KataGo analysis to get win rate.
     Returns (black_winrate, white_winrate) as percentages (0-100).
     """
@@ -344,7 +344,7 @@ def _katago_winrate(move_history, komi=6.5, size=19, rules="chinese"):
             proc.kill()
 
 
-def calculate_territory_chinese(board, komi=6.5, move_history=None, rules="chinese"):
+def calculate_territory_chinese(board, komi=7.5, move_history=None, rules="chinese"):
     """Calculate score using KataGo analysis API.
 
     Returns (winner_str, result_text) e.g. ("白", "6目半勝ち")

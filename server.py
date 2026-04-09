@@ -589,7 +589,7 @@ async def _bot_auto_offer(handle: str):
             "main_time": 600,
             "byo_time": 30,
             "byo_periods": 5,
-            "komi": 6.5,
+            "komi": 7.5,
             "is_bot": True,
         })
         logger.info("Bot auto-offer: %s -> %s", bot_name, handle)
@@ -634,7 +634,7 @@ async def _bot_auto_accept(handle: str):
             "main_time": 600,
             "byo_time": 30,
             "byo_periods": 5,
-            "komi": 6.5,
+            "komi": 7.5,
             "is_bot": True,
         })
         logger.info("Bot auto-offer (after timeout): %s -> %s", bot_name, handle)
@@ -706,7 +706,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "main_time": msg.get("main_time", 600),
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
-                "komi": msg.get("komi", 6.5),
+                "komi": msg.get("komi", 7.5),
             })
             logger.info("Match offer: %s -> %s", handle, target)
             # 1分後にボットが自動承諾するタイマー開始
@@ -732,7 +732,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             "main_time": msg.get("main_time", 600),
             "byo_time": msg.get("byo_time", 30),
             "byo_periods": msg.get("byo_periods", 5),
-            "komi": msg.get("komi", 6.5),
+            "komi": msg.get("komi", 7.5),
         }
         payload = json.dumps(offer_msg, ensure_ascii=False)
         for other_handle, other_ws in list(connected_users.items()):

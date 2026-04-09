@@ -225,7 +225,7 @@ class MatchOfferDialog:
         byo_t = offer.get("byo_time", 30)
         byo_p = offer.get("byo_periods", 5)
         byo_str = "\u221e" if byo_p == 0 else str(byo_p)
-        komi = offer.get("komi", 6.5)
+        komi = offer.get("komi", 7.5)
         komi_str = "{}\u76ee\u534a".format(int(komi))
         time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, byo_t, byo_str)
         return (name, rank, time_str, komi_str)
@@ -412,7 +412,7 @@ class MatchOfferDialog:
             self.app._cloud_main_time = offer.get("main_time", 600)
             self.app._cloud_byo_time = offer.get("byo_time", 30)
             self.app._cloud_byo_periods = offer.get("byo_periods", 5)
-            self.app._cloud_komi = offer.get("komi", 6.5)
+            self.app._cloud_komi = offer.get("komi", 7.5)
             self.app.send_cloud_message({
                 "type": "match_accept",
                 "target": name,

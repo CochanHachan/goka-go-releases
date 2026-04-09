@@ -162,7 +162,7 @@ class MatchDialog:
         cb1.grid(row=0, column=1, padx=2, pady=4)
         tk.Label(left_frame, text="\u30b3\u30df", font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=0, column=2, sticky="e", padx=(8, 4), pady=4)
-        self.komi_var = tk.StringVar(value="6\u76ee\u534a")
+        self.komi_var = tk.StringVar(value="7\u76ee\u534a")
         komi_vals = ["5\u76ee\u534a", "6\u76ee\u534a", "7\u76ee\u534a"]
         cb4 = ttk.Combobox(left_frame, textvariable=self.komi_var,
             values=komi_vals, state="readonly", style="Groove.TCombobox",
@@ -304,7 +304,7 @@ class MatchDialog:
             return 5.5
         elif "7" in v:
             return 7.5
-        return 6.5
+        return 7.5
 
     def _start_hosting(self):
         if self._hosting:
@@ -466,7 +466,7 @@ class MatchDialog:
             byo_p = offer.get("byo_periods", 5)
             byo_str = "\u221e" if byo_p == 0 else str(byo_p)
             main_m = offer.get("main_time", 600) // 60
-            komi = offer.get("komi", 6.5)
+            komi = offer.get("komi", 7.5)
             komi_str = "{}\u76ee\u534a".format(int(komi))
             time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, offer.get("byo_time", 30), byo_str)
             rows.append([offer.get("name", "?"), offer.get("rank", "?"),
@@ -518,7 +518,7 @@ class MatchDialog:
             self.app._cloud_main_time = offer.get("main_time", 600)
             self.app._cloud_byo_time = offer.get("byo_time", 30)
             self.app._cloud_byo_periods = offer.get("byo_periods", 5)
-            self.app._cloud_komi = offer.get("komi", 6.5)
+            self.app._cloud_komi = offer.get("komi", 7.5)
             self.app.send_cloud_message({
                 "type": "match_accept",
                 "target": key,
