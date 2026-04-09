@@ -187,6 +187,11 @@ class GlossyButton(tk.Canvas):
         self._images["focused_hover"] = ImageTk.PhotoImage(
             self._render_button(hover, focus_border=True))
 
+    def set_text(self, text):
+        """ボタンのテキストを変更して再描画する。"""
+        self._text = text
+        self._draw(self._state)
+
     def _draw(self, state):
         self.delete("all")
         img_key = state if state in self._images else "normal"
