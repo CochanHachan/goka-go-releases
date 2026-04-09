@@ -941,6 +941,12 @@ class GoBoard:
                 except Exception:
                     pass
                 return
+            # 挑戦状ダイアログが開いていれば閉じる（申請ダイアログの挑戦状欄で確認できるため）
+            if getattr(self.app, '_current_offer_dialog', None):
+                try:
+                    self.app._current_offer_dialog._close()
+                except Exception:
+                    pass
             self._prepare_for_new_game()
             self.app._stop_match_listener()
             from igo.match_dialog import MatchDialog as _MD

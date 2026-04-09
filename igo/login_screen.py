@@ -35,9 +35,16 @@ class LoginScreen:
                 self._lang_var.set(label)
                 break
         import tkinter.ttk as _ttk
+        # コンボボックスの背景色を白に設定
+        _style = _ttk.Style()
+        _style.configure("White.TCombobox", fieldbackground="white", background="white")
         self._lang_combo = _ttk.Combobox(lang_bar, textvariable=self._lang_var,
-            values=[lbl for lbl, _ in _lang_options], state="readonly", width=10)
+            values=[lbl for lbl, _ in _lang_options], state="readonly", width=10,
+            style="White.TCombobox")
         self._lang_combo.pack(side="right")
+        # "Language" ラベルをコンボの左に配置（side="right"で後にpackしたものが左に来る）
+        tk.Label(lang_bar, text="Language", font=("Yu Gothic UI", 10),
+                 bg=bg, fg="#333333").pack(side="right", padx=(0, 5))
         self._lang_options_map = {lbl: code for lbl, code in _lang_options}
         self._lang_combo.bind("<<ComboboxSelected>>", self._on_lang_change)
 

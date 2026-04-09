@@ -823,16 +823,23 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             })
             logger.info("Match started: %s vs %s", handle, target)
 
-            taken_msg = json.dumps(
-                {"type": "match_taken", "offerer": target, "accepter": handle},
-                ensure_ascii=False
-            )
-            for other_handle, other_ws in list(connected_users.items()):
-                if other_handle not in (handle, target):
-                    try:
-                        await other_ws.send_text(taken_msg)
-                    except Exception:
-                        pass
+            # 両プレイヤーの pending_offers をクリーンアップ
+            pending_offers.pop(handle, None)
+            pending_offers.pop(target, None)
+
+            # 両プレイヤーの申請を他の全員に通知（対局中は挑戦状リストから消す）
+            taken_players = [target, handle]
+            for player in taken_players:
+                taken_msg = json.dumps(
+                    {"type": "match_taken", "offerer": player, "accepter": ""},
+                    ensure_ascii=False
+                )
+                for other_handle, other_ws in list(connected_users.items()):
+                    if other_handle not in (handle, target):
+                        try:
+                            await other_ws.send_text(taken_msg)
+                        except Exception:
+                            pass
 
     elif msg_type == "match_decline":
         target = msg.get("target")
