@@ -1360,7 +1360,7 @@ class GoBoard:
                          white_name=wn, white_rank=wr)
         # Set komi from SGF metadata
         try:
-            self._komi = float(metadata.get("KM", "6.5"))
+            self._komi = float(metadata.get("KM", "7.5"))
         except (ValueError, TypeError):
             self._komi = 7.5
         self._update_komi_label()
