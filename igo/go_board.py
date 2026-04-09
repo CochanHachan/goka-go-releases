@@ -442,7 +442,7 @@ class GoBoard:
             msg = L("timeout_winner", winner)
         # Save game record before closing network
         if self.app:
-            result = L("result_white_timeout") if winner_color == WHITE else L("result_black_timeout")
+            result = "白時間切れ勝ち" if winner_color == WHITE else "黒時間切れ勝ち"
             self.app._save_game_record(result)
         # Close network before messagebox
         self._timeout_disconnect = True
@@ -753,7 +753,7 @@ class GoBoard:
             msg = L("timeout_self")
         # Save game record before closing network
         if self.app:
-            result = L("result_white_timeout") if winner_color == WHITE else L("result_black_timeout")
+            result = "白時間切れ勝ち" if winner_color == WHITE else "黒時間切れ勝ち"
             self.app._save_game_record(result)
         self._timeout_disconnect = True
         if self.app and self.app._net_game:
@@ -778,7 +778,7 @@ class GoBoard:
         # Save game record before closing network
         winner_color = BLACK if loser_color == WHITE else WHITE
         if self.app:
-            result = L("result_white_resign") if winner_color == WHITE else L("result_black_resign")
+            result = "白中押し勝ち" if winner_color == WHITE else "黒中押し勝ち"
             self.app._save_game_record(result)
         # Close network before messagebox to suppress disconnect msg
         self._resign_disconnect = True
@@ -1038,7 +1038,7 @@ class GoBoard:
             winner_color = BLACK if loser == WHITE else WHITE
             # Save game record
             if self.app:
-                result = L("result_white_resign") if winner_color == WHITE else L("result_black_resign")
+                result = "白中押し勝ち" if winner_color == WHITE else "黒中押し勝ち"
                 self.app._save_game_record(result)
             self.end_network_game()
             if self.app:
