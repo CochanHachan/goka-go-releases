@@ -203,11 +203,15 @@ class App:
         help_menu.add_command(label=L("menu_about"), command=self._show_about)
 
     def _change_language(self, lang_code):
-        """言語を変更してDBとconfigに保存。再起動で適用される。"""
+        """言語を変更してDBとconfigに保存。メニューバーを即時再構築。"""
         _save_language_to_config(lang_code)
         set_language(lang_code)
         if self.current_user:
             self.db.set_user_language(self.current_user["id"], lang_code)
+            self._api_update_language(self.current_user.get("handle_name", ""), lang_code)
+        # メニューバーを新しい言語で即時再構築
+        self._build_menubar()
+        self.root.config(menu=self._menubar)
         messagebox.showinfo(
             L("menu_language"),
             L("lang_restart")

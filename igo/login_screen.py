@@ -139,6 +139,9 @@ class LoginScreen:
         self._name_label.config(text=L("login_handle"))
         self._pw_label.config(text=L("login_password"))
         self._login_btn.set_text(L("login_btn"))
+        # アカウント作成ボタンのテキストも更新
+        if self._has_rounded and hasattr(self._register_btn, '_text_id'):
+            self._register_btn.itemconfig(self._register_btn._text_id, text=L("btn_create_account"))
 
     def _do_login(self):
         handle = self.login_handle.get().strip()
