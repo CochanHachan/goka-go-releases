@@ -941,8 +941,13 @@ class GoBoard:
                 except Exception:
                     pass
                 return
-            # 挑戦状ダイアログが開いていれば閉じる（申請ダイアログの挑戦状欄で確認できるため）
+            # 挑戦状ダイアログが開いていれば、オファーを退避してから閉じる
+            _pending_offers = {}
             if getattr(self.app, '_current_offer_dialog', None):
+                try:
+                    _pending_offers = dict(self.app._current_offer_dialog._offers)
+                except Exception:
+                    pass
                 try:
                     self.app._current_offer_dialog._close()
                 except Exception:
@@ -951,6 +956,9 @@ class GoBoard:
             self.app._stop_match_listener()
             from igo.match_dialog import MatchDialog as _MD
             self.app._current_match_dialog = _MD(self.root, self.app)
+            # 退避したオファーを申請ダイアログに引き継ぐ
+            for name, offer in _pending_offers.items():
+                self.app._current_match_dialog.add_cloud_offer(offer)
 
     def _prepare_for_new_game(self):
         """対局開始前の共通処理：棋譜クリア・棋譜選択画面を閉じる・ボタン状態リセット。"""
