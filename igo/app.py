@@ -138,7 +138,7 @@ class App:
         speed_menu = tk.Menu(settings_menu, tearoff=0)
         self._auto_speed_var = tk.StringVar(value="2")
         for sec in ["1", "2", "3", "5", "10"]:
-            speed_menu.add_radiobutton(label="{}\u79d2".format(sec),
+            speed_menu.add_radiobutton(label=L("menu_speed_sec", sec),
                 variable=self._auto_speed_var, value=sec)
         settings_menu.add_cascade(label=L("menu_speed"), menu=speed_menu)
         # 言語(L)サブメニュー
@@ -151,20 +151,20 @@ class App:
         # AIロボ サブメニュー
         ai_menu = tk.Menu(settings_menu, tearoff=0)
         self._ai_enabled_var = tk.StringVar(value=self._load_ai_setting())
-        ai_menu.add_radiobutton(label="対局する", variable=self._ai_enabled_var,
+        ai_menu.add_radiobutton(label=L("menu_ai_on"), variable=self._ai_enabled_var,
             value="on", command=self._change_ai_setting)
-        ai_menu.add_radiobutton(label="対局しない", variable=self._ai_enabled_var,
+        ai_menu.add_radiobutton(label=L("menu_ai_off"), variable=self._ai_enabled_var,
             value="off", command=self._change_ai_setting)
-        settings_menu.add_cascade(label="AIロボ", menu=ai_menu)
+        settings_menu.add_cascade(label=L("menu_ai_robot"), menu=ai_menu)
         # 秒読みサブメニュー
         byoyomi_menu = tk.Menu(settings_menu, tearoff=0)
         self._byoyomi_voice_var = tk.StringVar(value=self._load_byoyomi_voice_setting())
         self._byoyomi_voice_enabled = self._byoyomi_voice_var.get() == "on"
-        byoyomi_menu.add_radiobutton(label="よむ", variable=self._byoyomi_voice_var,
+        byoyomi_menu.add_radiobutton(label=L("menu_voice_on"), variable=self._byoyomi_voice_var,
             value="on", command=self._change_byoyomi_voice_setting)
-        byoyomi_menu.add_radiobutton(label="よまない", variable=self._byoyomi_voice_var,
+        byoyomi_menu.add_radiobutton(label=L("menu_voice_off"), variable=self._byoyomi_voice_var,
             value="off", command=self._change_byoyomi_voice_setting)
-        settings_menu.add_cascade(label="秒読み", menu=byoyomi_menu)
+        settings_menu.add_cascade(label=L("menu_byoyomi_voice"), menu=byoyomi_menu)
         menubar.add_cascade(label=L("menu_settings"), menu=settings_menu)
 
         # 表示(V)
@@ -172,10 +172,10 @@ class App:
         # 碁盤選択サブメニュー
         board_select_menu = tk.Menu(view_menu, tearoff=0)
         self._board_type_var = tk.StringVar(value="dark")
-        board_select_menu.add_radiobutton(label="\u6fc3\u3044\u3081",
+        board_select_menu.add_radiobutton(label=L("menu_board_dark"),
             variable=self._board_type_var, value="dark",
             command=self._change_board_texture)
-        board_select_menu.add_radiobutton(label="\u8584\u3081",
+        board_select_menu.add_radiobutton(label=L("menu_board_light"),
             variable=self._board_type_var, value="light",
             command=self._change_board_texture)
         view_menu.add_cascade(label=L("menu_board"), menu=board_select_menu)
@@ -210,10 +210,7 @@ class App:
             self.db.set_user_language(self.current_user["id"], lang_code)
         messagebox.showinfo(
             L("menu_language"),
-            {"ja": "再起動すると言語が切り替わります。",
-             "en": "Language will change after restart.",
-             "zh": "重启后语言将切换。",
-             "ko": "재시작 후 언어가 변경됩니다."}.get(lang_code, "Restart to apply language change.")
+            L("lang_restart")
         )
 
     def _set_title(self, center_text=""):
@@ -885,18 +882,40 @@ class App:
         self._switch_frame(self._register_frame)
         self._apply_geometry("register")
 
+    def _api_update_language(self, handle, lang_code):
+        """Update language on the server (non-blocking)."""
+        if not self._auth_token:
+            return
+        import urllib.request as _urlreq
+        import json as _json, threading as _thr
+        def _do():
+            try:
+                _data = _json.dumps({
+                    "handle_name": handle,
+                    "language": lang_code,
+                }).encode("utf-8")
+                _req = _urlreq.Request(
+                    API_BASE_URL + "/api/user/language",
+                    data=_data,
+                    headers={"Content-Type": "application/json"},
+                    method="PUT"
+                )
+                _urlreq.urlopen(_req, timeout=5).close()
+            except Exception as _e:
+                print("[Language update failed]", _e)
+        _thr.Thread(target=_do, daemon=True).start()
+
     def on_login_success(self, user):
         self.current_user = user
-        # ユーザーの言語設定をDBから適用
-        try:
-            user_lang = user["language"] if user["language"] else get_language()
-        except Exception:
-            user_lang = get_language()
-        if not user_lang:
-            user_lang = get_language()
-            _save_language_to_config(user_lang)
-        set_language(user_lang)
-        _save_language_to_config(user_lang)
+        # ログイン画面で選んだ言語を優先する（サーバーDBのデフォルト"ja"で上書きしない）
+        login_lang = get_language()  # ログイン画面で既に設定済み
+        set_language(login_lang)
+        _save_language_to_config(login_lang)
+        user["language"] = login_lang
+        # サーバーDBに言語を保存（次回ログイン時に復元用）
+        self._api_update_language(user.get("handle_name", ""), login_lang)
+        # メニューバーを現在の言語で再構築
+        self._build_menubar()
         self.root.resizable(True, True)
         self.root.config(menu=self._menubar)
         # Restore board texture preference

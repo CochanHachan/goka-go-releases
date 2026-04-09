@@ -394,6 +394,26 @@ async def update_elo(handle_name: str, req: UpdateEloRequest):
     return {"success": True}
 
 
+class UpdateLanguageRequest(BaseModel):
+    handle_name: str
+    language: str
+
+@app.put("/api/user/language")
+async def update_user_language(req: UpdateLanguageRequest):
+    """ユーザーの言語設定を更新する。"""
+    if req.language not in ("ja", "en", "zh", "ko"):
+        return {"success": False, "message": "Invalid language code"}
+    conn = get_db_connection()
+    try:
+        conn.execute("UPDATE users SET language = ? WHERE handle_name = ?",
+                     (req.language, req.handle_name))
+        conn.commit()
+    finally:
+        conn.close()
+    logger.info("Language updated: %s -> %s", req.handle_name, req.language)
+    return {"success": True}
+
+
 class UpdatePasswordEncRequest(BaseModel):
     handle_name: str
     password_enc: str

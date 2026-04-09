@@ -106,14 +106,14 @@ class LoginScreen:
         # アカウント作成ボタン（OutlineButton: 緑枠・緑文字）
         if self._has_rounded:
             self._register_btn = OutlineButton(btn_frame,
-                text="\u30a2\u30ab\u30a6\u30f3\u30c8\u4f5c\u6210",
+                text=L("btn_create_account"),
                 width=180, height=46, corner_radius=10,
                 border_color="#4a8c4a", text_color="#3a6a3a",
                 font=("Yu Gothic UI", 12),
                 command=lambda: self.app.show_register(), parent_bg=bg)
             self._register_btn.pack(side="left")
         else:
-            tk.Button(btn_frame, text="\u30a2\u30ab\u30a6\u30f3\u30c8\u4f5c\u6210",
+            tk.Button(btn_frame, text=L("btn_create_account"),
                       font=("", 11), command=lambda: self.app.show_register(),
                       bg=bg, fg=green, relief="solid", bd=1, padx=20, pady=4,
                       cursor="hand2").pack(side="left")
@@ -144,7 +144,7 @@ class LoginScreen:
         handle = self.login_handle.get().strip()
         pw = self.login_password.get().strip()
         if not handle or not pw:
-            self.error_label.config(text="\u30cf\u30f3\u30c9\u30eb\u30cd\u30fc\u30e0\u3068\u30d1\u30b9\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044")
+            self.error_label.config(text=L("login_empty"))
             return
         import urllib.request as _urlreq, json as _json
         try:
@@ -158,10 +158,10 @@ class LoginScreen:
             with _urlreq.urlopen(_req, timeout=10) as _resp:
                 _result = _json.loads(_resp.read().decode("utf-8"))
         except Exception as _e:
-            self.error_label.config(text="\u30b5\u30fc\u30d0\u30fc\u306b\u63a5\u7d9a\u3067\u304d\u307e\u305b\u3093")
+            self.error_label.config(text=L("login_server_error"))
             return
         if not _result.get("success"):
-            self.error_label.config(text=_result.get("message", "\u30ed\u30b0\u30a4\u30f3\u306b\u5931\u6557\u3057\u307e\u3057\u305f"))
+            self.error_label.config(text=_result.get("message", L("login_failed")))
             return
         self.app._auth_token = _result.get("token", "")
         _user = dict(_result.get("user", {}))
