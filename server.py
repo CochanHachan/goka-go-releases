@@ -397,10 +397,13 @@ async def update_elo(handle_name: str, req: UpdateEloRequest):
 class UpdateLanguageRequest(BaseModel):
     handle_name: str
     language: str
+    token: str
 
 @app.put("/api/user/language")
 async def update_user_language(req: UpdateLanguageRequest):
     """ユーザーの言語設定を更新する。"""
+    if req.token not in active_tokens or active_tokens[req.token] != req.handle_name:
+        return {"success": False, "message": "Unauthorized"}
     if req.language not in ("ja", "en", "zh", "ko"):
         return {"success": False, "message": "Invalid language code"}
     conn = get_db_connection()

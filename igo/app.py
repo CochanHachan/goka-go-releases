@@ -893,6 +893,7 @@ class App:
                 _data = _json.dumps({
                     "handle_name": handle,
                     "language": lang_code,
+                    "token": self._auth_token,
                 }).encode("utf-8")
                 _req = _urlreq.Request(
                     API_BASE_URL + "/api/user/language",
@@ -1862,21 +1863,21 @@ class App:
         # 投了・パス
         resign_state = "normal" if in_game else "disabled"
         pass_state = resign_state
-        self._game_menu.entryconfig("\u6295\u4e86", state=resign_state)
-        self._game_menu.entryconfig("\u30d1\u30b9", state=pass_state)
+        self._game_menu.entryconfig(L("menu_resign"), state=resign_state)
+        self._game_menu.entryconfig(L("menu_pass"), state=pass_state)
         # 地合計算
         score_state = str(gb.score_btn.cget("state")) if hasattr(gb, "score_btn") else "disabled"
-        self._game_menu.entryconfig("\u5730\u5408\u8a08\u7b97", state=score_state)
+        self._game_menu.entryconfig(L("menu_score"), state=score_state)
         # 検討: active when not in game, not in offer dialog, not already reviewing
         if not in_game and not in_review and not self._offer_dialog_open:
-            self._game_menu.entryconfig("\u691c\u8a0e", state="normal")
+            self._game_menu.entryconfig(L("menu_review"), state="normal")
         else:
-            self._game_menu.entryconfig("\u691c\u8a0e", state="disabled")
+            self._game_menu.entryconfig(L("menu_review"), state="disabled")
         # 検討終了: active only when in review mode
         if in_review:
-            self._game_menu.entryconfig("\u691c\u8a0e\u7d42\u4e86", state="normal")
+            self._game_menu.entryconfig(L("menu_review_end"), state="normal")
         else:
-            self._game_menu.entryconfig("\u691c\u8a0e\u7d42\u4e86", state="disabled")
+            self._game_menu.entryconfig(L("menu_review_end"), state="disabled")
         # 初期化ボタン: disabled during active game
         if hasattr(gb, 'reset_btn'):
             gb.reset_btn.config(state="disabled" if in_game else "normal")
