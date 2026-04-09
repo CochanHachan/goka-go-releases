@@ -73,7 +73,7 @@ STRINGS = {
         "menu_about":       "バージョン情報(*)",
 
         # --- Window titles ---
-        "title_match_dialog":   "対局申し込み",
+        "title_match_dialog":   "対局申請",
         "title_offer_dialog":   "対局の申し込みです！",
         "title_kifu_dialog":    "棋譜一覧",
         "title_score":          "地合計算",
@@ -87,8 +87,8 @@ STRINGS = {
         "match_komi":           "コミ",
         "match_byoyomi":        "秒読み",
         "match_periods":        "回数",
-        "match_hosting":        "対局相手を待っています...",
-        "match_no_opponent":    "対局条件を承諾するプレイヤーが存在しませんでした",
+        "match_hosting":        "対局申請中です。",
+        "match_no_opponent":    "対局承諾者が不在です。対局条件を変えて申請してみてください。",
         "match_cancelled":      "申し込みを取り消しました",
         "match_winrate":        "形勢判断を表示する",
         "match_challenges":     "挑戦状",
