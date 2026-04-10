@@ -1526,9 +1526,18 @@ class App:
             pass  # could show notification
 
         elif msg_type == "match_cancelled":
-            # An offer was cancelled
+            # An offer was cancelled - remove from dialogs too
             sender = msg.get("from", "")
             self._declined_offers.discard(sender)
+            if sender:
+                if self._current_offer_dialog:
+                    if sender in self._current_offer_dialog._offers:
+                        del self._current_offer_dialog._offers[sender]
+                        self._current_offer_dialog._refresh_list()
+                if self._current_match_dialog:
+                    if sender in self._current_match_dialog._offers:
+                        del self._current_match_dialog._offers[sender]
+                        self._current_match_dialog._refresh_list()
 
         elif msg_type == "match_taken":
             # A match offer was taken by someone else - remove both offerer and accepter
@@ -1543,7 +1552,7 @@ class App:
                 if self._current_match_dialog:
                     if name in self._current_match_dialog._offers:
                         del self._current_match_dialog._offers[name]
-                        self._current_match_dialog._refresh_match_list()
+                        self._current_match_dialog._refresh_list()
 
         elif msg_type in ("move", "pass", "resign", "timeout", "score_result"):
             # Game message from opponent - route to go_board
