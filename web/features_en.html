@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Features - Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #e0e0e0;
+    background: #1a1a2e;
+    min-height: 100vh;
+  }
+  .header {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.05em;
+    margin-left: 12px;
+    font-weight: 400;
+  }
+  .header-back {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s;
+  }
+  .header-back:hover { color: #f0c860; }
+
+  .main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+  .page-title {
+    font-size: 2.4rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+  .divider {
+    width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 auto 60px;
+  }
+
+  /* Feature Grid */
+  .features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+  .feature-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 32px 28px;
+    transition: transform 0.3s, border-color 0.3s;
+  }
+  .feature-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(240,200,96,0.3);
+  }
+  .feature-icon {
+    font-size: 2rem;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .feature-card h2 {
+    font-size: 1.15rem;
+    color: #fff;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .feature-card p {
+    font-size: 0.9rem;
+    line-height: 1.8;
+    color: rgba(255,255,255,0.6);
+  }
+
+  /* Highlight card spans full width */
+  .feature-card.highlight {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, rgba(240,200,96,0.08), rgba(240,200,96,0.02));
+    border-color: rgba(240,200,96,0.2);
+  }
+
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 20px; }
+    .main { padding: 40px 16px 80px; }
+    .page-title { font-size: 1.8rem; }
+    .features { grid-template-columns: 1fr; }
+    .feature-card.highlight { grid-column: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="header-logo">Goka <span>GO</span></a>
+  <a href="index.html" class="header-back">&larr; Back to Top</a>
+</div>
+
+<div class="main">
+  <h1 class="page-title">Features</h1>
+  <p class="page-subtitle">What Goka GO Offers</p>
+  <div class="divider"></div>
+
+  <div class="features">
+
+    <div class="feature-card highlight">
+      <span class="feature-icon">&#x1F916;</span>
+      <h2>Built-in KataGo AI Engine</h2>
+      <p>
+        Powered by KataGo, one of the world's strongest open-source Go AIs.
+        With 30 difficulty levels, players of all skill levels &mdash; from beginners to advanced &mdash; can find a suitable opponent.
+        During gameplay, a real-time win rate evaluation (%) is displayed so you can instantly see how well you are playing.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F310;</span>
+      <h2>Online Matches</h2>
+      <p>
+        Play against players from around the world in real time over the internet.
+        Send and receive challenges, with match request timeout management for a smooth experience.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4CA;</span>
+      <h2>Elo Rating</h2>
+      <p>
+        Your Elo rating is automatically calculated based on match results.
+        Track your skill level numerically and watch your improvement over time.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F50D;</span>
+      <h2>KataGo Scoring</h2>
+      <p>
+        When both players pass, KataGo accurately calculates the territory.
+        The AI handles dead stone determination, so even beginners can end games with confidence.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4CB;</span>
+      <h2>Game Review Mode</h2>
+      <p>
+        After a game ends, step through the moves forward and backward using the navigation bar.
+        See where the balance shifted and learn for your next game.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x23F1;&#xFE0F;</span>
+      <h2>Time Controls &amp; Byo-yomi</h2>
+      <p>
+        Supports main time and byo-yomi (countdown). A voice countdown plays during byo-yomi.
+        Voice countdown is available in 4 languages: Japanese, English, Chinese, and Korean.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F30F;</span>
+      <h2>Multilingual Support</h2>
+      <p>
+        Supports 4 languages: Japanese, English, Chinese, and Korean.
+        Switch the UI language with a single click.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F504;</span>
+      <h2>Auto-Update</h2>
+      <p>
+        New versions are automatically detected when the app launches.
+        Update with one click to always stay on the latest version.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer">
+  &copy; 2026 Goka GO. All rights reserved.
+</div>
+
+</body>
+</html>

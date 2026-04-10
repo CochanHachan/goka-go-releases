@@ -409,9 +409,17 @@
       navSystem:   t.navSystem,
       navContact:  t.navContact,
     };
+    // Update nav link hrefs for language-specific pages
+    const suffix = (lang === 'ja') ? '' : '_' + lang;
+    const hrefMap = {
+      navHowto:    'howto' + suffix + '.html',
+      navFeatures: 'features' + suffix + '.html',
+      navSystem:   'sysreq' + suffix + '.html',
+    };
     document.querySelectorAll('.master-nav a[data-key]').forEach(a => {
       const key = a.dataset.key;
       if (keyMap[key]) a.textContent = keyMap[key];
+      if (hrefMap[key]) a.href = hrefMap[key];
     });
     document.querySelector('.logo-sub').textContent = t.logoSub;
     document.querySelectorAll('.lang-btn').forEach(btn => {
