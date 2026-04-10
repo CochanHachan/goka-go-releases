@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Requirements - Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: #e0e0e0;
+    background: #1a1a2e;
+    min-height: 100vh;
+  }
+  .header {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.05em;
+    margin-left: 12px;
+    font-weight: 400;
+  }
+  .header-back {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s;
+  }
+  .header-back:hover { color: #f0c860; }
+
+  .main {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+  .page-title {
+    font-size: 2.4rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+  .divider {
+    width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 auto 60px;
+  }
+
+  /* Requirements Table */
+  .req-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 48px;
+  }
+  .req-table th,
+  .req-table td {
+    padding: 18px 20px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  .req-table th {
+    color: #f0c860;
+    font-weight: 600;
+    width: 160px;
+    letter-spacing: 0.05em;
+    vertical-align: top;
+  }
+  .req-table td {
+    color: rgba(255,255,255,0.75);
+  }
+  .req-table tr:last-child th,
+  .req-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Section */
+  .section-title {
+    font-size: 1.3rem;
+    color: #fff;
+    letter-spacing: 0.1em;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    font-weight: 600;
+  }
+  .section {
+    margin-bottom: 48px;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 20px; }
+    .main { padding: 40px 16px 80px; }
+    .page-title { font-size: 1.8rem; }
+    .req-table th { width: 100px; font-size: 0.85rem; }
+    .req-table td { font-size: 0.85rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="header-logo">Goka <span>GO</span></a>
+  <a href="index.html" class="header-back">&larr; Back to Top</a>
+</div>
+
+<div class="main">
+  <h1 class="page-title">System Requirements</h1>
+  <p class="page-subtitle">Minimum Specifications</p>
+  <div class="divider"></div>
+
+  <div class="section">
+    <h2 class="section-title">Required Environment</h2>
+    <table class="req-table">
+      <tr>
+        <th>OS</th>
+        <td>Windows 10 / 11 (64-bit)</td>
+      </tr>
+      <tr>
+        <th>CPU</th>
+        <td>Intel Core i3 or higher / AMD Ryzen 3 or higher (Recommended: Core i5 / Ryzen 5 or higher)</td>
+      </tr>
+      <tr>
+        <th>Memory</th>
+        <td>4GB or more (Recommended: 8GB or more)</td>
+      </tr>
+      <tr>
+        <th>GPU</th>
+        <td>OpenCL 1.2 compatible GPU (NVIDIA / AMD / Intel integrated GPU)</td>
+      </tr>
+      <tr>
+        <th>Disk Space</th>
+        <td>Approximately 500MB free space (including KataGo AI model)</td>
+      </tr>
+      <tr>
+        <th>Network</th>
+        <td>Internet connection (required for online matches and auto-update)</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">Supported Languages</h2>
+    <table class="req-table">
+      <tr>
+        <th>UI Language</th>
+        <td>Japanese, English, Chinese, Korean</td>
+      </tr>
+      <tr>
+        <th>Voice Countdown</th>
+        <td>Japanese, English, Chinese, Korean</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="footer">
+  &copy; 2026 Goka GO. All rights reserved.
+</div>
+
+</body>
+</html>

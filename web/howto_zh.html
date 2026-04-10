@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玩法介绍 - 碁华 Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    color: #e0e0e0;
+    background: #1a1a2e;
+    min-height: 100vh;
+  }
+  /* Header */
+  .header {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.05em;
+    margin-left: 12px;
+    font-weight: 400;
+  }
+  .header-back {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s;
+  }
+  .header-back:hover { color: #f0c860; }
+
+  /* Main */
+  .main {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+  .page-title {
+    font-size: 2.4rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+  .divider {
+    width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 auto 60px;
+  }
+
+  /* Steps */
+  .step {
+    margin-bottom: 56px;
+    position: relative;
+    padding-left: 56px;
+  }
+  .step-number {
+    position: absolute;
+    left: 0;
+    top: -4px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f0c860, #c8a030);
+    color: #1a1a2e;
+    font-size: 1.1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step h2 {
+    font-size: 1.3rem;
+    color: #fff;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .step p {
+    font-size: 0.95rem;
+    line-height: 1.85;
+    color: rgba(255,255,255,0.7);
+  }
+  .step .note {
+    margin-top: 10px;
+    padding: 12px 16px;
+    background: rgba(240,200,96,0.08);
+    border-left: 3px solid #f0c860;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.88rem;
+    color: rgba(255,255,255,0.6);
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 20px; }
+    .main { padding: 40px 16px 80px; }
+    .page-title { font-size: 1.8rem; }
+    .step { padding-left: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="header-logo">碁华 <span>Goka GO</span></a>
+  <a href="index.html" class="header-back">&larr; 返回首页</a>
+</div>
+
+<div class="main">
+  <h1 class="page-title">玩法介绍</h1>
+  <p class="page-subtitle">How to Play</p>
+  <div class="divider"></div>
+
+  <div class="step">
+    <div class="step-number">1</div>
+    <h2>下载与安装</h2>
+    <p>
+      从首页点击"下载"按钮下载安装程序并运行。
+      只需按照屏幕上的指示操作，KataGo AI引擎也会自动安装。
+    </p>
+    <div class="note">
+      首次安装时，可能会出现Windows SmartScreen警告。请点击"更多信息"&rarr;"仍要运行"以继续。
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">2</div>
+    <h2>创建账户</h2>
+    <p>
+      首次启动时会显示登录界面。点击"注册"按钮创建账户。
+      输入姓名、昵称（对局时显示的名称）、邮箱地址、密码和棋力。
+    </p>
+    <div class="note">
+      昵称不超过20个字符。棋力可选范围为20级至9段。
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-number">3</div>
+    <h2>登录</h2>
+    <p>
+      使用注册时的邮箱和密码登录。
+      登录后将显示主界面（棋盘）。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">4</div>
+    <h2>开始对局</h2>
+    <p>
+      有两种对局方式。
+    </p>
+    <p style="margin-top: 10px;">
+      <strong style="color: #f0c860;">&bull; AI对局</strong> &mdash; 从菜单中选择"AI对局"。
+      可以从30个级别的KataGo中选择对手。非常适合独自练习。
+    </p>
+    <p style="margin-top: 8px;">
+      <strong style="color: #f0c860;">&bull; 网络对局</strong> &mdash; 向其他在线玩家发送挑战，
+      或接受其他玩家的挑战。实时与世界各地的玩家对弈。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">5</div>
+    <h2>对局规则</h2>
+    <p>
+      碁华采用中国规则，默认贴目为7目半。
+      对局中会实时显示形势判断（胜率%），帮助您了解局面的优劣。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">6</div>
+    <h2>用时与读秒</h2>
+    <p>
+      每局对弈都设有保留时间。保留时间用完后进入读秒阶段。
+      读秒时会有语音倒计时提示，如果在限定时间内未落子则判负。
+    </p>
+  </div>
+
+  <div class="step">
+    <div class="step-number">7</div>
+    <h2>对局结束与复盘</h2>
+    <p>
+      双方都选择停手后，系统会自动计算地盘并显示结果。
+      对局结束后可以进入复盘模式回顾整局棋。
+      使用导航栏可以前进或后退查看每一手棋。
+    </p>
+  </div>
+</div>
+
+<div class="footer">
+  &copy; 2026 碁华 Goka GO. All rights reserved.
+</div>
+
+</body>
+</html>
