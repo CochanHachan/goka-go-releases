@@ -504,6 +504,11 @@ class MatchDialog:
         self.match_list.redraw()
         # Restore or auto-select first row
         if new_sel_row is not None:
+            if self._match_highlighted_row is not None and self._match_highlighted_row != new_sel_row:
+                try:
+                    self.match_list.dehighlight_rows(self._match_highlighted_row)
+                except Exception:
+                    pass
             self.match_list.highlight_rows(rows=[new_sel_row], bg="#DCE9F6", fg="#000000")
             self._match_highlighted_row = new_sel_row
         else:
