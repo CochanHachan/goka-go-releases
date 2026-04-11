@@ -248,6 +248,7 @@ class AdminApp:
                  fg=T("text_primary"), bg=T("root_bg")).pack(side="left", padx=(0, 4))
 
         current_timeout = 3
+        server_settings = None
         try:
             server_settings = self._api_get("/api/settings")
             if server_settings:
