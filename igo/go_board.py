@@ -639,6 +639,8 @@ class GoBoard:
             text="\u2191 {}".format(self.game.captured_white))
         # Update win rate after each move
         self._update_winrate()
+        # Sync button state after turn change
+        self._sync_turn_buttons()
 
     def _draw_stone(self, bx, by, cx, cy, player):
         img = self._black_img if player == BLACK else self._white_img
@@ -694,6 +696,8 @@ class GoBoard:
             text="\u2191 {}".format(self.game.captured_white))
         # Update win rate after network move
         self._update_winrate()
+        # Sync button state after turn change
+        self._sync_turn_buttons()
 
     def _show_temp_overlay(self, text, duration=2000):
         """Show a temporary message overlay on the board that fades after duration ms."""
@@ -728,6 +732,8 @@ class GoBoard:
         self._show_temp_overlay(L("opponent_passed", opp_name), duration=5000)
         self.game.pass_turn()
         self._update_time_display()
+        # Sync button state after turn change
+        self._sync_turn_buttons()
         if self.game.game_over:
             self._timer_running = False
             self._pass_disconnect = True
@@ -808,9 +814,12 @@ class GoBoard:
         self._update_komi_label()
         # Start timer immediately (black's turn first)
         self._start_timer()
+        # Enable buttons based on whose turn it is (black goes first)
+        is_my_turn = (my_color == BLACK)
+        btn_state = "normal" if is_my_turn else "disabled"
         if hasattr(self, "pass_btn"):
-            self.pass_btn.config(state="normal")
-            self.resign_btn.config(state="normal")
+            self.pass_btn.config(state=btn_state)
+            self.resign_btn.config(state=btn_state)
         if hasattr(self, "score_btn"):
             self.score_btn.config(state="disabled")
         # Cancel any pending delayed score calculation from previous game
@@ -820,6 +829,19 @@ class GoBoard:
         # Ensure overlay is cleared and normal click binding is restored
         self._hide_overlay()
         self.canvas.bind("<Button-1>", self.on_click)
+        if self.app:
+            self.app._sync_game_menu_state()
+
+    def _sync_turn_buttons(self):
+        """Enable resign/pass buttons only on my turn during network game."""
+        if not self.net_mode or self.game.game_over:
+            return
+        is_my_turn = self.my_color is not None and self.game.current_player == self.my_color
+        state = "normal" if is_my_turn else "disabled"
+        if hasattr(self, "pass_btn"):
+            self.pass_btn.config(state=state)
+        if hasattr(self, "resign_btn"):
+            self.resign_btn.config(state=state)
         if self.app:
             self.app._sync_game_menu_state()
 
@@ -997,6 +1019,8 @@ class GoBoard:
         self._update_time_display()
         if self.app:
             self.app.send_net_message({"type": "pass"})
+        # Sync button state after turn change
+        self._sync_turn_buttons()
         if self.game.game_over:
             self._timer_running = False
             self._pass_disconnect = True
