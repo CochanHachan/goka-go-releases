@@ -747,6 +747,8 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
                 "komi": msg.get("komi", 7.5),
+                "time_control": msg.get("time_control", "byoyomi"),
+                "fischer_increment": msg.get("fischer_increment", 0),
             })
             logger.info("Match offer: %s -> %s", handle, target)
             # 1分後にボットが自動承諾するタイマー開始
@@ -773,6 +775,8 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             "byo_time": msg.get("byo_time", 30),
             "byo_periods": msg.get("byo_periods", 5),
             "komi": msg.get("komi", 7.5),
+            "time_control": msg.get("time_control", "byoyomi"),
+            "fischer_increment": msg.get("fischer_increment", 0),
         }
         payload = json.dumps(offer_msg, ensure_ascii=False)
         for other_handle, other_ws in list(connected_users.items()):
