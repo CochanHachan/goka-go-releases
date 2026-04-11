@@ -158,11 +158,12 @@ class MatchDialog:
         tk.Label(left_frame, text=L("match_time"), font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=0, column=0, sticky="e", padx=(0, 4), pady=4)
         self.main_time_var = tk.StringVar(value=saved.get("main_time", "10\u5206"))
-        main_vals = ["{}\u5206".format(i) for i in range(1, 61)]
+        main_vals = ["Fischer"] + ["{}\u5206".format(i) for i in range(1, 61)]
         cb1 = ttk.Combobox(left_frame, textvariable=self.main_time_var,
             values=main_vals, state="readonly", style="Groove.TCombobox",
             font=("", 10), width=COMBO_W)
         cb1.grid(row=0, column=1, padx=2, pady=4)
+        cb1.bind("<<ComboboxSelected>>", self._on_time_control_change)
         tk.Label(left_frame, text=L("match_komi"), font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=0, column=2, sticky="e", padx=(8, 4), pady=4)
         self.komi_var = tk.StringVar(value=saved.get("komi", "7\u76ee\u534a"))
@@ -176,18 +177,22 @@ class MatchDialog:
                  fg=lfg, bg=bg, anchor="e").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
         self.byo_time_var = tk.StringVar(value=saved.get("byo_time", "30\u79d2"))
         byo_vals = ["{}\u79d2".format(i) for i in [10, 20, 30, 40, 50, 60]]
-        cb2 = ttk.Combobox(left_frame, textvariable=self.byo_time_var,
+        self._byo_time_cb = ttk.Combobox(left_frame, textvariable=self.byo_time_var,
             values=byo_vals, state="readonly", style="Groove.TCombobox",
             font=("", 10), width=COMBO_W)
-        cb2.grid(row=1, column=1, padx=2, pady=4)
+        self._byo_time_cb.grid(row=1, column=1, padx=2, pady=4)
         tk.Label(left_frame, text=L("match_periods"), font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=1, column=2, sticky="e", padx=(8, 4), pady=4)
         self.byo_periods_var = tk.StringVar(value=saved.get("byo_periods", "5\u56de"))
         period_vals = ["\u221e"] + ["{}\u56de".format(i) for i in range(1, 11)]
-        cb3 = ttk.Combobox(left_frame, textvariable=self.byo_periods_var,
+        self._byo_periods_cb = ttk.Combobox(left_frame, textvariable=self.byo_periods_var,
             values=period_vals, state="readonly", style="Groove.TCombobox",
             font=("", 10), width=COMBO_W)
-        cb3.grid(row=1, column=3, padx=2, pady=4)
+        self._byo_periods_cb.grid(row=1, column=3, padx=2, pady=4)
+        # Apply initial Fischer state if saved
+        if self.main_time_var.get() == "Fischer":
+            self._byo_time_cb.config(state="disabled")
+            self._byo_periods_cb.config(state="disabled")
 
         # Right side: 対局申込 + 取消 buttons
         self.host_btn = GlossyButton(right_frame, text=L("btn_host"),
@@ -296,6 +301,15 @@ class MatchDialog:
         self._match_reject_btn.pack(side="left", padx=(0, 8))
         self._match_reject_btn.pack_forget()
 
+    def _on_time_control_change(self, event=None):
+        """When Fischer is selected, disable byoyomi fields."""
+        if self.main_time_var.get() == "Fischer":
+            self._byo_time_cb.config(state="disabled")
+            self._byo_periods_cb.config(state="disabled")
+        else:
+            self._byo_time_cb.config(state="readonly")
+            self._byo_periods_cb.config(state="readonly")
+
     def _get_byo_periods_int(self):
         v = self.byo_periods_var.get()
         if v == "\u221e":
@@ -316,9 +330,27 @@ class MatchDialog:
         if self._hosting:
             return
         self._hosting = True
-        main_t = int(self.main_time_var.get().replace("\u5206", "")) * 60
-        byo_t = int(self.byo_time_var.get().replace("\u79d2", ""))
-        byo_p = self._get_byo_periods_int()
+        time_val = self.main_time_var.get()
+        if time_val == "Fischer":
+            time_control = "fischer"
+            main_t = 300  # default 5 min, configurable via admin
+            byo_t = 0
+            byo_p = 0
+            fischer_increment = 10  # default 10 sec, configurable via admin
+            # Try to load admin settings
+            try:
+                from igo.config import get_fischer_settings
+                f_main, f_inc = get_fischer_settings()
+                main_t = f_main
+                fischer_increment = f_inc
+            except Exception:
+                pass
+        else:
+            time_control = "byoyomi"
+            main_t = int(time_val.replace("\u5206", "")) * 60
+            byo_t = int(self.byo_time_var.get().replace("\u79d2", ""))
+            byo_p = self._get_byo_periods_int()
+            fischer_increment = 0
         komi = self._get_komi_float()
         user = self.app.current_user
         self.host_status.config(text="\u5bfe\u5c40\u76f8\u624b\u3092\u5f85\u3063\u3066\u3044\u307e\u3059...",
@@ -335,7 +367,8 @@ class MatchDialog:
             "komi": self.komi_var.get(),
             "winrate": self.winrate_var.get(),
         })
-        self.app.start_hosting(main_t, byo_t, byo_p, komi, self._on_opponent_found)
+        self.app.start_hosting(main_t, byo_t, byo_p, komi, self._on_opponent_found,
+                               time_control=time_control, fischer_increment=fischer_increment)
         self._host_timeout_id = self.win.after(get_offer_timeout_ms(), self._hosting_timeout)
 
     def _hosting_timeout(self):

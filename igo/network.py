@@ -41,7 +41,8 @@ def _net_recv(sock):
 
 class GameServer:
     """TCP server + UDP broadcaster for hosting a match."""
-    def __init__(self, name, rank, main_time, byo_time, byo_periods, on_connect_cb, komi=7.5, elo=0):
+    def __init__(self, name, rank, main_time, byo_time, byo_periods, on_connect_cb, komi=7.5, elo=0,
+                 time_control="byoyomi", fischer_increment=0):
         self.name = name
         self.rank = rank
         self.elo = elo
@@ -49,6 +50,8 @@ class GameServer:
         self.byo_time = byo_time
         self.byo_periods = byo_periods
         self.komi = komi
+        self.time_control = time_control
+        self.fischer_increment = fischer_increment
         self.on_connect_cb = on_connect_cb  # called with (socket, addr, opponent_info)
         self._running = False
         self._tcp_sock = None
@@ -107,6 +110,8 @@ class GameServer:
             "byo_time": self.byo_time,
             "byo_periods": self.byo_periods,
             "komi": self.komi,
+            "time_control": self.time_control,
+            "fischer_increment": self.fischer_increment,
             "port": self._port,
         }, ensure_ascii=False).encode("utf-8")
         while self._running:

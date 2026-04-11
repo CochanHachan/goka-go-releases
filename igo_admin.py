@@ -266,6 +266,45 @@ class AdminApp:
                  font=("Yu Gothic UI", 10),
                  fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
 
+        # --- フィッシャー時間設定 ---
+        fischer_frame = tk.Frame(bottom, bg=T("root_bg"))
+        fischer_frame.pack(side="left", padx=(0, 16))
+
+        tk.Label(fischer_frame, text="Fischer",
+                 font=("Yu Gothic UI", 10, "bold"),
+                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left", padx=(0, 4))
+
+        current_fischer_main = 5
+        current_fischer_inc = 10
+        try:
+            if server_settings:
+                current_fischer_main = int(server_settings.get("fischer_main_time", 300)) // 60
+                current_fischer_inc = int(server_settings.get("fischer_increment", 10))
+        except Exception:
+            pass
+
+        self._fischer_main_var = tk.StringVar(value=str(current_fischer_main))
+        fischer_main_vals = [str(i) for i in range(1, 31)]
+        fischer_main_cb = ttk.Combobox(fischer_frame, textvariable=self._fischer_main_var,
+            values=fischer_main_vals, state="readonly",
+            font=("Yu Gothic UI", 10), width=3)
+        fischer_main_cb.pack(side="left", padx=2)
+
+        tk.Label(fischer_frame, text="分+",
+                 font=("Yu Gothic UI", 10),
+                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
+
+        self._fischer_inc_var = tk.StringVar(value=str(current_fischer_inc))
+        fischer_inc_vals = [str(i) for i in [5, 10, 15, 20, 25, 30]]
+        fischer_inc_cb = ttk.Combobox(fischer_frame, textvariable=self._fischer_inc_var,
+            values=fischer_inc_vals, state="readonly",
+            font=("Yu Gothic UI", 10), width=3)
+        fischer_inc_cb.pack(side="left", padx=2)
+
+        tk.Label(fischer_frame, text="秒",
+                 font=("Yu Gothic UI", 10),
+                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
+
         # --- テーマ設定 ---
         theme_frame = tk.LabelFrame(bottom, text="テーマ",
                                      font=("Yu Gothic UI", 9),
@@ -358,6 +397,7 @@ class AdminApp:
         """OKボタン: テーマとタイムアウトを両方適用する。"""
         self._apply_theme()
         self._apply_timeout()
+        self._apply_fischer()
 
     def _apply_theme(self):
         new_theme = self._theme_var.get()
@@ -385,6 +425,26 @@ class AdminApp:
                 with open(self._config_path, "r", encoding="utf-8") as f:
                     cfg = json.load(f)
             cfg["offer_timeout_min"] = minutes
+            with open(self._config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def _apply_fischer(self):
+        try:
+            main_min = int(self._fischer_main_var.get())
+            inc_sec = int(self._fischer_inc_var.get())
+        except ValueError:
+            return
+        main_sec = main_min * 60
+        self._api_put("/api/settings", {"fischer_main_time": main_sec, "fischer_increment": inc_sec})
+        try:
+            cfg = {}
+            if os.path.exists(self._config_path):
+                with open(self._config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+            cfg["fischer_main_time"] = main_sec
+            cfg["fischer_increment"] = inc_sec
             with open(self._config_path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, ensure_ascii=False)
         except Exception:

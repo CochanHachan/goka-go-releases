@@ -221,13 +221,19 @@ class MatchOfferDialog:
     def _format_offer_values(self, offer):
         name = offer.get("name", "?")
         rank = offer.get("rank", "?")
-        main_m = offer.get("main_time", 600) // 60
-        byo_t = offer.get("byo_time", 30)
-        byo_p = offer.get("byo_periods", 5)
-        byo_str = "\u221e" if byo_p == 0 else str(byo_p)
+        tc = offer.get("time_control", "byoyomi")
         komi = offer.get("komi", 7.5)
         komi_str = "{}\u76ee\u534a".format(int(komi))
-        time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, byo_t, byo_str)
+        if tc == "fischer":
+            main_m = offer.get("main_time", 300) // 60
+            inc = offer.get("fischer_increment", 10)
+            time_str = "F {}\u5206+{}\u79d2".format(main_m, inc)
+        else:
+            main_m = offer.get("main_time", 600) // 60
+            byo_t = offer.get("byo_time", 30)
+            byo_p = offer.get("byo_periods", 5)
+            byo_str = "\u221e" if byo_p == 0 else str(byo_p)
+            time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, byo_t, byo_str)
         return (name, rank, time_str, komi_str)
 
     def _refresh_timer(self):
@@ -413,6 +419,8 @@ class MatchOfferDialog:
             self.app._cloud_byo_time = offer.get("byo_time", 30)
             self.app._cloud_byo_periods = offer.get("byo_periods", 5)
             self.app._cloud_komi = offer.get("komi", 7.5)
+            self.app._cloud_time_control = offer.get("time_control", "byoyomi")
+            self.app._cloud_fischer_increment = offer.get("fischer_increment", 0)
             self.app.send_cloud_message({
                 "type": "match_accept",
                 "target": name,

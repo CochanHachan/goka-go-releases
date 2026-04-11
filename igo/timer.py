@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""碁華 秒読みタイマー"""
+"""碁華 秒読みタイマー（秒読み＋フィッシャー対応）"""
 
 
 class ByoyomiTimer:
@@ -58,4 +58,38 @@ class ByoyomiTimer:
             else:
                 return "\u79d2\u8aad\u307f {:d}\u79d2 (\u6b8b{:d}\u56de)".format(
                     self.byo_remaining, self.byo_periods_left)
+
+
+class FischerTimer:
+    """Fischer time control: main time + increment per move."""
+    def __init__(self, main_seconds=300, increment_seconds=10):
+        self.main_time = main_seconds
+        self.increment = increment_seconds
+        self.remaining = main_seconds
+        self.in_byoyomi = False  # compatibility flag (always False for Fischer)
+        self.expired = False
+
+    def tick(self):
+        """Called every second. Returns True if still alive."""
+        if self.expired:
+            return False
+        self.remaining -= 1
+        if self.remaining <= 0:
+            self.remaining = 0
+            self.expired = True
+            return False
+        return True
+
+    def on_move(self):
+        """Called when the player makes a move. Adds increment to remaining time."""
+        if not self.expired:
+            self.remaining += self.increment
+
+    def display_text(self):
+        """Return display string for the timer."""
+        if self.expired:
+            return "\u6642\u9593\u5207\u308c"
+        m = self.remaining // 60
+        s = self.remaining % 60
+        return "{:d}:{:02d}".format(m, s)
 

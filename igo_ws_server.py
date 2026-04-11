@@ -118,6 +118,8 @@ async def handle_message(ws, handle, msg):
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
                 "komi": msg.get("komi", 7.5),
+                "time_control": msg.get("time_control", "byoyomi"),
+                "fischer_increment": msg.get("fischer_increment", 0),
             })
             logger.info("Match offer: %s -> %s", handle, target)
 
@@ -132,6 +134,8 @@ async def handle_message(ws, handle, msg):
             "byo_time": msg.get("byo_time", 30),
             "byo_periods": msg.get("byo_periods", 5),
             "komi": msg.get("komi", 7.5),
+            "time_control": msg.get("time_control", "byoyomi"),
+            "fischer_increment": msg.get("fischer_increment", 0),
         }
         for other_handle, other_ws in list(connected_users.items()):
             if other_handle != handle:

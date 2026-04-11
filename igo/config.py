@@ -124,3 +124,17 @@ def get_offer_timeout_ms():
         return max(1, minutes) * 60 * 1000
     except Exception:
         return 180000
+
+def get_fischer_settings():
+    """Get Fischer time control settings from config.
+    Returns (main_time_seconds, increment_seconds). Default: (300, 10)."""
+    try:
+        cfg_path = os.path.join(_get_app_data_dir(), "igo_config.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        main_t = int(cfg.get("fischer_main_time", 300))
+        inc = int(cfg.get("fischer_increment", 10))
+        return (max(60, main_t), max(1, inc))
+    except Exception:
+        return (300, 10)
+

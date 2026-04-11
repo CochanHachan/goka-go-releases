@@ -979,14 +979,15 @@ class App:
 
     # --- Network match methods ---
 
-    def start_hosting(self, main_time, byo_time, byo_periods, komi, on_connect_cb):
+    def start_hosting(self, main_time, byo_time, byo_periods, komi, on_connect_cb,
+                       time_control="byoyomi", fischer_increment=0):
         self._stop_match_listener()
         user = self.current_user
         name = user["handle_name"] if user else "?"
         rank = elo_to_display_rank(user["elo_rating"]) if user else "?"
         self._hosting_elo = user["elo_rating"] if user else 0
         self._hosting_cb = on_connect_cb
-        self._match_settings = (main_time, byo_time, byo_periods, komi)
+        self._match_settings = (main_time, byo_time, byo_periods, komi, time_control, fischer_increment)
 
         if self._cloud_mode and self._cloud_client:
             # Cloud mode: broadcast offer via WebSocket
@@ -994,6 +995,8 @@ class App:
             self._cloud_byo_time = byo_time
             self._cloud_byo_periods = byo_periods
             self._cloud_komi = komi
+            self._cloud_time_control = time_control
+            self._cloud_fischer_increment = fischer_increment
             self._cloud_client.send({
                 "type": "match_offer_broadcast",
                 "rank": rank,
@@ -1002,12 +1005,16 @@ class App:
                 "byo_time": byo_time,
                 "byo_periods": byo_periods,
                 "komi": komi,
+                "time_control": time_control,
+                "fischer_increment": fischer_increment,
             })
         else:
             # LAN mode: UDP broadcast + TCP
             self._server = GameServer(name, rank, main_time, byo_time, byo_periods,
                                        self._on_server_connect, komi=komi,
-                                       elo=self._hosting_elo)
+                                       elo=self._hosting_elo,
+                                       time_control=time_control,
+                                       fischer_increment=fischer_increment)
             self._server.start()
 
     def stop_hosting(self):
@@ -1041,6 +1048,8 @@ class App:
             "byo_time": self._match_settings[1],
             "byo_periods": self._match_settings[2],
             "komi": self._match_settings[3],
+            "time_control": self._match_settings[4],
+            "fischer_increment": self._match_settings[5],
         })
         self._server.stop()
         self._server = None
@@ -1049,9 +1058,10 @@ class App:
         opponent_name = msg.get("name", "?")
         opponent_rank = msg.get("rank", "?")
         opponent_elo = msg.get("elo", rank_to_initial_elo(opponent_rank))
-        mt, bt, bp, km = self._match_settings
+        mt, bt, bp, km, tc, fi = self._match_settings
         self.root.after(0, lambda: self._start_network_game(
-            host_color, opponent_name, opponent_rank, mt, bt, bp, km, opponent_elo))
+            host_color, opponent_name, opponent_rank, mt, bt, bp, km, opponent_elo,
+            time_control=tc, fischer_increment=fi))
         if self._hosting_cb:
             self._hosting_cb(msg)
 
@@ -1082,11 +1092,14 @@ class App:
                     bt = msg.get("byo_time", 30)
                     bp = msg.get("byo_periods", 5)
                     km = msg.get("komi", 7.5)
+                    tc = msg.get("time_control", "byoyomi")
+                    fi = msg.get("fischer_increment", 0)
                     opponent_name = offer.get("name", "?")
                     opponent_rank = offer.get("rank", "?")
                     opponent_elo = offer.get("elo", rank_to_initial_elo(opponent_rank))
                     self.root.after(0, lambda: self._start_network_game(
-                        my_color, opponent_name, opponent_rank, mt, bt, bp, km, opponent_elo))
+                        my_color, opponent_name, opponent_rank, mt, bt, bp, km, opponent_elo,
+                        time_control=tc, fischer_increment=fi))
                     if on_done_cb:
                         on_done_cb()
                 else:
@@ -1096,7 +1109,7 @@ class App:
                     "\u30a8\u30e9\u30fc", "\u63a5\u7d9a\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: {}".format(e)))
         threading.Thread(target=_connect, daemon=True).start()
 
-    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=7.5, opponent_elo=0):
+    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=7.5, opponent_elo=0, time_control="byoyomi", fischer_increment=0):
         if not self.go_board:
             return
         user = self.current_user
@@ -1115,7 +1128,8 @@ class App:
             self.go_board.set_players(
                 black_name=opponent_name, black_rank=opponent_rank,
                 white_name=my_name, white_rank=my_rank)
-        self.go_board.setup_network_game(my_color, main_time, byo_time, byo_periods, komi)
+        self.go_board.setup_network_game(my_color, main_time, byo_time, byo_periods, komi,
+                                             time_control=time_control, fischer_increment=fischer_increment)
         self.go_board.opponent_elo = opponent_elo
         # Update title bar: 黒名(棋力) VS 白名(棋力) コミX目半
         b_name = self.go_board.black_name
@@ -1483,6 +1497,8 @@ class App:
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
                 "komi": msg.get("komi", 7.5),
+                "time_control": msg.get("time_control", "byoyomi"),
+                "fischer_increment": msg.get("fischer_increment", 0),
             }
             # Case 1: MatchDialog is open (user is hosting/browsing) -> add to its list
             if self._current_match_dialog:
@@ -1601,9 +1617,12 @@ class App:
         byo_time = getattr(self, '_cloud_byo_time', 30)
         byo_periods = getattr(self, '_cloud_byo_periods', 5)
         komi = getattr(self, '_cloud_komi', 7.5)
+        time_control = getattr(self, '_cloud_time_control', "byoyomi")
+        fischer_increment = getattr(self, '_cloud_fischer_increment', 0)
 
         self._start_network_game(my_color, opponent_name, opponent_rank,
-                                  main_time, byo_time, byo_periods, komi, opponent_elo)
+                                  main_time, byo_time, byo_periods, komi, opponent_elo,
+                                  time_control=time_control, fischer_increment=fischer_increment)
 
     def _start_ai_game(self, my_color, opponent_name, opponent_rank, opponent_elo, bot_visits):
         """Start a game against AI bot using KataGo GTP."""
@@ -1636,9 +1655,12 @@ class App:
         byo_time = getattr(self, '_cloud_byo_time', 30)
         byo_periods = getattr(self, '_cloud_byo_periods', 5)
         komi = getattr(self, '_cloud_komi', 7.5)
+        time_control = getattr(self, '_cloud_time_control', "byoyomi")
+        fischer_increment = getattr(self, '_cloud_fischer_increment', 0)
 
         self._start_network_game(my_color, opponent_name, opponent_rank,
-                                  main_time, byo_time, byo_periods, komi, opponent_elo)
+                                  main_time, byo_time, byo_periods, komi, opponent_elo,
+                                  time_control=time_control, fischer_increment=fischer_increment)
 
         # Start KataGo in background thread (model loading takes time)
         def _init_katago():

@@ -22,7 +22,7 @@ from igo.katago import (
 )
 from igo.rendering import _make_stone_photoimage, _make_board_texture
 from igo.sound import _play_stone_sound
-from igo.timer import ByoyomiTimer
+from igo.timer import ByoyomiTimer, FischerTimer
 from igo.sgf import save_sgf, load_sgf
 from igo.network import _net_send
 
@@ -406,13 +406,19 @@ class GoBoard:
 
     def _play_byoyomi_if_enabled(self, timer, is_timeout=False):
         """秒読み設定がオンの場合、音声を再生する。
-        持ち時間中は読まない。秒読みフェーズに入ってから読む。"""
+        持ち時間中は読まない。秒読みフェーズに入ってから読む。
+        フィッシャーの場合は残り10秒以下でカウントダウン音声を再生。"""
         if self.app and not getattr(self.app, '_byoyomi_voice_enabled', True):
             return
         if is_timeout:
             play_timeout_sound()
             return
         if timer is None:
+            return
+        # フィッシャータイマーの場合：残り10秒以下でカウントダウン
+        if isinstance(timer, FischerTimer):
+            if timer.remaining <= 10:
+                play_byoyomi_sound(timer.remaining)
             return
         # 秒読みフェーズのみ音声を再生
         if timer.in_byoyomi:
@@ -800,14 +806,20 @@ class GoBoard:
             L("resign_opponent", opp_name),
             callback=_after_resign_ok)
 
-    def setup_network_game(self, my_color, main_time, byo_time, byo_periods, komi=7.5):
+    def setup_network_game(self, my_color, main_time, byo_time, byo_periods, komi=7.5,
+                           time_control="byoyomi", fischer_increment=10):
         """Initialize board for network play."""
         self.net_mode = True
         self.my_color = my_color
         self._komi = komi
         self._rules = "chinese"
-        self.timer_black = ByoyomiTimer(main_time, byo_time, byo_periods)
-        self.timer_white = ByoyomiTimer(main_time, byo_time, byo_periods)
+        self._time_control = time_control
+        if time_control == "fischer":
+            self.timer_black = FischerTimer(main_time, fischer_increment)
+            self.timer_white = FischerTimer(main_time, fischer_increment)
+        else:
+            self.timer_black = ByoyomiTimer(main_time, byo_time, byo_periods)
+            self.timer_white = ByoyomiTimer(main_time, byo_time, byo_periods)
         self.game = GoGame()
         self._full_redraw()
         self._update_time_display()
