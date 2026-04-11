@@ -1882,8 +1882,12 @@ class App:
         gb = self.go_board
         in_game = gb.net_mode and not gb.game.game_over
         in_review = getattr(gb, '_review_mode', False)
-        # 投了・パス
-        resign_state = "normal" if in_game else "disabled"
+        # 投了・パス (only on my turn during network game)
+        if in_game and gb.my_color is not None:
+            is_my_turn = gb.game.current_player == gb.my_color
+            resign_state = "normal" if is_my_turn else "disabled"
+        else:
+            resign_state = "normal" if in_game else "disabled"
         pass_state = resign_state
         self._game_menu.entryconfig(L("menu_resign"), state=resign_state)
         self._game_menu.entryconfig(L("menu_pass"), state=pass_state)
