@@ -523,7 +523,10 @@ class MatchDialog:
             main_m = offer.get("main_time", 600) // 60
             komi = offer.get("komi", 7.5)
             komi_str = "{}\u76ee\u534a".format(int(komi))
-            time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, offer.get("byo_time", 30), byo_str)
+            if offer.get("time_control") == "fischer":
+                time_str = "F {}\u5206+{}\u79d2".format(main_m, offer.get("fischer_increment", 10))
+            else:
+                time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, offer.get("byo_time", 30), byo_str)
             rows.append([offer.get("name", "?"), offer.get("rank", "?"),
                          time_str, komi_str])
             new_keys.append(ip)
@@ -603,6 +606,8 @@ class MatchDialog:
             self.app._cloud_byo_time = offer.get("byo_time", 30)
             self.app._cloud_byo_periods = offer.get("byo_periods", 5)
             self.app._cloud_komi = offer.get("komi", 7.5)
+            self.app._cloud_time_control = offer.get("time_control", "byoyomi")
+            self.app._cloud_fischer_increment = offer.get("fischer_increment", 0)
             self.app.send_cloud_message({
                 "type": "match_accept",
                 "target": key,

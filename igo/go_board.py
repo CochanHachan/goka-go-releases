@@ -736,6 +736,12 @@ class GoBoard:
         else:
             opp_name = getattr(self, "black_name", L("opponent_default"))
         self._show_temp_overlay(L("opponent_passed", opp_name), duration=5000)
+        # Grant Fischer increment (or reset byoyomi) for the opponent who passed
+        opp_color = self.game.current_player
+        if opp_color == BLACK and self.timer_black:
+            self.timer_black.on_move()
+        if opp_color == WHITE and self.timer_white:
+            self.timer_white.on_move()
         self.game.pass_turn()
         self._update_time_display()
         # Sync button state after turn change
@@ -1027,6 +1033,12 @@ class GoBoard:
             return
         if self.game.current_player != self.my_color:
             return
+        # Grant Fischer increment (or reset byoyomi) before pass_turn switches the player
+        player = self.game.current_player
+        if player == BLACK and self.timer_black:
+            self.timer_black.on_move()
+        if player == WHITE and self.timer_white:
+            self.timer_white.on_move()
         self.game.pass_turn()
         self._update_time_display()
         if self.app:
