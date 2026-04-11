@@ -70,6 +70,16 @@ def _init_config_if_needed():
             if cfg.get("offer_timeout_min") != server_timeout:
                 cfg["offer_timeout_min"] = server_timeout
                 changed = True
+        server_fischer_main = server_settings.get("fischer_main_time")
+        server_fischer_inc = server_settings.get("fischer_increment")
+        if server_fischer_main is not None:
+            if cfg.get("fischer_main_time") != server_fischer_main:
+                cfg["fischer_main_time"] = server_fischer_main
+                changed = True
+        if server_fischer_inc is not None:
+            if cfg.get("fischer_increment") != server_fischer_inc:
+                cfg["fischer_increment"] = server_fischer_inc
+                changed = True
         if changed:
             with open(app_cfg, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)
