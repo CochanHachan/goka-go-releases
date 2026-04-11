@@ -266,6 +266,7 @@ class MatchDialog:
         # Restore saved column widths or use defaults
         self._ws.restore_column_widths(self.match_list, 4, [120, 80, 120, 70])
         self._match_highlighted_row = None
+        self._offers_display_keys = []
         self.match_list.extra_bindings("cell_select", self._on_match_cell_select)
 
         from igo.glossy_pill_button import GlossyButton as GlossyPillButton
@@ -474,7 +475,15 @@ class MatchDialog:
                  or (v.get("_addr") is None and now - v.get("_time", 0) > cloud_timeout)]
         for k in stale:
             del self._offers[k]
+        # Save selection by name
+        sel_name = None
+        if self._match_highlighted_row is not None:
+            old_keys = list(self._offers_display_keys)
+            if self._match_highlighted_row < len(old_keys):
+                sel_name = old_keys[self._match_highlighted_row]
         rows = []
+        new_keys = []
+        new_sel_row = None
         for ip, offer in self._offers.items():
             byo_p = offer.get("byo_periods", 5)
             byo_str = "\u221e" if byo_p == 0 else str(byo_p)
@@ -484,11 +493,40 @@ class MatchDialog:
             time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, offer.get("byo_time", 30), byo_str)
             rows.append([offer.get("name", "?"), offer.get("rank", "?"),
                          time_str, komi_str])
+            new_keys.append(ip)
+            if ip == sel_name:
+                new_sel_row = len(rows) - 1
+        self._offers_display_keys = new_keys
         self.match_list.set_sheet_data(rows, redraw=False, reset_col_positions=False)
         if not getattr(self, '_match_col_widths_set', False):
             self._ws.restore_column_widths(self.match_list, 4, [120, 80, 120, 70])
             self._match_col_widths_set = True
         self.match_list.redraw()
+        # Restore or auto-select first row
+        if new_sel_row is not None:
+            if self._match_highlighted_row is not None and self._match_highlighted_row != new_sel_row:
+                try:
+                    self.match_list.dehighlight_rows(self._match_highlighted_row)
+                except Exception:
+                    pass
+            self.match_list.highlight_rows(rows=[new_sel_row], bg="#DCE9F6", fg="#000000")
+            self._match_highlighted_row = new_sel_row
+        else:
+            self.match_list.deselect()
+            if self._match_highlighted_row is not None:
+                try:
+                    self.match_list.dehighlight_rows(self._match_highlighted_row)
+                except Exception:
+                    pass
+            if rows:
+                try:
+                    self.match_list.select_row(0)
+                    self.match_list.highlight_rows(rows=[0], bg="#DCE9F6", fg="#000000")
+                    self._match_highlighted_row = 0
+                except Exception:
+                    self._match_highlighted_row = None
+            else:
+                self._match_highlighted_row = None
         # Show/hide accept & reject buttons based on offers
         if rows:
             self._match_accept_btn.pack(side="left", padx=(0, 8))
@@ -512,7 +550,7 @@ class MatchDialog:
         if self._match_highlighted_row is None:
             return
         idx = self._match_highlighted_row
-        keys = list(self._offers.keys())
+        keys = list(self._offers_display_keys)
         if idx >= len(keys):
             return
         key = keys[idx]
@@ -548,7 +586,7 @@ class MatchDialog:
         if self._match_highlighted_row is None:
             return
         idx = self._match_highlighted_row
-        keys = list(self._offers.keys())
+        keys = list(self._offers_display_keys)
         if idx >= len(keys):
             return
         name = keys[idx]
