@@ -550,7 +550,7 @@ class MatchDialog:
         if self._match_highlighted_row is None:
             return
         idx = self._match_highlighted_row
-        keys = list(self._offers.keys())
+        keys = list(self._offers_display_keys)
         if idx >= len(keys):
             return
         key = keys[idx]
@@ -586,7 +586,7 @@ class MatchDialog:
         if self._match_highlighted_row is None:
             return
         idx = self._match_highlighted_row
-        keys = list(self._offers.keys())
+        keys = list(self._offers_display_keys)
         if idx >= len(keys):
             return
         name = keys[idx]
