@@ -487,6 +487,8 @@ def _save_settings(settings: dict):
 class UpdateSettingsRequest(BaseModel):
     theme: Optional[str] = None
     offer_timeout_min: Optional[int] = None
+    fischer_main_time: Optional[int] = None
+    fischer_increment: Optional[int] = None
 
 
 @app.get("/api/settings")
@@ -503,6 +505,10 @@ async def update_settings(req: UpdateSettingsRequest):
         settings["theme"] = req.theme
     if req.offer_timeout_min is not None:
         settings["offer_timeout_min"] = req.offer_timeout_min
+    if req.fischer_main_time is not None:
+        settings["fischer_main_time"] = req.fischer_main_time
+    if req.fischer_increment is not None:
+        settings["fischer_increment"] = req.fischer_increment
     _save_settings(settings)
     logger.info("Settings updated: %s", settings)
     return {"success": True, "settings": settings}
@@ -741,6 +747,8 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "byo_time": msg.get("byo_time", 30),
                 "byo_periods": msg.get("byo_periods", 5),
                 "komi": msg.get("komi", 7.5),
+                "time_control": msg.get("time_control", "byoyomi"),
+                "fischer_increment": msg.get("fischer_increment", 0),
             })
             logger.info("Match offer: %s -> %s", handle, target)
             # 1分後にボットが自動承諾するタイマー開始
@@ -767,6 +775,8 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             "byo_time": msg.get("byo_time", 30),
             "byo_periods": msg.get("byo_periods", 5),
             "komi": msg.get("komi", 7.5),
+            "time_control": msg.get("time_control", "byoyomi"),
+            "fischer_increment": msg.get("fischer_increment", 0),
         }
         payload = json.dumps(offer_msg, ensure_ascii=False)
         for other_handle, other_ws in list(connected_users.items()):
