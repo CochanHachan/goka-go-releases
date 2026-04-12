@@ -34,6 +34,7 @@ except ImportError:
 
 try:
     from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
+    from fastapi.responses import JSONResponse
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 except ImportError:
@@ -1108,22 +1109,36 @@ def _rank_to_initial_elo(rank: str) -> float:
 # ---------------------------------------------------------------------------
 # 管理用エンドポイント（リモートデプロイ用）
 # ---------------------------------------------------------------------------
-ADMIN_TOKEN = "goka-deploy-2026"
-REPO_DIR = "/home/gokago_server/goka_server"
+ADMIN_TOKEN = os.environ.get("GOKA_ADMIN_TOKEN", "goka-deploy-2026")
+REPO_DIR = os.environ.get("GOKA_REPO_DIR",
+                          os.path.dirname(os.path.abspath(__file__)))
+
+
+def _check_admin_token(request: Request) -> bool:
+    token = request.headers.get("X-Token", "")
+    return token == ADMIN_TOKEN
+
 
 @app.post("/admin/update")
 async def admin_update(request: Request):
     """GitHubから最新コードを取得してサーバーを再起動する。"""
-    token = request.headers.get("X-Token", "")
-    if token != ADMIN_TOKEN:
-        return {"error": "forbidden"}, 403
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
     try:
         # git pull
         result = subprocess.run(
             ["git", "pull", "origin", "main"],
-            cwd=REPO_DIR, capture_output=True, text=True, timeout=30
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=60
         )
         git_output = result.stdout + result.stderr
+
+        if result.returncode != 0:
+            return JSONResponse(content={"status": "error", "git": git_output}, status_code=500)
+
+        # 変更があった場合のみ再起動
+        if "Already up to date" in git_output:
+            return {"status": "no_change", "git": git_output}
+
         # サーバー再起動（新しいプロセスを起動してから自分を終了）
         subprocess.Popen(
             [sys.executable, os.path.join(REPO_DIR, "server.py")],
@@ -1134,17 +1149,19 @@ async def admin_update(request: Request):
         asyncio.get_event_loop().call_later(1.0, lambda: os.kill(os.getpid(), 9))
         return {"status": "updating", "git": git_output}
     except Exception as e:
-        return {"error": str(e)}
+        logger.error("Deploy error: %s", e)
+        return JSONResponse(content={"status": "error", "detail": str(e)}, status_code=500)
+
 
 @app.get("/admin/status")
 async def admin_status(request: Request):
     """サーバーの状態を返す。"""
-    token = request.headers.get("X-Token", "")
-    if token != ADMIN_TOKEN:
-        return {"error": "forbidden"}, 403
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
     return {
         "online_users": len(connected_users),
         "users": list(connected_users.keys()),
+        "active_games": len(active_games),
         "pid": os.getpid(),
     }
 

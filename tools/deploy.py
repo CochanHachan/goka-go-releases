@@ -1,13 +1,14 @@
 """
 碁華 デプロイツール (CLI版)
 ============================
-ブラウザやGUIを一切開かずに、PRマージ＋ワークフロー実行を行うスクリプト。
+ブラウザやGUIを一切開かずに、PRマージ＋ワークフロー実行＋サーバーデプロイを行うスクリプト。
 
 使い方:
-  python deploy.py                  # 全PRマージ＋ワークフロー実行
+  python deploy.py                  # 全PRマージ＋ワークフロー実行＋サーバーデプロイ
   python deploy.py --merge-only     # 全PRマージのみ（ビルドなし）
   python deploy.py --merge-select   # PR選択マージのみ（ビルドなし）
   python deploy.py --run-only 1.2.5 # ワークフロー実行のみ（バージョン指定）
+  python deploy.py --server-only    # サーバーデプロイのみ
 
 初回実行時にGitHubトークンの入力を求められます（gh_token.txt に自動保存）。
 """
@@ -23,6 +24,10 @@ import time
 REPO = "CochanHachan/goka-go-releases"
 API_BASE = f"https://api.github.com/repos/{REPO}"
 WORKFLOW_NAME = "Build and Deploy"
+
+# サーバーデプロイ設定
+SERVER_URL = "http://34.24.176.248:8000"
+ADMIN_TOKEN = "goka-deploy-2026"
 
 
 def get_token():
@@ -272,11 +277,81 @@ def wait_for_workflow(token):
     return None
 
 
+def deploy_server():
+    """サーバーに git pull + 再起動を指示"""
+    print("\n--- サーバーデプロイ ---")
+    print(f"サーバー: {SERVER_URL}")
+
+    # まずステータス確認
+    try:
+        req = urllib.request.Request(
+            f"{SERVER_URL}/admin/status",
+            headers={"X-Token": ADMIN_TOKEN},
+            method="GET"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            status = json.loads(resp.read().decode("utf-8"))
+        online = status.get("online_users", 0)
+        pid = status.get("pid", "?")
+        print(f"  現在の状態: PID={pid}, オンライン={online}人")
+    except Exception as e:
+        print(f"  警告: ステータス確認失敗 ({e})")
+
+    # デプロイ実行
+    print("  デプロイ中... ", end="", flush=True)
+    try:
+        req = urllib.request.Request(
+            f"{SERVER_URL}/admin/update",
+            headers={"X-Token": ADMIN_TOKEN},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        status = result.get("status", "unknown")
+        if status == "updating":
+            print("OK (サーバー再起動中)")
+        elif status == "no_change":
+            print("OK (変更なし・再起動不要)")
+            return True
+        elif status == "error":
+            print(f"失敗: {result.get('git', result.get('detail', ''))}")
+            return False
+        else:
+            print(f"OK ({status})")
+    except urllib.error.HTTPError as e:
+        print(f"失敗 (HTTP {e.code})")
+        return False
+    except Exception as e:
+        # サーバー再起動中は接続が切れるのが正常
+        print("OK (サーバー再起動中)")
+
+    # 再起動待機
+    print("  サーバー再起動を待機中... ", end="", flush=True)
+    for i in range(12):  # 最大60秒待機
+        time.sleep(5)
+        try:
+            req = urllib.request.Request(
+                f"{SERVER_URL}/admin/status",
+                headers={"X-Token": ADMIN_TOKEN},
+                method="GET"
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                new_status = json.loads(resp.read().decode("utf-8"))
+            new_pid = new_status.get("pid", "?")
+            print(f"OK (PID={new_pid})")
+            return True
+        except Exception:
+            pass
+    print("タイムアウト")
+    return False
+
+
 def main():
     args = sys.argv[1:]
     merge_only = "--merge-only" in args
     merge_select = "--merge-select" in args
     run_only = "--run-only" in args
+    server_only = "--server-only" in args
     no_wait = "--no-wait" in args
     version = None
 
@@ -289,13 +364,21 @@ def main():
     print("=" * 50)
     print("  碁華 デプロイツール (CLI版)")
     print(f"  リポジトリ: {REPO}")
+    print(f"  サーバー: {SERVER_URL}")
     print("=" * 50)
+
+    # サーバーデプロイのみモード
+    if server_only:
+        deploy_server()
+        print("\n完了!")
+        return
 
     token = get_token()
 
     # PR選択マージモード
     if merge_select:
         merge_select_prs(token)
+        deploy_server()
         print("\n完了!")
         return
 
@@ -311,6 +394,10 @@ def main():
         started = run_workflow(token, version)
         if started and not no_wait:
             wait_for_workflow(token)
+
+    # サーバーデプロイ（マージ後は常に実行）
+    if not run_only:
+        deploy_server()
 
     print("\n完了!")
 
