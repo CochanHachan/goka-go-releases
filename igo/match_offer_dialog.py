@@ -31,7 +31,7 @@ class MatchOfferDialog:
         self._cloud_mode = cloud_mode
         self.win = tk.Toplevel(parent_root)
         self.win.withdraw()  # Hide until positioned
-        self.win.title("\u5bfe\u5c40\u306e\u7533\u3057\u8fbc\u307f\u3067\u3059\uff01")
+        self.win.title(L("title_offer_dialog"))
         self._parchment_bg = "#ede0cc"
         self._parchment_light = "#f5efe4"
         self.win.configure(bg=self._parchment_bg)
@@ -60,7 +60,7 @@ class MatchOfferDialog:
             banner_frame.pack(fill="x", pady=(6, 8), padx=16)
             banner_frame.pack_propagate(False)
             self._banner = TealBanner(banner_frame,
-                text="\u6311\u6226\u72b6\u304c\u5c4a\u3044\u3066\u3044\u307e\u3059\uff01",
+                text=L("offer_arrived"),
                 width=420, height=48,
                 font_weight="normal",
                 text_color=(255, 0, 0),
@@ -79,7 +79,7 @@ class MatchOfferDialog:
             banner_frame.bind("<Configure>", _on_banner_resize)
         except Exception as e:
             print("TealBanner error:", e)
-            tk.Label(self.win, text="\u6311\u6226\u72b6\u304c\u5c4a\u3044\u3066\u3044\u307e\u3059\uff01",
+            tk.Label(self.win, text=L("offer_arrived"),
                      font=("", 14, "bold"), fg=T("accent_gold"), bg=bg).pack(pady=(12, 8))
 
         # --- Buttons first (side=bottom) so list doesn't push them off ---
@@ -92,7 +92,7 @@ class MatchOfferDialog:
         list_frame.pack(fill="both", expand=True, padx=1, pady=1)
         _ensure_tksheet()
         self.offer_list = Sheet(list_frame,
-            headers=["\u5bfe\u5c40\u8005", "\u68cb\u529b", "\u6301\u3061\u6642\u9593", "\u30b3\u30df"], data=[],
+            headers=[L("col_player"), L("col_strength"), L("col_time"), L("col_komi")], data=[],
             show_x_scrollbar=False, show_y_scrollbar=True,
             show_row_index=False)
         self.offer_list.pack(fill="both", expand=True)
