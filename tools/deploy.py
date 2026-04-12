@@ -312,6 +312,7 @@ def deploy_server():
             print("OK (サーバー再起動中)")
         elif status == "no_change":
             print("OK (変更なし・再起動不要)")
+            return True
         elif status == "error":
             print(f"失敗: {result.get('git', result.get('detail', ''))}")
             return False
