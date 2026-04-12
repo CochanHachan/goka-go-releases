@@ -641,6 +641,8 @@ class App:
                 pass
 
         _log("=== _do_update called ===")
+        # ── アップデート中ロックファイル作成（二重起動防止） ──
+        self._create_update_lock()
         # ── 試行を記録（ループ防止） ──
         self._record_attempt(latest)
         dialog.destroy()
@@ -781,6 +783,9 @@ class App:
                     bf.write("goto END\n")
                     # --- 検証: exe が更新されたか確認 ---
                     bf.write(":VERIFY\n")
+                    # アップデート中ロックファイルを削除（再起動前に）
+                    _lock_path = self._update_lock_path()
+                    bf.write('del /f /q "{}" >nul 2>&1\n'.format(_lock_path))
                     bf.write('if exist "{}" (\n'.format(app_exe))
                     bf.write('  echo [%time%] Verified: exe exists >> "%LOGFILE%"\n')
                     bf.write('  start "" "{}"\n'.format(app_exe))
@@ -790,6 +795,7 @@ class App:
                     bf.write(")\n")
                     bf.write("goto END\n")
                     bf.write(":FAIL\n")
+                    bf.write('del /f /q "{}" >nul 2>&1\n'.format(_lock_path))
                     bf.write('echo [%time%] Update FAILED >> "%LOGFILE%"\n')
                     bf.write(":END\n")
                     bf.write('echo [%time%] === Update batch end === >> "%LOGFILE%"\n')
@@ -802,12 +808,37 @@ class App:
                 _log("WORKER ERROR: {}".format(e))
                 _log(traceback.format_exc())
                 def _show_err(err=e):
+                    self._remove_update_lock()
                     prog["close"]()
                     self.root.deiconify()
                     messagebox.showerror("更新エラー", str(err))
                     self.show_login()
                 self.root.after(0, _show_err)
         threading.Thread(target=_worker, daemon=True).start()
+
+    # ── アップデート中ロックファイル管理 ─────────────────
+    _UPDATE_LOCK_NAME = "goka_updating.lock"
+
+    def _update_lock_path(self):
+        return os.path.join(_get_app_data_dir(), self._UPDATE_LOCK_NAME)
+
+    def _create_update_lock(self):
+        """\u30a2\u30c3\u30d7\u30c7\u30fc\u30c8\u958b\u59cb\u6642\u306b\u30ed\u30c3\u30af\u30d5\u30a1\u30a4\u30eb\u3092\u4f5c\u6210\u3002"""
+        try:
+            import time as _t
+            with open(self._update_lock_path(), "w") as f:
+                f.write(str(_t.time()))
+        except Exception:
+            pass
+
+    def _remove_update_lock(self):
+        """\u30a2\u30c3\u30d7\u30c7\u30fc\u30c8\u5b8c\u4e86\u6642\u306b\u30ed\u30c3\u30af\u30d5\u30a1\u30a4\u30eb\u3092\u524a\u9664\u3002"""
+        try:
+            p = self._update_lock_path()
+            if os.path.isfile(p):
+                os.remove(p)
+        except Exception:
+            pass
 
     def _launch_update(self, prog, bat_path, _log=None):
         """バッチを起動してアプリを終了する。"""

@@ -62,42 +62,34 @@ from igo.go_board import GoBoard
 from igo.app import App
 
 
-def _acquire_single_instance_lock():
-    """二重起動を防止する。Windows では名前付きMutex、他OSではロックファイルを使用。
+def _is_update_in_progress():
+    """アップデート中かどうかをロックファイルで判定する。
 
-    Returns
-    -------
-    lock : object or None
-        ロックオブジェクト（プロセス終了まで保持する）。
-        二重起動の場合は None を返す。
+    アップデート中（_do_update実行中）に別インスタンスが起動されたら
+    True を返して起動をブロックする。通常時は複数インスタンス起動を許可。
     """
-    import sys
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\GokaGoSingleInstance")
-            ERROR_ALREADY_EXISTS = 183
-            if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
-                return None
-            return _mutex  # プロセス終了まで保持（GC回避）
-        except Exception:
-            return "fallback"  # ctypes失敗時はロックなしで起動を許可
-    else:
-        # 非Windows環境（開発用）: ロックファイル方式
-        import os, tempfile, fcntl
-        lock_path = os.path.join(tempfile.gettempdir(), "goka_go.lock")
-        try:
-            lock_file = open(lock_path, "w")
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return lock_file  # プロセス終了まで保持
-        except (IOError, OSError):
-            return None
+    import os
+    lock_path = os.path.join(_get_app_data_dir(), "goka_updating.lock")
+    if not os.path.isfile(lock_path):
+        return False
+    # ロックファイルが存在する場合、内容のタイムスタンプをチェック
+    # 古すぎる場合（5分以上）はクラッシュ等で残ったゴミとみなす
+    try:
+        with open(lock_path, "r") as f:
+            ts = float(f.read().strip())
+        import time
+        if time.time() - ts > 300:  # 5分以上前 → 古いロック
+            os.remove(lock_path)
+            return False
+        return True
+    except Exception:
+        # 読み取り失敗 → 安全のため起動を許可
+        return False
 
 
 def main():
-    _lock = _acquire_single_instance_lock()
-    if _lock is None:
-        # 既に起動中 → 何もせず終了
+    if _is_update_in_progress():
+        # アップデート中 → 何もせず終了（通常の複数起動は許可）
         import sys
         sys.exit(0)
     app = App()
