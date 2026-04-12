@@ -34,6 +34,7 @@ except ImportError:
 
 try:
     from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
+    from fastapi.responses import JSONResponse
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 except ImportError:
@@ -1132,7 +1133,7 @@ async def admin_update(request: Request):
         git_output = result.stdout + result.stderr
 
         if result.returncode != 0:
-            return {"status": "error", "git": git_output}
+            return JSONResponse(content={"status": "error", "git": git_output}, status_code=500)
 
         # 変更があった場合のみ再起動
         if "Already up to date" in git_output:
@@ -1149,7 +1150,7 @@ async def admin_update(request: Request):
         return {"status": "updating", "git": git_output}
     except Exception as e:
         logger.error("Deploy error: %s", e)
-        return {"status": "error", "detail": str(e)}
+        return JSONResponse(content={"status": "error", "detail": str(e)}, status_code=500)
 
 
 @app.get("/admin/status")
