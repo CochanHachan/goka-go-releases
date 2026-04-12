@@ -312,12 +312,12 @@ class App:
         cur_byo = self._ws.load("bot_byo_time", "30秒")
         cur_periods = self._ws.load("bot_byo_periods", "5回")
 
-        # 持ち時間（分）— 対局申請と同じ選択肢（Fischerなし）
+        # 持ち時間（分）— 対局申請と同じ選択肢（Fischer含む）
         tk.Label(frame, text=L("ai_bot_main_time"),
                  font=("Yu Gothic UI", 10)).grid(row=0, column=0,
                  sticky="w", pady=4)
         main_var = tk.StringVar(value=str(cur_main))
-        main_vals = ["{}分".format(i) for i in range(1, 61)]
+        main_vals = ["Fischer"] + ["{}分".format(i) for i in range(1, 61)]
         main_cb = ttk.Combobox(frame, textvariable=main_var,
             values=main_vals, state="readonly",
             style="BotSettings.TCombobox",
@@ -347,6 +347,21 @@ class App:
             style="BotSettings.TCombobox",
             font=("Yu Gothic UI", 10), width=COMBO_W)
         periods_cb.grid(row=2, column=1, padx=(10, 0), pady=4)
+
+        # Fischer選択時は秒読み・秒読み回数を無効化（対局申請と同じ動作）
+        def _on_time_control_change(event=None):
+            if main_var.get() == "Fischer":
+                byo_cb.config(state="disabled")
+                periods_cb.config(state="disabled")
+            else:
+                byo_cb.config(state="readonly")
+                periods_cb.config(state="readonly")
+
+        main_cb.bind("<<ComboboxSelected>>", _on_time_control_change)
+        # 初期状態の反映
+        if str(cur_main) == "Fischer":
+            byo_cb.config(state="disabled")
+            periods_cb.config(state="disabled")
 
         btn_frame = tk.Frame(win, pady=10)
         btn_frame.pack()
@@ -389,15 +404,23 @@ class App:
         mt_str = self._ws.load("bot_main_time", "10分")
         bt_str = self._ws.load("bot_byo_time", "30秒")
         bp_str = self._ws.load("bot_byo_periods", "5回")
-        mt = self._parse_bot_time_value(mt_str, "分", 10)
-        bt = self._parse_bot_time_value(bt_str, "秒", 30)
-        bp = self._parse_bot_time_value(bp_str, "回", 5)
-        self._cloud_client.send({
-            "type": "set_bot_conditions",
-            "main_time": mt * 60,   # 分→秒に変換
-            "byo_time": bt,
-            "byo_periods": bp,
-        })
+        if str(mt_str) == "Fischer":
+            # Fischer選択時: サーバー側の管理者Fischer設定を使う
+            self._cloud_client.send({
+                "type": "set_bot_conditions",
+                "time_control": "fischer",
+            })
+        else:
+            mt = self._parse_bot_time_value(mt_str, "分", 10)
+            bt = self._parse_bot_time_value(bt_str, "秒", 30)
+            bp = self._parse_bot_time_value(bp_str, "回", 5)
+            self._cloud_client.send({
+                "type": "set_bot_conditions",
+                "time_control": "byoyomi",
+                "main_time": mt * 60,   # 分→秒に変換
+                "byo_time": bt,
+                "byo_periods": bp,
+            })
 
     # ------------------------------------------------------------------
     # ヘルプメニュー ハンドラ
