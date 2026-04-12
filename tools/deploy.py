@@ -318,6 +318,9 @@ def deploy_server():
             return False
         else:
             print(f"OK ({status})")
+    except urllib.error.HTTPError as e:
+        print(f"失敗 (HTTP {e.code})")
+        return False
     except Exception as e:
         # サーバー再起動中は接続が切れるのが正常
         print("OK (サーバー再起動中)")
