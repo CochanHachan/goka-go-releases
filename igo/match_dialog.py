@@ -32,7 +32,7 @@ class MatchDialog:
         self.app = app
         self.win = tk.Toplevel(parent_root)
         self.win.withdraw()  # Hide until positioned
-        self.win.title("\u5bfe\u5c40\u7533\u3057\u8fbc\u307f")
+        self.win.title(L("title_match_dialog"))
         self.win.configure(bg=T("container_bg"))
         self.win.resizable(False, True)  # 横固定、縦のみ変更可
         self.win.transient(parent_root)
@@ -120,7 +120,7 @@ class MatchDialog:
                      font=("", 13, "bold"), fg=fg, bg=bg).pack(pady=(12, 4))
 
         # --- Settings section ---
-        settings_lf = tk.LabelFrame(self.win, text="\u5bfe\u5c40\u6761\u4ef6\u8a2d\u5b9a",
+        settings_lf = tk.LabelFrame(self.win, text=L("match_settings"),
                                      font=("", 10), fg=fg, bg=bg, padx=8, pady=6)
         settings_lf.pack(fill="x", padx=12, pady=(8, 4))
 
@@ -353,7 +353,7 @@ class MatchDialog:
             fischer_increment = 0
         komi = self._get_komi_float()
         user = self.app.current_user
-        self.host_status.config(text="\u5bfe\u5c40\u76f8\u624b\u3092\u5f85\u3063\u3066\u3044\u307e\u3059...",
+        self.host_status.config(text=L("match_hosting"),
                                 fg=T("active_green"))
         self.host_btn.config(state="disabled")
         self.cancel_btn.config(state="normal")
@@ -390,7 +390,7 @@ class MatchDialog:
         self.host_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
         self.host_status.config(
-            text="\u5bfe\u5c40\u6761\u4ef6\u3092\u627f\u8afe\u3059\u308b\u30d7\u30ec\u30a4\u30e4\u30fc\u304c\u5b58\u5728\u3057\u307e\u305b\u3093\u3067\u3057\u305f",
+            text=L("match_no_opponent"),
             fg=T("error_red"))
 
     def _cancel_hosting(self):
@@ -416,7 +416,7 @@ class MatchDialog:
             self._hosting = False
         self.host_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")
-        self.host_status.config(text="\u7533\u3057\u8fbc\u307f\u3092\u53d6\u308a\u6d88\u3057\u307e\u3057\u305f",
+        self.host_status.config(text=L("match_cancelled"),
                                 fg=T("text_disabled"))
 
     def _on_opponent_found(self, opponent_info):
