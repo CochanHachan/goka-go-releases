@@ -293,50 +293,91 @@ class App:
         frame = tk.Frame(win, padx=20, pady=15)
         frame.pack()
 
-        # 現在の設定を読み込む（デフォルト: 10分, 30秒, 5回）
-        cur_main = self._ws.load("bot_main_time", 10)
-        cur_byo = self._ws.load("bot_byo_time", 30)
-        cur_periods = self._ws.load("bot_byo_periods", 5)
+        # Combobox スタイル（対局申請ダイアログと同一）
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("BotSettings.TCombobox",
+                         borderwidth=4, relief="groove",
+                         fieldbackground="#fffde7", background="#e0e0e0",
+                         arrowcolor="#1976d2", padding=5)
+        style.map("BotSettings.TCombobox",
+                  fieldbackground=[("focus", "#fff176")],
+                  bordercolor=[("focus", "#ff5722")],
+                  relief=[("focus", "groove")])
 
-        # 持ち時間（分）
+        COMBO_W = 6
+
+        # 現在の設定を読み込む（デフォルト: "10分", "30秒", "5回"）
+        # 旧バージョンで整数保存されている場合は文字列に変換（後方互換）
+        cur_main = self._ws.load("bot_main_time", "10分")
+        if isinstance(cur_main, int) or (isinstance(cur_main, str) and cur_main.isdigit()):
+            cur_main = "{}分".format(int(cur_main))
+        cur_byo = self._ws.load("bot_byo_time", "30秒")
+        if isinstance(cur_byo, int) or (isinstance(cur_byo, str) and cur_byo.isdigit()):
+            cur_byo = "{}秒".format(int(cur_byo))
+        cur_periods = self._ws.load("bot_byo_periods", "5回")
+        if isinstance(cur_periods, int) or (isinstance(cur_periods, str) and cur_periods.isdigit()):
+            cur_periods = "{}回".format(int(cur_periods))
+
+        # 持ち時間（分）— 対局申請と同じ選択肢（Fischer含む）
         tk.Label(frame, text=L("ai_bot_main_time"),
                  font=("Yu Gothic UI", 10)).grid(row=0, column=0,
                  sticky="w", pady=4)
-        main_var = tk.IntVar(value=int(cur_main))
-        main_spin = tk.Spinbox(frame, from_=1, to=60, width=6,
-                               textvariable=main_var, font=("Yu Gothic UI", 10))
-        main_spin.grid(row=0, column=1, padx=(10, 0), pady=4)
+        main_var = tk.StringVar(value=str(cur_main))
+        main_vals = ["Fischer"] + ["{}分".format(i) for i in range(1, 61)]
+        main_cb = ttk.Combobox(frame, textvariable=main_var,
+            values=main_vals, state="readonly",
+            style="BotSettings.TCombobox",
+            font=("Yu Gothic UI", 10), width=COMBO_W)
+        main_cb.grid(row=0, column=1, padx=(10, 0), pady=4)
 
-        # 秒読み（秒）
+        # 秒読み（秒）— 対局申請と同じ選択肢
         tk.Label(frame, text=L("ai_bot_byo_time"),
                  font=("Yu Gothic UI", 10)).grid(row=1, column=0,
                  sticky="w", pady=4)
-        byo_var = tk.IntVar(value=int(cur_byo))
-        byo_spin = tk.Spinbox(frame, from_=1, to=300, width=6,
-                              textvariable=byo_var, font=("Yu Gothic UI", 10))
-        byo_spin.grid(row=1, column=1, padx=(10, 0), pady=4)
+        byo_var = tk.StringVar(value=str(cur_byo))
+        byo_vals = ["{}秒".format(i) for i in [10, 20, 30, 40, 50, 60]]
+        byo_cb = ttk.Combobox(frame, textvariable=byo_var,
+            values=byo_vals, state="readonly",
+            style="BotSettings.TCombobox",
+            font=("Yu Gothic UI", 10), width=COMBO_W)
+        byo_cb.grid(row=1, column=1, padx=(10, 0), pady=4)
 
-        # 秒読み回数
+        # 秒読み回数 — 対局申請と同じ選択肢
         tk.Label(frame, text=L("ai_bot_byo_periods"),
                  font=("Yu Gothic UI", 10)).grid(row=2, column=0,
                  sticky="w", pady=4)
-        periods_var = tk.IntVar(value=int(cur_periods))
-        periods_spin = tk.Spinbox(frame, from_=1, to=20, width=6,
-                                  textvariable=periods_var,
-                                  font=("Yu Gothic UI", 10))
-        periods_spin.grid(row=2, column=1, padx=(10, 0), pady=4)
+        periods_var = tk.StringVar(value=str(cur_periods))
+        period_vals = ["∞"] + ["{}回".format(i) for i in range(1, 11)]
+        periods_cb = ttk.Combobox(frame, textvariable=periods_var,
+            values=period_vals, state="readonly",
+            style="BotSettings.TCombobox",
+            font=("Yu Gothic UI", 10), width=COMBO_W)
+        periods_cb.grid(row=2, column=1, padx=(10, 0), pady=4)
+
+        # Fischer選択時は秒読み・秒読み回数を無効化（対局申請と同じ動作）
+        def _on_time_control_change(event=None):
+            if main_var.get() == "Fischer":
+                byo_cb.config(state="disabled")
+                periods_cb.config(state="disabled")
+            else:
+                byo_cb.config(state="readonly")
+                periods_cb.config(state="readonly")
+
+        main_cb.bind("<<ComboboxSelected>>", _on_time_control_change)
+        # 初期状態の反映
+        if str(cur_main) == "Fischer":
+            byo_cb.config(state="disabled")
+            periods_cb.config(state="disabled")
 
         btn_frame = tk.Frame(win, pady=10)
         btn_frame.pack()
 
         def _save():
-            mt = main_var.get()
-            bt = byo_var.get()
-            bp = periods_var.get()
             try:
-                self._ws.save("bot_main_time", mt)
-                self._ws.save("bot_byo_time", bt)
-                self._ws.save("bot_byo_periods", bp)
+                self._ws.save("bot_main_time", main_var.get())
+                self._ws.save("bot_byo_time", byo_var.get())
+                self._ws.save("bot_byo_periods", periods_var.get())
             except Exception:
                 pass
             self._send_bot_conditions_to_server()
@@ -351,19 +392,42 @@ class App:
                   command=win.destroy).pack(side="left", padx=5)
         win.grab_set()
 
+    @staticmethod
+    def _parse_bot_time_value(val, suffix, default):
+        """コンボボックスの表示値から数値を取り出す。例: '10分'→10"""
+        s = str(val)
+        if s == "∞":
+            return 0
+        s = s.replace(suffix, "")
+        try:
+            return int(s)
+        except (ValueError, TypeError):
+            return default
+
     def _send_bot_conditions_to_server(self):
         """保存済みのAIロボ対局条件をサーバーに送信する。"""
         if not (self._cloud_client and self._cloud_client.connected):
             return
-        mt = self._ws.load("bot_main_time", 10)
-        bt = self._ws.load("bot_byo_time", 30)
-        bp = self._ws.load("bot_byo_periods", 5)
-        self._cloud_client.send({
-            "type": "set_bot_conditions",
-            "main_time": int(mt) * 60,   # 分→秒に変換
-            "byo_time": int(bt),
-            "byo_periods": int(bp),
-        })
+        mt_str = self._ws.load("bot_main_time", "10分")
+        bt_str = self._ws.load("bot_byo_time", "30秒")
+        bp_str = self._ws.load("bot_byo_periods", "5回")
+        if str(mt_str) == "Fischer":
+            # Fischer選択時: サーバー側の管理者Fischer設定を使う
+            self._cloud_client.send({
+                "type": "set_bot_conditions",
+                "time_control": "fischer",
+            })
+        else:
+            mt = self._parse_bot_time_value(mt_str, "分", 10)
+            bt = self._parse_bot_time_value(bt_str, "秒", 30)
+            bp = self._parse_bot_time_value(bp_str, "回", 5)
+            self._cloud_client.send({
+                "type": "set_bot_conditions",
+                "time_control": "byoyomi",
+                "main_time": mt * 60,   # 分→秒に変換
+                "byo_time": bt,
+                "byo_periods": bp,
+            })
 
     # ------------------------------------------------------------------
     # ヘルプメニュー ハンドラ

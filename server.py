@@ -603,13 +603,28 @@ def _get_bot_time_settings(handle: str = "") -> dict:
     # ユーザー別設定を優先
     if handle and handle in bot_time_preferences:
         user_cfg = bot_time_preferences[handle]
-        return {
-            "main_time": int(user_cfg.get("main_time", 600)),
-            "byo_time": int(user_cfg.get("byo_time", 30)),
-            "byo_periods": int(user_cfg.get("byo_periods", 5)),
-            "time_control": "byoyomi",
-            "fischer_increment": 0,
-        }
+        if user_cfg.get("time_control") == "fischer":
+            # ユーザーがFischerを選択 → 管理者のFischer設定を使う
+            settings = _load_settings()
+            fischer_main = settings.get("fischer_main_time")
+            fischer_inc = settings.get("fischer_increment")
+            if fischer_main is not None and fischer_inc is not None:
+                return {
+                    "main_time": int(fischer_main),
+                    "byo_time": 0,
+                    "byo_periods": 0,
+                    "time_control": "fischer",
+                    "fischer_increment": int(fischer_inc),
+                }
+            # Fischer設定が管理者未設定の場合はデフォルト秒読みにフォールバック
+        else:
+            return {
+                "main_time": int(user_cfg.get("main_time", 600)),
+                "byo_time": int(user_cfg.get("byo_time", 30)),
+                "byo_periods": int(user_cfg.get("byo_periods", 5)),
+                "time_control": "byoyomi",
+                "fischer_increment": 0,
+            }
     # 管理者設定（Fischer対応）
     settings = _load_settings()
     fischer_main = settings.get("fischer_main_time")
@@ -998,16 +1013,22 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             _cancel_bot_timers(handle)
 
     elif msg_type == "set_bot_conditions":
-        main_time = msg.get("main_time", 600)
-        byo_time = msg.get("byo_time", 30)
-        byo_periods = msg.get("byo_periods", 5)
-        bot_time_preferences[handle] = {
-            "main_time": int(main_time),
-            "byo_time": int(byo_time),
-            "byo_periods": int(byo_periods),
-        }
-        logger.info("Bot conditions: %s = main=%ds byo=%ds periods=%d",
-                    handle, int(main_time), int(byo_time), int(byo_periods))
+        time_control = msg.get("time_control", "byoyomi")
+        if time_control == "fischer":
+            bot_time_preferences[handle] = {"time_control": "fischer"}
+            logger.info("Bot conditions: %s = Fischer (admin settings)", handle)
+        else:
+            main_time = msg.get("main_time", 600)
+            byo_time = msg.get("byo_time", 30)
+            byo_periods = msg.get("byo_periods", 5)
+            bot_time_preferences[handle] = {
+                "time_control": "byoyomi",
+                "main_time": int(main_time),
+                "byo_time": int(byo_time),
+                "byo_periods": int(byo_periods),
+            }
+            logger.info("Bot conditions: %s = main=%ds byo=%ds periods=%d",
+                        handle, int(main_time), int(byo_time), int(byo_periods))
 
     elif msg_type == "reset_state":
         # クライアントが初期化ボタンを押した → ログイン直後の状態に戻す
