@@ -214,7 +214,13 @@ class AdminApp:
             pass
 
         # ============================================================
-        # ボトムバー: 削除 | タイムアウト | テーマ | OK | 閉じる
+        # 設定バー: タイムアウト | Fischer | テーマ
+        # ============================================================
+        settings_bar = tk.Frame(self.root, bg=T("root_bg"))
+        settings_bar.pack(fill="x", padx=12, pady=(4, 0))
+
+        # ============================================================
+        # ボタンバー: 削除 | 新規登録 | OK | 閉じる
         # ============================================================
         bottom = tk.Frame(self.root, bg=T("root_bg"))
         bottom.pack(fill="x", padx=12, pady=(4, 8))
@@ -240,7 +246,7 @@ class AdminApp:
         self._delete_btn.pack(side="left", padx=(0, 16))
 
         # --- 対局申込タイムアウト ---
-        timeout_frame = tk.Frame(bottom, bg=T("root_bg"))
+        timeout_frame = tk.Frame(settings_bar, bg=T("root_bg"))
         timeout_frame.pack(side="left", padx=(0, 16))
 
         tk.Label(timeout_frame, text="対局申込タイムアウト",
@@ -268,7 +274,7 @@ class AdminApp:
                  fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
 
         # --- フィッシャー時間設定 ---
-        fischer_frame = tk.Frame(bottom, bg=T("root_bg"))
+        fischer_frame = tk.Frame(settings_bar, bg=T("root_bg"))
         fischer_frame.pack(side="left", padx=(0, 16))
 
         tk.Label(fischer_frame, text="Fischer",
@@ -307,7 +313,7 @@ class AdminApp:
                  fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
 
         # --- テーマ設定 ---
-        theme_frame = tk.LabelFrame(bottom, text="テーマ",
+        theme_frame = tk.LabelFrame(settings_bar, text="テーマ",
                                      font=("Yu Gothic UI", 9),
                                      fg=T("text_primary"), bg=T("root_bg"),
                                      bd=1, relief="groove", padx=6, pady=2)
