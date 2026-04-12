@@ -308,9 +308,16 @@ class App:
         COMBO_W = 6
 
         # 現在の設定を読み込む（デフォルト: "10分", "30秒", "5回"）
+        # 旧バージョンで整数保存されている場合は文字列に変換（後方互換）
         cur_main = self._ws.load("bot_main_time", "10分")
+        if isinstance(cur_main, int) or (isinstance(cur_main, str) and cur_main.isdigit()):
+            cur_main = "{}分".format(int(cur_main))
         cur_byo = self._ws.load("bot_byo_time", "30秒")
+        if isinstance(cur_byo, int) or (isinstance(cur_byo, str) and cur_byo.isdigit()):
+            cur_byo = "{}秒".format(int(cur_byo))
         cur_periods = self._ws.load("bot_byo_periods", "5回")
+        if isinstance(cur_periods, int) or (isinstance(cur_periods, str) and cur_periods.isdigit()):
+            cur_periods = "{}回".format(int(cur_periods))
 
         # 持ち時間（分）— 対局申請と同じ選択肢（Fischer含む）
         tk.Label(frame, text=L("ai_bot_main_time"),
