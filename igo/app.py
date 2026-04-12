@@ -161,6 +161,9 @@ class App:
         ai_menu.add_radiobutton(label=L("menu_ai_off"), variable=self._ai_enabled_var,
             value="off", command=self._change_ai_setting)
         settings_menu.add_cascade(label=L("menu_ai_robot"), menu=ai_menu)
+        # AIロボ対局条件
+        settings_menu.add_command(label=L("menu_ai_bot_settings"),
+            command=self._show_ai_bot_settings)
         # 秒読みサブメニュー
         byoyomi_menu = tk.Menu(settings_menu, tearoff=0)
         if not hasattr(self, '_byoyomi_voice_var'):
@@ -279,6 +282,88 @@ class App:
                 "type": "set_ai_preference",
                 "ai_enabled": val == "on",
             })
+
+    def _show_ai_bot_settings(self):
+        """AIロボ対局条件の設定ダイアログを表示する。"""
+        win = tk.Toplevel(self.root)
+        win.title(L("ai_bot_settings_title"))
+        win.resizable(False, False)
+        win.transient(self.root)
+
+        frame = tk.Frame(win, padx=20, pady=15)
+        frame.pack()
+
+        # 現在の設定を読み込む（デフォルト: 10分, 30秒, 5回）
+        cur_main = self._ws.load("bot_main_time", 10)
+        cur_byo = self._ws.load("bot_byo_time", 30)
+        cur_periods = self._ws.load("bot_byo_periods", 5)
+
+        # 持ち時間（分）
+        tk.Label(frame, text=L("ai_bot_main_time"),
+                 font=("Yu Gothic UI", 10)).grid(row=0, column=0,
+                 sticky="w", pady=4)
+        main_var = tk.IntVar(value=int(cur_main))
+        main_spin = tk.Spinbox(frame, from_=1, to=60, width=6,
+                               textvariable=main_var, font=("Yu Gothic UI", 10))
+        main_spin.grid(row=0, column=1, padx=(10, 0), pady=4)
+
+        # 秒読み（秒）
+        tk.Label(frame, text=L("ai_bot_byo_time"),
+                 font=("Yu Gothic UI", 10)).grid(row=1, column=0,
+                 sticky="w", pady=4)
+        byo_var = tk.IntVar(value=int(cur_byo))
+        byo_spin = tk.Spinbox(frame, from_=1, to=300, width=6,
+                              textvariable=byo_var, font=("Yu Gothic UI", 10))
+        byo_spin.grid(row=1, column=1, padx=(10, 0), pady=4)
+
+        # 秒読み回数
+        tk.Label(frame, text=L("ai_bot_byo_periods"),
+                 font=("Yu Gothic UI", 10)).grid(row=2, column=0,
+                 sticky="w", pady=4)
+        periods_var = tk.IntVar(value=int(cur_periods))
+        periods_spin = tk.Spinbox(frame, from_=1, to=20, width=6,
+                                  textvariable=periods_var,
+                                  font=("Yu Gothic UI", 10))
+        periods_spin.grid(row=2, column=1, padx=(10, 0), pady=4)
+
+        btn_frame = tk.Frame(win, pady=10)
+        btn_frame.pack()
+
+        def _save():
+            mt = main_var.get()
+            bt = byo_var.get()
+            bp = periods_var.get()
+            try:
+                self._ws.save("bot_main_time", mt)
+                self._ws.save("bot_byo_time", bt)
+                self._ws.save("bot_byo_periods", bp)
+            except Exception:
+                pass
+            self._send_bot_conditions_to_server()
+            messagebox.showinfo(
+                L("ai_bot_settings_title"), L("ai_bot_saved"),
+                parent=win)
+            win.destroy()
+
+        tk.Button(btn_frame, text=L("ai_bot_save"), width=10,
+                  command=_save).pack(side="left", padx=5)
+        tk.Button(btn_frame, text=L("ai_bot_cancel"), width=10,
+                  command=win.destroy).pack(side="left", padx=5)
+        win.grab_set()
+
+    def _send_bot_conditions_to_server(self):
+        """保存済みのAIロボ対局条件をサーバーに送信する。"""
+        if not (self._cloud_client and self._cloud_client.connected):
+            return
+        mt = self._ws.load("bot_main_time", 10)
+        bt = self._ws.load("bot_byo_time", 30)
+        bp = self._ws.load("bot_byo_periods", 5)
+        self._cloud_client.send({
+            "type": "set_bot_conditions",
+            "main_time": int(mt) * 60,   # 分→秒に変換
+            "byo_time": int(bt),
+            "byo_periods": int(bp),
+        })
 
     # ------------------------------------------------------------------
     # ヘルプメニュー ハンドラ
@@ -1490,6 +1575,8 @@ class App:
         self.root.after(1000, lambda: self._cloud_client.send({
             "type": "set_ai_preference", "ai_enabled": ai_on,
         }) if self._cloud_client and self._cloud_client.connected else None)
+        # AIロボ対局条件をサーバーに通知
+        self.root.after(1500, lambda: self._send_bot_conditions_to_server())
 
     def _disconnect_cloud(self):
         """Disconnect from the cloud server."""

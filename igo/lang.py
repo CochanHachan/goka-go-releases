@@ -172,12 +172,22 @@ STRINGS = {
         "menu_ai_robot":        "AIロボ",
         "menu_ai_on":           "対局する",
         "menu_ai_off":          "対局しない",
+        "menu_ai_bot_settings": "AIロボ対局条件",
         "menu_byoyomi_voice":   "秒読み",
         "menu_voice_on":        "よむ",
         "menu_voice_off":       "よまない",
         "menu_board_dark":      "濃いめ",
         "menu_board_light":     "薄め",
         "menu_speed_sec":       "{}秒",
+
+        # --- AI Bot settings dialog ---
+        "ai_bot_settings_title":   "AIロボ対局条件",
+        "ai_bot_main_time":        "持ち時間（分）",
+        "ai_bot_byo_time":         "秒読み（秒）",
+        "ai_bot_byo_periods":      "秒読み回数",
+        "ai_bot_save":             "保存",
+        "ai_bot_cancel":           "キャンセル",
+        "ai_bot_saved":            "AIロボ対局条件を保存しました。",
 
         # --- Login screen ---
         "login_empty":          "ハンドルネームとパスワードを入力してください",
@@ -357,12 +367,22 @@ STRINGS = {
         "menu_ai_robot":        "AI Robot",
         "menu_ai_on":           "Play",
         "menu_ai_off":          "Don't play",
+        "menu_ai_bot_settings": "AI Bot Match Settings",
         "menu_byoyomi_voice":   "Byoyomi",
         "menu_voice_on":        "Read aloud",
         "menu_voice_off":       "Silent",
         "menu_board_dark":      "Dark",
         "menu_board_light":     "Light",
         "menu_speed_sec":       "{}s",
+
+        # --- AI Bot settings dialog ---
+        "ai_bot_settings_title":   "AI Bot Match Settings",
+        "ai_bot_main_time":        "Main Time (min)",
+        "ai_bot_byo_time":         "Byo-yomi (sec)",
+        "ai_bot_byo_periods":      "Byo-yomi Periods",
+        "ai_bot_save":             "Save",
+        "ai_bot_cancel":           "Cancel",
+        "ai_bot_saved":            "AI bot match settings saved.",
 
         # --- Login screen ---
         "login_empty":          "Please enter handle name and password.",
@@ -542,12 +562,22 @@ STRINGS = {
         "menu_ai_robot":        "AI对局",
         "menu_ai_on":           "开启",
         "menu_ai_off":          "关闭",
+        "menu_ai_bot_settings": "AI对局条件设置",
         "menu_byoyomi_voice":   "读秒",
         "menu_voice_on":        "开启",
         "menu_voice_off":       "关闭",
         "menu_board_dark":      "深色",
         "menu_board_light":     "浅色",
         "menu_speed_sec":       "{}秒",
+
+        # --- AI Bot settings dialog ---
+        "ai_bot_settings_title":   "AI对局条件设置",
+        "ai_bot_main_time":        "限时（分钟）",
+        "ai_bot_byo_time":         "读秒（秒）",
+        "ai_bot_byo_periods":      "读秒次数",
+        "ai_bot_save":             "保存",
+        "ai_bot_cancel":           "取消",
+        "ai_bot_saved":            "AI对局条件已保存。",
 
         # --- Login screen ---
         "login_empty":          "请输入昵称和密码。",
@@ -713,12 +743,22 @@ STRINGS = {
         "menu_ai_robot":        "AI 대국",
         "menu_ai_on":           "하기",
         "menu_ai_off":          "안 하기",
+        "menu_ai_bot_settings": "AI 대국 조건 설정",
         "menu_byoyomi_voice":   "초읽기",
         "menu_voice_on":        "읽기",
         "menu_voice_off":       "읽지 않기",
         "menu_board_dark":      "진하게",
         "menu_board_light":     "연하게",
         "menu_speed_sec":       "{}초",
+
+        # --- AI Bot settings dialog ---
+        "ai_bot_settings_title":   "AI 대국 조건 설정",
+        "ai_bot_main_time":        "제한 시간 (분)",
+        "ai_bot_byo_time":         "초읽기 (초)",
+        "ai_bot_byo_periods":      "초읽기 횟수",
+        "ai_bot_save":             "저장",
+        "ai_bot_cancel":           "취소",
+        "ai_bot_saved":            "AI 대국 조건이 저장되었습니다.",
 
         # --- Login screen ---
         "login_empty":          "핸들 이름과 비밀번호를 입력하세요.",

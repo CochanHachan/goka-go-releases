@@ -111,6 +111,10 @@ ws_user_info: Dict[str, dict] = {}
 # handle_name -> bool (AIロボと対局するかどうか、デフォルトTrue)
 ai_preference: Dict[str, bool] = {}
 
+# handle_name -> dict (ユーザー別ボット対局時間設定)
+# {"main_time": int(秒), "byo_time": int(秒), "byo_periods": int}
+bot_time_preferences: Dict[str, dict] = {}
+
 # handle_name -> str  ユーザーの詳細ステータス
 # "ログイン" / "対局申請中" / "対局申請受付中" / "申請中・受付中" / "対局中" / "検討中"
 user_status: Dict[str, str] = {}
@@ -591,8 +595,22 @@ async def ws_disconnect(handle: str):
     await ws_broadcast_online_list()
 
 
-def _get_bot_time_settings() -> dict:
-    """管理者設定からFischer時間設定を読み込み、ボットオファー用の時間パラメータを返す。"""
+def _get_bot_time_settings(handle: str = "") -> dict:
+    """ボットオファー用の時間パラメータを返す。
+
+    ユーザー別設定があればそれを優先し、なければ管理者設定を使う。
+    """
+    # ユーザー別設定を優先
+    if handle and handle in bot_time_preferences:
+        user_cfg = bot_time_preferences[handle]
+        return {
+            "main_time": int(user_cfg.get("main_time", 600)),
+            "byo_time": int(user_cfg.get("byo_time", 30)),
+            "byo_periods": int(user_cfg.get("byo_periods", 5)),
+            "time_control": "byoyomi",
+            "fischer_increment": 0,
+        }
+    # 管理者設定（Fischer対応）
     settings = _load_settings()
     fischer_main = settings.get("fischer_main_time")
     fischer_inc = settings.get("fischer_increment")
@@ -634,7 +652,7 @@ async def _bot_auto_offer(handle: str):
             user_status[handle] = "申請・受付"
         else:
             user_status[handle] = "対局受付中"
-        time_cfg = _get_bot_time_settings()
+        time_cfg = _get_bot_time_settings(handle)
         await ws_send(handle, {
             "type": "match_offer",
             "from": bot_name,
@@ -682,7 +700,7 @@ async def _bot_auto_accept(handle: str):
             user_status[handle] = "申請・受付"
         else:
             user_status[handle] = "対局受付中"
-        time_cfg = _get_bot_time_settings()
+        time_cfg = _get_bot_time_settings(handle)
         await ws_send(handle, {
             "type": "match_offer",
             "from": bot_name,
@@ -978,6 +996,18 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
         if not enabled:
             # AIオフにした場合、既存のボットタイマーをキャンセル
             _cancel_bot_timers(handle)
+
+    elif msg_type == "set_bot_conditions":
+        main_time = msg.get("main_time", 600)
+        byo_time = msg.get("byo_time", 30)
+        byo_periods = msg.get("byo_periods", 5)
+        bot_time_preferences[handle] = {
+            "main_time": int(main_time),
+            "byo_time": int(byo_time),
+            "byo_periods": int(byo_periods),
+        }
+        logger.info("Bot conditions: %s = main=%ds byo=%ds periods=%d",
+                    handle, int(main_time), int(byo_time), int(byo_periods))
 
     elif msg_type == "reset_state":
         # クライアントが初期化ボタンを押した → ログイン直後の状態に戻す
