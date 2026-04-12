@@ -62,7 +62,44 @@ from igo.go_board import GoBoard
 from igo.app import App
 
 
+def _acquire_single_instance_lock():
+    """二重起動を防止する。Windows では名前付きMutex、他OSではロックファイルを使用。
+
+    Returns
+    -------
+    lock : object or None
+        ロックオブジェクト（プロセス終了まで保持する）。
+        二重起動の場合は None を返す。
+    """
+    import sys
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\GokaGoSingleInstance")
+            ERROR_ALREADY_EXISTS = 183
+            if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+                return None
+            return _mutex  # プロセス終了まで保持（GC回避）
+        except Exception:
+            return "fallback"  # ctypes失敗時はロックなしで起動を許可
+    else:
+        # 非Windows環境（開発用）: ロックファイル方式
+        import os, tempfile, fcntl
+        lock_path = os.path.join(tempfile.gettempdir(), "goka_go.lock")
+        try:
+            lock_file = open(lock_path, "w")
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lock_file  # プロセス終了まで保持
+        except (IOError, OSError):
+            return None
+
+
 def main():
+    _lock = _acquire_single_instance_lock()
+    if _lock is None:
+        # 既に起動中 → 何もせず終了
+        import sys
+        sys.exit(0)
     app = App()
     app.run()
 
