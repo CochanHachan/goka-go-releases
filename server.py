@@ -476,7 +476,8 @@ def _load_settings() -> dict:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"theme": "light", "offer_timeout_min": 3}
+        return {"theme": "light", "offer_timeout_min": 3,
+                "fischer_main_time": 300, "fischer_increment": 10}
 
 
 def _save_settings(settings: dict):
@@ -589,6 +590,28 @@ async def ws_disconnect(handle: str):
     await ws_broadcast_online_list()
 
 
+def _get_bot_time_settings() -> dict:
+    """管理者設定からFischer時間設定を読み込み、ボットオファー用の時間パラメータを返す。"""
+    settings = _load_settings()
+    fischer_main = settings.get("fischer_main_time")
+    fischer_inc = settings.get("fischer_increment")
+    if fischer_main is not None and fischer_inc is not None:
+        return {
+            "main_time": int(fischer_main),
+            "byo_time": 0,
+            "byo_periods": 0,
+            "time_control": "fischer",
+            "fischer_increment": int(fischer_inc),
+        }
+    return {
+        "main_time": 600,
+        "byo_time": 30,
+        "byo_periods": 5,
+        "time_control": "byoyomi",
+        "fischer_increment": 0,
+    }
+
+
 async def _bot_auto_offer(handle: str):
     """ログイン後、設定されたタイムアウト秒で棋力の近いボットが対局申込を送る。"""
     try:
@@ -610,16 +633,19 @@ async def _bot_auto_offer(handle: str):
             user_status[handle] = "申請・受付"
         else:
             user_status[handle] = "対局受付中"
+        time_cfg = _get_bot_time_settings()
         await ws_send(handle, {
             "type": "match_offer",
             "from": bot_name,
             "rank": bot_info["rank"],
             "elo": bot_info["elo"],
-            "main_time": 600,
-            "byo_time": 30,
-            "byo_periods": 5,
+            "main_time": time_cfg["main_time"],
+            "byo_time": time_cfg["byo_time"],
+            "byo_periods": time_cfg["byo_periods"],
             "komi": 7.5,
             "is_bot": True,
+            "time_control": time_cfg["time_control"],
+            "fischer_increment": time_cfg["fischer_increment"],
         })
         logger.info("Bot auto-offer: %s -> %s", bot_name, handle)
     except asyncio.CancelledError:
@@ -655,16 +681,19 @@ async def _bot_auto_accept(handle: str):
             user_status[handle] = "申請・受付"
         else:
             user_status[handle] = "対局受付中"
+        time_cfg = _get_bot_time_settings()
         await ws_send(handle, {
             "type": "match_offer",
             "from": bot_name,
             "rank": bot_info["rank"],
             "elo": bot_info["elo"],
-            "main_time": 600,
-            "byo_time": 30,
-            "byo_periods": 5,
+            "main_time": time_cfg["main_time"],
+            "byo_time": time_cfg["byo_time"],
+            "byo_periods": time_cfg["byo_periods"],
             "komi": 7.5,
             "is_bot": True,
+            "time_control": time_cfg["time_control"],
+            "fischer_increment": time_cfg["fischer_increment"],
         })
         logger.info("Bot auto-offer (after timeout): %s -> %s", bot_name, handle)
     except asyncio.CancelledError:
