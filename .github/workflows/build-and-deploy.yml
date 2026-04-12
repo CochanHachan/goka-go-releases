@@ -30,6 +30,8 @@ on:
       - 'image/**'
       - '*.png'
       - '*.wav'
+      - 'server.py'
+      - 'igo_ws_server.py'
 
 permissions:
   contents: write
@@ -382,3 +384,27 @@ jobs:
         run: |
           git add web/index.html
           git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git pull --rebase origin main && git push)
+
+      - name: Deploy server (git pull + restart)
+        continue-on-error: true
+        shell: bash
+        env:
+          GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+          GOKA_SERVER_URL: ${{ secrets.GOKA_SERVER_URL }}
+        run: |
+          # デフォルト値（secretsが未設定の場合）
+          TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
+          URL="${GOKA_SERVER_URL:-http://34.24.176.248:8000}"
+          echo "Deploying server at ${URL}..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Token: ${TOKEN}" \
+            "${URL}/admin/update" \
+            --connect-timeout 10 --max-time 60)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          echo "HTTP ${HTTP_CODE}: ${BODY}"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Server deploy triggered successfully."
+          else
+            echo "WARNING: Server deploy may have failed (HTTP ${HTTP_CODE})"
+          fi
