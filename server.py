@@ -569,8 +569,18 @@ async def ws_send(handle: str, msg_dict: dict) -> bool:
     return False
 
 
-async def ws_disconnect(handle: str):
-    """ユーザー切断時のクリーンアップ。"""
+async def ws_disconnect(handle: str, ws: WebSocket = None):
+    """ユーザー切断時のクリーンアップ。
+
+    ws が指定された場合、現在の接続と一致するときだけクリーンアップを行う。
+    再接続で新しい WebSocket が登録済みなら、古い接続のクリーンアップは
+    新しい接続を壊さないようにスキップする。
+    """
+    # 新しい接続が既に登録されている場合はスキップ（再接続レース防止）
+    if ws is not None and connected_users.get(handle) is not ws:
+        logger.info("WS disconnect skipped (superseded): %s", handle)
+        return
+
     connected_users.pop(handle, None)
     ws_user_info.pop(handle, None)
     ai_preference.pop(handle, None)
@@ -1134,8 +1144,10 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
     except Exception as e:
         logger.error("WS connection error (%s): %s", handle_name, e)
     finally:
-        _cancel_bot_timers(handle_name)
-        await ws_disconnect(handle_name)
+        # ws を渡すことで、再接続済みなら古い接続のクリーンアップをスキップ
+        if connected_users.get(handle_name) is websocket:
+            _cancel_bot_timers(handle_name)
+        await ws_disconnect(handle_name, websocket)
 
 
 # ---------------------------------------------------------------------------

@@ -26,22 +26,26 @@ logger = logging.getLogger("igo_cloud")
 class CloudClient:
     """WebSocket client for cloud-based Go game server."""
 
-    def __init__(self, server_url, on_message_cb, on_disconnect_cb=None):
+    def __init__(self, server_url, on_message_cb, on_disconnect_cb=None,
+                 on_reconnect_cb=None):
         """
         Args:
             server_url: WebSocket URL, e.g. "ws://34.153.211.101:8765"
             on_message_cb: callable(msg_dict) - called on UI thread via root.after
             on_disconnect_cb: callable() - called when connection drops
+            on_reconnect_cb: callable() - called when reconnection succeeds
         """
         self.server_url = server_url
         self.on_message_cb = on_message_cb
         self.on_disconnect_cb = on_disconnect_cb
+        self.on_reconnect_cb = on_reconnect_cb
         self._ws = None
         self._loop = None
         self._thread = None
         self._running = False
         self._handle = None
         self._connected = False
+        self._connected_once = False
 
     @property
     def connected(self):
@@ -110,6 +114,12 @@ class CloudClient:
                     if resp.get("type") == "login_ok":
                         self._connected = True
                         logger.info("Connected as: %s", self._handle)
+                        if self._connected_once and self.on_reconnect_cb:
+                            try:
+                                self.on_reconnect_cb()
+                            except Exception as e:
+                                logger.error("Reconnect callback error: %s", e)
+                        self._connected_once = True
                         retry_delay = 2  # reset retry delay on success
                     else:
                         logger.error("Login failed: %s", resp)
