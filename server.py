@@ -1095,16 +1095,7 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
 
     await websocket.accept()
 
-    # 既存接続があれば切断（新しい接続を先に登録してからcloseする）
-    old_ws = connected_users.get(handle_name)
-    connected_users[handle_name] = websocket  # 先に登録 → old_ws の finally がスキップされる
-    if old_ws:
-        try:
-            await old_ws.close()
-        except Exception:
-            pass
-
-    # DBからユーザー情報を取得
+    # DBからユーザー情報を取得（同期処理なのでイベントループを譲らない）
     conn = get_db_connection()
     try:
         row = conn.execute(
@@ -1114,14 +1105,27 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
         rank = row["rank"] if row else ""
     finally:
         conn.close()
+
+    # 既存接続があれば切断（新しい接続を先に登録 → login_ok 送信 → old_ws close の順）
+    # login_ok を old_ws.close() より先に送ることで、close 中に他のコルーチンが
+    # online_list 等を送ってもクライアントは既に login_ok 受信済みとなる。
+    old_ws = connected_users.get(handle_name)
+    connected_users[handle_name] = websocket  # 先に登録 → old_ws の finally がスキップされる
     ws_user_info[handle_name] = {"handle": handle_name, "rank": rank, "elo": elo}
     user_status[handle_name] = "ログイン"
     logger.info("WS connected: %s (elo=%.0f)", handle_name, elo)
 
-    # login_ok を送信（既存クライアントとの互換性維持）
+    # login_ok を送信（old_ws.close() より先に送る — クライアントが最初に受け取るメッセージを保証）
     await websocket.send_text(
         json.dumps({"type": "login_ok", "handle": handle_name}, ensure_ascii=False)
     )
+
+    if old_ws:
+        try:
+            await old_ws.close()
+        except Exception:
+            pass
+
     await ws_broadcast_online_list()
 
     # ボットの自動挑戦はログイン時ではなく、対局申請ボタンを押した後に開始
