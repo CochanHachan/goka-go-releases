@@ -43,7 +43,8 @@ jobs:
           if [ "$HTTP_CODE" = "200" ]; then
             echo "Staging server deploy triggered successfully."
           else
-            echo "WARNING: Staging server deploy may have failed (HTTP ${HTTP_CODE})"
+            echo "ERROR: Staging server deploy failed (HTTP ${HTTP_CODE})"
+            exit 1
           fi
 
   build-staging-client:
