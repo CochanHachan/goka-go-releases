@@ -105,6 +105,7 @@ class App:
         self._cloud_mode = False
         self._cloud_client = None
         self._auth_token = None
+        self._is_hosting = False  # ホスティング中フラグ（再接続時に再送信用）
 
         # AI mode
         self._ai_mode = False
@@ -1193,6 +1194,7 @@ class App:
             self._cloud_komi = komi
             self._cloud_time_control = time_control
             self._cloud_fischer_increment = fischer_increment
+            self._is_hosting = True
             self._cloud_client.send({
                 "type": "match_offer_broadcast",
                 "rank": rank,
@@ -1218,6 +1220,7 @@ class App:
         reason="user": ユーザーが明示的にキャンセル → ボットタイマーもキャンセル
         reason="timeout": ホスティング期間の自動終了 → ボットタイマーは継続
         """
+        self._is_hosting = False
         if self._cloud_mode and self._cloud_client:
             self._cloud_client.send({"type": "match_cancel", "reason": reason})
         if self._server:
@@ -1650,7 +1653,11 @@ class App:
         def on_cloud_disconnect():
             self.root.after(0, self._on_cloud_disconnect)
 
-        self._cloud_client = CloudClient(CLOUD_SERVER_URL, on_cloud_msg, on_cloud_disconnect)
+        def on_cloud_reconnect():
+            self.root.after(0, self._on_cloud_reconnect)
+
+        self._cloud_client = CloudClient(CLOUD_SERVER_URL, on_cloud_msg,
+                                         on_cloud_disconnect, on_cloud_reconnect)
         self._cloud_client.connect(handle, rank, elo, token=self._auth_token or "")
         self._cloud_mode = True
         # AIロボ設定をサーバーに通知
@@ -1674,6 +1681,26 @@ class App:
         if self.go_board and self.go_board.net_mode:
             self.go_board.end_network_game()
             messagebox.showinfo("切断", "サーバーとの接続が切れました")
+
+    def _on_cloud_reconnect(self):
+        """Handle cloud reconnection — resend hosting state."""
+        if self._is_hosting and self._cloud_client and self._cloud_client.connected:
+            user = self.current_user
+            if not user:
+                return
+            rank = elo_to_display_rank(user["elo_rating"])
+            elo = user["elo_rating"]
+            self._cloud_client.send({
+                "type": "match_offer_broadcast",
+                "rank": rank,
+                "elo": elo,
+                "main_time": getattr(self, '_cloud_main_time', 600),
+                "byo_time": getattr(self, '_cloud_byo_time', 30),
+                "byo_periods": getattr(self, '_cloud_byo_periods', 5),
+                "komi": getattr(self, '_cloud_komi', 7.5),
+                "time_control": getattr(self, '_cloud_time_control', 'byoyomi'),
+                "fischer_increment": getattr(self, '_cloud_fischer_increment', 0),
+            })
 
     def _handle_cloud_message(self, msg):
         """Handle messages from the cloud server."""
@@ -1797,6 +1824,7 @@ class App:
         """Start a game via cloud."""
         if not self.go_board:
             return
+        self._is_hosting = False
         # 対局成立時にダイアログの_hostingを先にリセットしてmatch_cancel送信を防止
         if self._current_match_dialog:
             self._current_match_dialog._hosting = False
@@ -1830,6 +1858,7 @@ class App:
         """Start a game against AI bot using KataGo GTP."""
         if not self.go_board:
             return
+        self._is_hosting = False
         # AI対局時もダイアログの_hostingをリセットしてmatch_cancel送信を防止
         if self._current_match_dialog:
             self._current_match_dialog._hosting = False
