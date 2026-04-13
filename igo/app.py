@@ -1882,12 +1882,13 @@ class App:
         threading.Thread(target=_init_katago, daemon=True).start()
 
     def _ai_init_failed(self, error_msg):
-        """Handle KataGo initialization failure."""
+        """Handle KataGo initialization failure.
+
+        _ai_mode は _ai_cleanup() 内でクリアされるため、ここでは変更しない。
+        end_network_game() → _ai_cleanup() の呼び出しで game_end 送信も行われる。
+        """
         from tkinter import messagebox as _mb
         _mb.showerror("AI エラー", "KataGoの起動に失敗しました:\n{}".format(error_msg))
-        self._ai_mode = False
-        # サーバーの game_pairs をクリアするため game_end を送信
-        self.send_cloud_message({"type": "game_end"})
         if self.go_board:
             self.go_board.end_network_game()
 
@@ -1978,6 +1979,7 @@ class App:
         これを行わないと、次の対局申請時にサーバーが「まだ対局中」と
         判断し、ボットの自動挑戦状が送られなくなる。
         """
+        was_ai = self._ai_mode
         if self._ai_katago:
             try:
                 self._ai_katago.stop()
@@ -1985,8 +1987,9 @@ class App:
                 pass
             self._ai_katago = None
         self._ai_mode = False
-        # サーバーの game_pairs をクリアするため game_end を送信
-        self.send_cloud_message({"type": "game_end"})
+        # サーバーの game_pairs をクリアするため game_end を送信 (AI対局中の場合のみ)
+        if was_ai:
+            self.send_cloud_message({"type": "game_end"})
 
     def send_cloud_message(self, msg):
         """Send a game message via cloud."""
