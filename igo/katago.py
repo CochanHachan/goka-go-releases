@@ -355,7 +355,7 @@ def _katago_winrate(move_history, komi=7.5, size=19, rules="chinese"):
         "boardYSize": size,
         "moves": katago_moves,
         "analyzeTurns": [len(katago_moves)],
-        "maxVisits": 50,
+        "maxVisits": 1,
         "includeOwnership": False,
     }
 
