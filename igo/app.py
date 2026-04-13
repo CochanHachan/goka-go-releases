@@ -390,6 +390,19 @@ class App:
                   command=_save).pack(side="left", padx=5)
         tk.Button(btn_frame, text=L("ai_bot_cancel"), width=10,
                   command=win.destroy).pack(side="left", padx=5)
+
+        # Center on parent window
+        win.update_idletasks()
+        dw = win.winfo_reqwidth()
+        dh = win.winfo_reqheight()
+        pw = self.root.winfo_width()
+        ph = self.root.winfo_height()
+        px = self.root.winfo_x()
+        py = self.root.winfo_y()
+        x = px + (pw - dw) // 2
+        y = py + (ph - dh) // 2
+        win.geometry("+{}+{}".format(x, y))
+
         win.grab_set()
 
     @staticmethod
