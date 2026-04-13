@@ -302,7 +302,8 @@ class App:
                          fieldbackground="#fffde7", background="#e0e0e0",
                          arrowcolor="#1976d2", padding=5)
         style.map("BotSettings.TCombobox",
-                  fieldbackground=[("focus", "#fff176")],
+                  fieldbackground=[("disabled", "#d0d0d0"), ("focus", "#fff176")],
+                  foreground=[("disabled", "#999999")],
                   bordercolor=[("focus", "#ff5722")],
                   relief=[("focus", "groove")])
 
