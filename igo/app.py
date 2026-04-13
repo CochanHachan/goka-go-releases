@@ -1886,6 +1886,8 @@ class App:
         from tkinter import messagebox as _mb
         _mb.showerror("AI エラー", "KataGoの起動に失敗しました:\n{}".format(error_msg))
         self._ai_mode = False
+        # サーバーの game_pairs をクリアするため game_end を送信
+        self.send_cloud_message({"type": "game_end"})
         if self.go_board:
             self.go_board.end_network_game()
 
