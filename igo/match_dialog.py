@@ -373,7 +373,7 @@ class MatchDialog:
         self._host_timeout_id = self.win.after(get_offer_timeout_ms(), self._hosting_timeout)
 
     def _hosting_timeout(self):
-        """Auto-cancel hosting after 60 seconds with no response."""
+        """ホスティング期間の自動終了（ボットタイマーは継続させる）。"""
         # Broadcast match_taken so receivers close their dialogs silently
         try:
             _tsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -386,7 +386,8 @@ class MatchDialog:
         except Exception:
             pass
         if self._hosting:
-            self.app.stop_hosting()
+            # reason="timeout" → サーバー側でボットタイマーをキャンセルしない
+            self.app.stop_hosting(reason="timeout")
             self._hosting = False
         self.host_btn.config(state="normal")
         self.cancel_btn.config(state="disabled")

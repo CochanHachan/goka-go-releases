@@ -133,7 +133,10 @@ bot_accept_timers: Dict[str, asyncio.Task] = {}
 # handle -> pending offer info (タイムアウト時にボットが承諾するための情報)
 pending_offers: Dict[str, dict] = {}
 
-BOT_AUTO_DELAY = 60  # 秒（デフォルト値、設定から上書きされる）
+BOT_AUTO_DELAY = 60  # 秒 — ボットが挑戦状を送るまでの待機時間
+# 重要: この値はクライアント側の _hosting_timeout（get_offer_timeout_ms）より
+# 十分短くなければならない。同じかそれ以上だとクライアントが先にキャンセルし、
+# ボットの挑戦状が届かなくなる。
 
 
 def _get_offer_timeout_sec() -> int:
@@ -647,9 +650,13 @@ def _get_bot_time_settings(handle: str = "") -> dict:
 
 
 async def _bot_auto_offer(handle: str):
-    """ログイン後、設定されたタイムアウト秒で棋力の近いボットが対局申込を送る。"""
+    """対局申請後、BOT_AUTO_DELAY 秒で棋力の近いボットが挑戦状を送る。
+
+    注意: スリープ時間はクライアント側の hosting_timeout（get_offer_timeout_ms）
+    より短くすること。同じ値だとクライアントが先にキャンセルしてしまう。
+    """
     try:
-        await asyncio.sleep(_get_offer_timeout_sec())
+        await asyncio.sleep(BOT_AUTO_DELAY)
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
             return
@@ -691,9 +698,13 @@ async def _bot_auto_offer(handle: str):
 
 
 async def _bot_auto_accept(handle: str):
-    """対局申込後、設定されたタイムアウト秒で承諾がなければボットが挑戦状を送る。"""
+    """対局申込後、BOT_AUTO_DELAY 秒で承諾がなければボットが挑戦状を送る。
+
+    注意: スリープ時間はクライアント側の hosting_timeout（get_offer_timeout_ms）
+    より短くすること。同じ値だとクライアントが先にキャンセルしてしまう。
+    """
     try:
-        await asyncio.sleep(_get_offer_timeout_sec())
+        await asyncio.sleep(BOT_AUTO_DELAY)
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
             return
@@ -947,8 +958,11 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
         if user_status.get(handle) == "対局中":
             logger.debug("Ignoring match_cancel from %s (already in game)", handle)
         else:
-            # 申込キャンセル → ボット承諾タイマーもキャンセル
-            _cancel_bot_timers(handle)
+            # reason="timeout" はホスティング期間の自動終了 → ボットタイマーは継続
+            # reason="user"（デフォルト）はユーザーが明示的にキャンセル → ボットタイマーもキャンセル
+            cancel_reason = msg.get("reason", "user")
+            if cancel_reason != "timeout":
+                _cancel_bot_timers(handle)
             # 個別申込の場合、相手のステータスを修正
             offer_info = pending_offers.get(handle, {})
             target_of_cancel = offer_info.get("target")
