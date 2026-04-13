@@ -85,6 +85,7 @@ class AdminApp:
         self._online_users = {}
         self._opponents = {}
         self._online_lock = threading.Lock()
+        self._refresh_gen = 0  # 世代カウンター: 手動リフレッシュ時にインクリメントし、古い自動リフレッシュ結果を破棄する
         self._build_main()
         self._ws.restore_window(self.root, default_geometry="1000x600")
         self._start_heartbeat_listener()
@@ -715,6 +716,7 @@ class AdminApp:
     # データ更新
     # =================================================================
     def _refresh(self, force=False):
+        self._refresh_gen += 1  # 進行中の自動リフレッシュ結果を無効化
         users = self._api_get("/api/users")
         if users is None:
             self.status_label.config(text="サーバーに接続できません", fg=T("error_red"))
@@ -814,15 +816,23 @@ class AdminApp:
 
     def _refresh_async(self):
         """バックグラウンドでAPIを呼び出し、結果をメインスレッドに渡す。"""
+        gen = self._refresh_gen  # 開始時の世代を記録
         try:
             users = self._api_get("/api/users")
-            self.root.after(0, lambda: self._apply_refresh(users))
+            self.root.after(0, lambda: self._apply_refresh(users, gen))
         except Exception:
             self._refresh_busy = False
 
-    def _apply_refresh(self, users):
-        """メインスレッドでUIを更新する。"""
+    def _apply_refresh(self, users, gen):
+        """メインスレッドでUIを更新する。
+
+        gen が現在の _refresh_gen と一致しない場合、このデータは
+        手動リフレッシュ（Elo保存等）より前に取得された古いデータ
+        なので破棄する。これにより保存直後に表示が元に戻る問題を防ぐ。
+        """
         self._refresh_busy = False
+        if gen != self._refresh_gen:
+            return  # 古いデータを破棄
         if users is None:
             self.status_label.config(text="サーバーに接続できません", fg=T("error_red"))
             return
