@@ -552,9 +552,9 @@ async def ws_broadcast_online_list():
         try:
             await ws.send_text(msg)
         except Exception:
-            dead.append(handle)
-    for h in dead:
-        await ws_disconnect(h)
+            dead.append((handle, ws))
+    for h, ws in dead:
+        await ws_disconnect(h, ws)
 
 
 async def ws_send(handle: str, msg_dict: dict) -> bool:
