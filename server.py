@@ -51,10 +51,12 @@ logging.basicConfig(
 logger = logging.getLogger("goka_server")
 
 # ---------------------------------------------------------------------------
-# 定数
+# 定数（環境変数で上書き可能 — ステージング環境用）
 # ---------------------------------------------------------------------------
-DB_PATH = Path(__file__).parent / "igo_users.db"
-PORT = 8000
+DB_PATH = Path(os.environ.get("GOKA_DB_PATH",
+               str(Path(__file__).parent / "igo_users.db")))
+PORT = int(os.environ.get("GOKA_PORT", "8000"))
+_ENV_LABEL = os.environ.get("GOKA_ENV", "production")
 
 # ---------------------------------------------------------------------------
 # AIボット定義
@@ -248,9 +250,10 @@ class UpdateEloRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    logger.info("Goka GO server starting on port %d ...", PORT)
+    logger.info("Goka GO server [%s] starting on port %d (db=%s)",
+               _ENV_LABEL, PORT, DB_PATH)
     yield
-    logger.info("Goka GO server shutting down.")
+    logger.info("Goka GO server [%s] shutting down.", _ENV_LABEL)
 
 
 app = FastAPI(title="Goka GO API", version="1.0.0", lifespan=lifespan)
@@ -476,7 +479,8 @@ async def get_online():
 # ---------------------------------------------------------------------------
 # グローバル設定 API
 # ---------------------------------------------------------------------------
-SETTINGS_PATH = Path(__file__).parent / "app_settings.json"
+SETTINGS_PATH = Path(os.environ.get("GOKA_SETTINGS_PATH",
+                     str(Path(__file__).parent / "app_settings.json")))
 
 
 def _load_settings() -> dict:
@@ -1192,6 +1196,7 @@ def _rank_to_initial_elo(rank: str) -> float:
 ADMIN_TOKEN = os.environ.get("GOKA_ADMIN_TOKEN", "goka-deploy-2026")
 REPO_DIR = os.environ.get("GOKA_REPO_DIR",
                           os.path.dirname(os.path.abspath(__file__)))
+_GIT_BRANCH = os.environ.get("GOKA_GIT_BRANCH", "main")
 
 
 def _check_admin_token(request: Request) -> bool:
@@ -1205,9 +1210,51 @@ async def admin_update(request: Request):
     if not _check_admin_token(request):
         raise HTTPException(status_code=403, detail="forbidden")
     try:
+        # リクエストボディからブランチ指定を取得（なければ環境変数のデフォルト）
+        branch = _GIT_BRANCH
+        try:
+            body = await request.json()
+            if body and isinstance(body.get("branch"), str) and body["branch"]:
+                branch = body["branch"]
+        except Exception:
+            pass  # bodyなし or JSONでない場合はデフォルトブランチを使う
+
+        # ブランチ名のバリデーション（gitオプションインジェクション防止）
+        if branch.startswith("-"):
+            return JSONResponse(
+                content={"status": "error", "detail": "Invalid branch name"},
+                status_code=400)
+
+        # 現在のコミットハッシュを記録（ブランチ切り替え検出用）
+        old_hash = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+
+        # 常にfetch → checkoutしてからpull（前回のデプロイで別ブランチに
+        # 切り替わっている可能性があるため、毎回明示的にcheckoutする）
+        fetch_result = subprocess.run(
+            ["git", "fetch", "origin", branch],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=60
+        )
+        if fetch_result.returncode != 0:
+            return JSONResponse(
+                content={"status": "error",
+                         "git": fetch_result.stdout + fetch_result.stderr},
+                status_code=500)
+        checkout = subprocess.run(
+            ["git", "checkout", branch],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=30
+        )
+        if checkout.returncode != 0:
+            return JSONResponse(
+                content={"status": "error",
+                         "git": checkout.stdout + checkout.stderr},
+                status_code=500)
+
         # git pull
         result = subprocess.run(
-            ["git", "pull", "origin", "main"],
+            ["git", "pull", "origin", branch],
             cwd=REPO_DIR, capture_output=True, text=True, timeout=60
         )
         git_output = result.stdout + result.stderr
@@ -1215,15 +1262,22 @@ async def admin_update(request: Request):
         if result.returncode != 0:
             return JSONResponse(content={"status": "error", "git": git_output}, status_code=500)
 
-        # 変更があった場合のみ再起動
-        if "Already up to date" in git_output:
+        # コミットハッシュを比較してコード変更を検出
+        # （ブランチ切り替え時は git pull が "Already up to date" でもコードは変わっている）
+        new_hash = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+
+        if old_hash == new_hash:
             return {"status": "no_change", "git": git_output}
 
-        # サーバー再起動（新しいプロセスを起動してから自分を終了）
+        # サーバー再起動（環境変数を引き継いで新しいプロセスを起動してから自分を終了）
         subprocess.Popen(
             [sys.executable, os.path.join(REPO_DIR, "server.py")],
             cwd=REPO_DIR,
             start_new_session=True,
+            env={**os.environ},
         )
         # 少し待ってから自分を終了
         asyncio.get_event_loop().call_later(1.0, lambda: os.kill(os.getpid(), 9))
@@ -1239,6 +1293,8 @@ async def admin_status(request: Request):
     if not _check_admin_token(request):
         raise HTTPException(status_code=403, detail="forbidden")
     return {
+        "env": _ENV_LABEL,
+        "port": PORT,
         "online_users": len(connected_users),
         "users": list(connected_users.keys()),
         "active_games": len(active_games),

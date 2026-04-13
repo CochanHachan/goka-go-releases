@@ -1,0 +1,128 @@
+name: Staging Deploy
+
+on:
+  # 手動トリガー（PRブランチを指定可能）
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'デプロイするブランチ名（例: devin/xxx-fix-something）。空欄の場合はmain'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy-staging-server:
+    name: Deploy Staging Server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy staging server (git pull + restart)
+        shell: bash
+        env:
+          GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+          GOKA_STAGING_URL: ${{ secrets.GOKA_STAGING_URL }}
+          DEPLOY_BRANCH: ${{ github.event.inputs.branch || 'main' }}
+        run: |
+          TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
+          URL="${GOKA_STAGING_URL:-http://34.24.176.248:8001}"
+          echo "Deploying staging server at ${URL} (branch: ${DEPLOY_BRANCH})..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Token: ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"branch\": \"${DEPLOY_BRANCH}\"}" \
+            "${URL}/admin/update" \
+            --connect-timeout 10 --max-time 60)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          echo "HTTP ${HTTP_CODE}: ${BODY}"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Staging server deploy triggered successfully."
+          else
+            echo "ERROR: Staging server deploy failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+
+  build-staging-client:
+    name: Build Staging Client
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'main' }}
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install pyinstaller tksheet cryptography websockets pillow pygame
+
+      - name: Switch to staging server URL
+        shell: python
+        run: |
+          import re
+
+          # igo/constants.py のサーバーURLをステージングに切り替え
+          with open("igo/constants.py", "r", encoding="utf-8") as f:
+              content = f.read()
+
+          # ポート8000 → 8001 に変更
+          content = content.replace(
+              'CLOUD_SERVER_URL = "ws://34.24.176.248:8000"',
+              'CLOUD_SERVER_URL = "ws://34.24.176.248:8001"'
+          )
+          content = content.replace(
+              'API_BASE_URL     = "http://34.24.176.248:8000"',
+              'API_BASE_URL     = "http://34.24.176.248:8001"'
+          )
+
+          # アプリ名にステージング表記を追加
+          content = content.replace(
+              'APP_NAME        = "碁華 Goka GO"',
+              'APP_NAME        = "碁華 Goka GO [STAGING]"'
+          )
+
+          with open("igo/constants.py", "w", encoding="utf-8") as f:
+              f.write(content)
+
+          print("Switched to staging server URLs (port 8001)")
+          print("App name updated to include [STAGING] label")
+
+      - name: Build with PyInstaller
+        run: pyinstaller goka_go.spec --noconfirm
+
+      - name: Create staging ZIP
+        shell: python
+        run: |
+          import zipfile, os
+
+          src = "dist/goka_go"
+          dst = "dist/goka_go_staging.zip"
+          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
+              for root, dirs, files in os.walk(src):
+                  for f in files:
+                      fp = os.path.join(root, f)
+                      arcname = os.path.relpath(fp, src)
+                      try:
+                          zf.write(fp, arcname)
+                      except PermissionError as e:
+                          print(f"WARNING: Could not add {fp}: {e}")
+
+          size_mb = os.path.getsize(dst) / (1024 * 1024)
+          print(f"Created {dst} ({size_mb:.1f} MB)")
+
+      - name: Upload staging build
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-go-staging
+          path: dist/goka_go_staging.zip
+          retention-days: 7
