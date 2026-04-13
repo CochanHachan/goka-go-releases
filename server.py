@@ -1210,9 +1210,40 @@ async def admin_update(request: Request):
     if not _check_admin_token(request):
         raise HTTPException(status_code=403, detail="forbidden")
     try:
-        # git pull（ブランチは環境変数 GOKA_GIT_BRANCH で設定可能）
+        # リクエストボディからブランチ指定を取得（なければ環境変数のデフォルト）
+        branch = _GIT_BRANCH
+        try:
+            body = await request.json()
+            if body and body.get("branch"):
+                branch = body["branch"]
+        except Exception:
+            pass  # bodyなし or JSONでない場合はデフォルトブランチを使う
+
+        # 指定ブランチをチェックアウトしてからpull
+        if branch != _GIT_BRANCH:
+            checkout = subprocess.run(
+                ["git", "checkout", branch],
+                cwd=REPO_DIR, capture_output=True, text=True, timeout=30
+            )
+            if checkout.returncode != 0:
+                # ブランチがローカルにない場合はfetchしてからcheckout
+                subprocess.run(
+                    ["git", "fetch", "origin", branch],
+                    cwd=REPO_DIR, capture_output=True, text=True, timeout=60
+                )
+                checkout = subprocess.run(
+                    ["git", "checkout", branch],
+                    cwd=REPO_DIR, capture_output=True, text=True, timeout=30
+                )
+                if checkout.returncode != 0:
+                    return JSONResponse(
+                        content={"status": "error",
+                                 "git": checkout.stdout + checkout.stderr},
+                        status_code=500)
+
+        # git pull
         result = subprocess.run(
-            ["git", "pull", "origin", _GIT_BRANCH],
+            ["git", "pull", "origin", branch],
             cwd=REPO_DIR, capture_output=True, text=True, timeout=60
         )
         git_output = result.stdout + result.stderr

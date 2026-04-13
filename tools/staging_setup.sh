@@ -32,7 +32,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=$(whoami)
+User=${SUDO_USER:-$(whoami)}
 WorkingDirectory=${REPO_DIR}
 Environment=GOKA_PORT=${STAGING_PORT}
 Environment=GOKA_DB_PATH=${STAGING_DB}

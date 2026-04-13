@@ -33,6 +33,8 @@ jobs:
           echo "Deploying staging server at ${URL} (branch: ${DEPLOY_BRANCH})..."
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"branch\": \"${DEPLOY_BRANCH}\"}" \
             "${URL}/admin/update" \
             --connect-timeout 10 --max-time 60)
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
