@@ -1095,8 +1095,9 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
 
     await websocket.accept()
 
-    # 既存接続があれば切断
+    # 既存接続があれば切断（新しい接続を先に登録してからcloseする）
     old_ws = connected_users.get(handle_name)
+    connected_users[handle_name] = websocket  # 先に登録 → old_ws の finally がスキップされる
     if old_ws:
         try:
             await old_ws.close()
@@ -1113,8 +1114,6 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
         rank = row["rank"] if row else ""
     finally:
         conn.close()
-
-    connected_users[handle_name] = websocket
     ws_user_info[handle_name] = {"handle": handle_name, "rank": rank, "elo": elo}
     user_status[handle_name] = "ログイン"
     logger.info("WS connected: %s (elo=%.0f)", handle_name, elo)
