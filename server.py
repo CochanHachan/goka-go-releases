@@ -958,8 +958,11 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
         if user_status.get(handle) == "対局中":
             logger.debug("Ignoring match_cancel from %s (already in game)", handle)
         else:
-            # 申込キャンセル → ボット承諾タイマーもキャンセル
-            _cancel_bot_timers(handle)
+            # reason="timeout" はホスティング期間の自動終了 → ボットタイマーは継続
+            # reason="user"（デフォルト）はユーザーが明示的にキャンセル → ボットタイマーもキャンセル
+            cancel_reason = msg.get("reason", "user")
+            if cancel_reason != "timeout":
+                _cancel_bot_timers(handle)
             # 個別申込の場合、相手のステータスを修正
             offer_info = pending_offers.get(handle, {})
             target_of_cancel = offer_info.get("target")

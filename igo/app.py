@@ -1213,9 +1213,13 @@ class App:
                                        fischer_increment=fischer_increment)
             self._server.start()
 
-    def stop_hosting(self):
+    def stop_hosting(self, reason="user"):
+        """ホスティングを停止する。
+        reason="user": ユーザーが明示的にキャンセル → ボットタイマーもキャンセル
+        reason="timeout": ホスティング期間の自動終了 → ボットタイマーは継続
+        """
         if self._cloud_mode and self._cloud_client:
-            self._cloud_client.send({"type": "match_cancel"})
+            self._cloud_client.send({"type": "match_cancel", "reason": reason})
         if self._server:
             self._server.stop()
             self._server = None
