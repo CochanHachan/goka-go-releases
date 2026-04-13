@@ -1225,6 +1225,12 @@ async def admin_update(request: Request):
                 content={"status": "error", "detail": "Invalid branch name"},
                 status_code=400)
 
+        # 現在のコミットハッシュを記録（ブランチ切り替え検出用）
+        old_hash = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+
         # 常にfetch → checkoutしてからpull（前回のデプロイで別ブランチに
         # 切り替わっている可能性があるため、毎回明示的にcheckoutする）
         fetch_result = subprocess.run(
@@ -1256,8 +1262,14 @@ async def admin_update(request: Request):
         if result.returncode != 0:
             return JSONResponse(content={"status": "error", "git": git_output}, status_code=500)
 
-        # 変更があった場合のみ再起動
-        if "Already up to date" in git_output:
+        # コミットハッシュを比較してコード変更を検出
+        # （ブランチ切り替え時は git pull が "Already up to date" でもコードは変わっている）
+        new_hash = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+
+        if old_hash == new_hash:
             return {"status": "no_change", "git": git_output}
 
         # サーバー再起動（環境変数を引き継いで新しいプロセスを起動してから自分を終了）
