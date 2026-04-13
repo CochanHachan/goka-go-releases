@@ -1219,12 +1219,23 @@ async def admin_update(request: Request):
         except Exception:
             pass  # bodyなし or JSONでない場合はデフォルトブランチを使う
 
+        # ブランチ名のバリデーション（gitオプションインジェクション防止）
+        if branch.startswith("-"):
+            return JSONResponse(
+                content={"status": "error", "detail": "Invalid branch name"},
+                status_code=400)
+
         # 常にfetch → checkoutしてからpull（前回のデプロイで別ブランチに
         # 切り替わっている可能性があるため、毎回明示的にcheckoutする）
-        subprocess.run(
+        fetch_result = subprocess.run(
             ["git", "fetch", "origin", branch],
             cwd=REPO_DIR, capture_output=True, text=True, timeout=60
         )
+        if fetch_result.returncode != 0:
+            return JSONResponse(
+                content={"status": "error",
+                         "git": fetch_result.stdout + fetch_result.stderr},
+                status_code=500)
         checkout = subprocess.run(
             ["git", "checkout", branch],
             cwd=REPO_DIR, capture_output=True, text=True, timeout=30
