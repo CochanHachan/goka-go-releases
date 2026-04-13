@@ -74,7 +74,7 @@ STRINGS = {
 
         # --- Window titles ---
         "title_match_dialog":   "対局申請",
-        "title_offer_dialog":   "対局の申し込みです！",
+        "title_offer_dialog":   "挑戦状",
         "title_kifu_dialog":    "棋譜一覧",
         "title_score":          "地合計算",
         "title_howto":          "遊び方",
