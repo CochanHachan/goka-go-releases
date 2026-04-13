@@ -286,6 +286,7 @@ class App:
     def _show_ai_bot_settings(self):
         """AIロボ対局条件の設定ダイアログを表示する。"""
         win = tk.Toplevel(self.root)
+        win.withdraw()  # Hide until positioned
         win.title(L("ai_bot_settings_title"))
         win.resizable(False, False)
         win.transient(self.root)
@@ -403,6 +404,7 @@ class App:
         y = py + (ph - dh) // 2
         win.geometry("+{}+{}".format(x, y))
 
+        win.deiconify()  # Show after positioned
         win.grab_set()
 
     @staticmethod
