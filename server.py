@@ -1214,7 +1214,7 @@ async def admin_update(request: Request):
         branch = _GIT_BRANCH
         try:
             body = await request.json()
-            if body and body.get("branch"):
+            if body and isinstance(body.get("branch"), str) and body["branch"]:
                 branch = body["branch"]
         except Exception:
             pass  # bodyなし or JSONでない場合はデフォルトブランチを使う
