@@ -1219,27 +1219,21 @@ async def admin_update(request: Request):
         except Exception:
             pass  # bodyなし or JSONでない場合はデフォルトブランチを使う
 
-        # 指定ブランチをチェックアウトしてからpull
-        if branch != _GIT_BRANCH:
-            checkout = subprocess.run(
-                ["git", "checkout", branch],
-                cwd=REPO_DIR, capture_output=True, text=True, timeout=30
-            )
-            if checkout.returncode != 0:
-                # ブランチがローカルにない場合はfetchしてからcheckout
-                subprocess.run(
-                    ["git", "fetch", "origin", branch],
-                    cwd=REPO_DIR, capture_output=True, text=True, timeout=60
-                )
-                checkout = subprocess.run(
-                    ["git", "checkout", branch],
-                    cwd=REPO_DIR, capture_output=True, text=True, timeout=30
-                )
-                if checkout.returncode != 0:
-                    return JSONResponse(
-                        content={"status": "error",
-                                 "git": checkout.stdout + checkout.stderr},
-                        status_code=500)
+        # 常にfetch → checkoutしてからpull（前回のデプロイで別ブランチに
+        # 切り替わっている可能性があるため、毎回明示的にcheckoutする）
+        subprocess.run(
+            ["git", "fetch", "origin", branch],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=60
+        )
+        checkout = subprocess.run(
+            ["git", "checkout", branch],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=30
+        )
+        if checkout.returncode != 0:
+            return JSONResponse(
+                content={"status": "error",
+                         "git": checkout.stdout + checkout.stderr},
+                status_code=500)
 
         # git pull
         result = subprocess.run(
