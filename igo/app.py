@@ -1970,7 +1970,12 @@ class App:
             self._ai_cleanup()
 
     def _ai_cleanup(self):
-        """Stop KataGo and reset AI mode."""
+        """Stop KataGo and reset AI mode.
+
+        サーバーに game_end を送信して game_pairs をクリアする。
+        これを行わないと、次の対局申請時にサーバーが「まだ対局中」と
+        判断し、ボットの自動挑戦状が送られなくなる。
+        """
         if self._ai_katago:
             try:
                 self._ai_katago.stop()
@@ -1978,6 +1983,8 @@ class App:
                 pass
             self._ai_katago = None
         self._ai_mode = False
+        # サーバーの game_pairs をクリアするため game_end を送信
+        self.send_cloud_message({"type": "game_end"})
 
     def send_cloud_message(self, msg):
         """Send a game message via cloud."""
