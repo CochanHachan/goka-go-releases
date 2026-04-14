@@ -22,6 +22,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Optional
@@ -1300,6 +1301,229 @@ async def admin_status(request: Request):
         "active_games": len(active_games),
         "pid": os.getpid(),
     }
+
+
+@app.post("/admin/setup-staging")
+async def admin_setup_staging(request: Request):
+    """ステージング環境をリモートからセットアップする（SSH不要）。
+
+    本番サーバーから呼び出すことで、同じVM上にステージング用の
+    別クローン＋別プロセスを起動する。
+    """
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    # ステージング環境は本番サーバー上でのみ実行可能
+    if _ENV_LABEL != "production":
+        return JSONResponse(
+            content={"status": "error",
+                     "detail": "This endpoint is only available on the production server"},
+            status_code=400)
+
+    staging_port = 8001
+    staging_dir = REPO_DIR + "-staging"
+    staging_db = os.path.join(staging_dir, "igo_users_staging.db")
+    staging_settings = os.path.join(staging_dir, "app_settings_staging.json")
+    log_lines: list = []
+
+    def _log(msg: str) -> None:
+        logger.info("[setup-staging] %s", msg)
+        log_lines.append(msg)
+
+    async def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
+        return await asyncio.to_thread(
+            subprocess.run, cmd, capture_output=True, text=True, timeout=120, **kwargs
+        )
+
+    try:
+        # 1. ステージング用リポジトリの準備
+        if os.path.isdir(staging_dir):
+            _log(f"既存のステージングリポジトリを更新: {staging_dir}")
+            r = await _run(["git", "fetch", "origin"], cwd=staging_dir)
+            if r.returncode != 0:
+                return JSONResponse(
+                    content={"status": "error", "detail": "git fetch failed",
+                             "output": r.stdout + r.stderr},
+                    status_code=500)
+            await _run(["git", "checkout", "main"], cwd=staging_dir)
+            r = await _run(["git", "pull", "origin", "main"], cwd=staging_dir)
+            _log(f"git pull: {r.stdout.strip()}")
+        else:
+            _log(f"ステージングリポジトリをクローン: {staging_dir}")
+            remote_url = (await _run(
+                ["git", "remote", "get-url", "origin"], cwd=REPO_DIR
+            )).stdout.strip()
+            r = await _run(["git", "clone", remote_url, staging_dir])
+            if r.returncode != 0:
+                return JSONResponse(
+                    content={"status": "error", "detail": "git clone failed",
+                             "output": r.stdout + r.stderr},
+                    status_code=500)
+            _log("クローン完了")
+
+        # 2. 既存のステージングプロセスを停止
+        _log("既存のステージングプロセスを確認...")
+        ps_result = await _run(["pgrep", "-f", f"{staging_dir}/server.py"])
+        if ps_result.returncode == 0:
+            old_pids = ps_result.stdout.strip().split("\n")
+            for pid_str in old_pids:
+                pid_str = pid_str.strip()
+                if pid_str and pid_str.isdigit():
+                    try:
+                        os.kill(int(pid_str), 9)
+                        _log(f"旧ステージングプロセスを停止: PID {pid_str}")
+                    except (ProcessLookupError, PermissionError):
+                        pass
+
+        # 3. ステージングサーバーをバックグラウンドで起動
+        _log(f"ステージングサーバーを起動: ポート {staging_port}")
+        staging_env = {
+            **os.environ,
+            "GOKA_PORT": str(staging_port),
+            "GOKA_DB_PATH": staging_db,
+            "GOKA_SETTINGS_PATH": staging_settings,
+            "GOKA_ENV": "staging",
+            "GOKA_GIT_BRANCH": "main",
+            "GOKA_REPO_DIR": staging_dir,
+        }
+        staging_proc = subprocess.Popen(
+            [sys.executable, os.path.join(staging_dir, "server.py")],
+            cwd=staging_dir,
+            start_new_session=True,
+            env=staging_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _log(f"ステージングサーバー起動: PID {staging_proc.pid}")
+
+        # 4. 起動確認（最大15秒待機）
+        staging_ok = False
+        for i in range(15):
+            await asyncio.sleep(1)
+            try:
+                req = urllib.request.Request(
+                    f"http://localhost:{staging_port}/admin/status",
+                    headers={"X-Token": ADMIN_TOKEN},
+                )
+                def _check_staging():
+                    with urllib.request.urlopen(req, timeout=3) as r:
+                        return json.loads(r.read().decode("utf-8"))
+                data = await asyncio.to_thread(_check_staging)
+                if data.get("env") == "staging":
+                    staging_ok = True
+                    _log(f"ステージングサーバー応答確認: {data}")
+                    break
+            except Exception:
+                continue
+
+        if not staging_ok:
+            _log("警告: ステージングサーバーの応答を確認できませんでした")
+
+        # 5. ファイアウォール設定を試行
+        fw_msg = ""
+        fw_check = await _run(["which", "gcloud"])
+        if fw_check.returncode == 0:
+            _log("gcloudでファイアウォールルール作成を試行...")
+            fw_result = await _run([
+                "gcloud", "compute", "firewall-rules", "create", "goka-staging",
+                "--allow=tcp:8001",
+                "--description=Allow staging server port 8001",
+                "--quiet",
+            ])
+            if fw_result.returncode == 0:
+                fw_msg = "ファイアウォールルール作成成功"
+            elif "already exists" in (fw_result.stderr or ""):
+                fw_msg = "ファイアウォールルールは既に存在"
+            else:
+                fw_msg = f"ファイアウォール設定失敗（手動設定が必要かもしれません）: {fw_result.stderr.strip()}"
+            _log(fw_msg)
+        else:
+            fw_msg = "gcloudコマンドが見つかりません。ファイアウォールは手動設定が必要です"
+            _log(fw_msg)
+
+        # 6. systemdサービスの作成を試行（永続化）
+        systemd_msg = ""
+        service_content = f"""[Unit]
+Description=Goka GO Staging Server (port {staging_port})
+After=network.target
+
+[Service]
+Type=simple
+User={os.environ.get('USER', 'user')}
+WorkingDirectory={staging_dir}
+Environment=GOKA_PORT={staging_port}
+Environment=GOKA_DB_PATH={staging_db}
+Environment=GOKA_SETTINGS_PATH={staging_settings}
+Environment=GOKA_ENV=staging
+Environment=GOKA_GIT_BRANCH=main
+Environment=GOKA_REPO_DIR={staging_dir}
+EnvironmentFile=-/etc/goka-staging.env
+ExecStart={sys.executable} {staging_dir}/server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"""
+        service_path = "/etc/systemd/system/goka-staging.service"
+        try:
+            # sudoなしで書き込みを試行（権限があれば成功する）
+            # 管理トークンを制限付きファイルに書き込み（0600権限）
+            env_file = "/etc/goka-staging.env"
+            env_content = f"GOKA_ADMIN_TOKEN={ADMIN_TOKEN}\n"
+            await _run(
+                ["sudo", "-n", "tee", env_file],
+                input=env_content,
+            )
+            await _run(["sudo", "-n", "chmod", "0600", env_file])
+
+            write_result = await _run(
+                ["sudo", "-n", "tee", service_path],
+                input=service_content,
+            )
+            if write_result.returncode == 0:
+                await _run(["sudo", "-n", "systemctl", "daemon-reload"])
+                await _run(["sudo", "-n", "systemctl", "enable", "goka-staging"])
+                # バックグラウンドプロセスをsystemdに切り替え
+                if staging_proc.poll() is None:
+                    os.kill(staging_proc.pid, 9)
+                start_result = await _run(["sudo", "-n", "systemctl", "start", "goka-staging"])
+                if start_result.returncode != 0:
+                    # systemd起動失敗時はプロセスを再起動（フォールバック）
+                    _log("systemd起動失敗、プロセスとして再起動...")
+                    staging_proc = subprocess.Popen(
+                        [sys.executable, os.path.join(staging_dir, "server.py")],
+                        cwd=staging_dir,
+                        start_new_session=True,
+                        env=staging_env,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    systemd_msg = "systemd起動失敗。プロセスとして再起動済み"
+                else:
+                    systemd_msg = "systemdサービス作成・起動成功（永続化完了）"
+            else:
+                systemd_msg = "systemdサービス作成スキップ（sudo権限なし）。プロセスとして起動中"
+        except Exception as e:
+            systemd_msg = f"systemdサービス作成スキップ: {e}。プロセスとして起動中"
+        _log(systemd_msg)
+
+        return {
+            "status": "success" if staging_ok else "partial",
+            "staging_port": staging_port,
+            "staging_dir": staging_dir,
+            "staging_pid": staging_proc.pid,
+            "staging_ok": staging_ok,
+            "firewall": fw_msg,
+            "systemd": systemd_msg,
+            "log": log_lines,
+        }
+
+    except Exception as e:
+        logger.error("Staging setup error: %s", e)
+        return JSONResponse(
+            content={"status": "error", "detail": str(e), "log": log_lines},
+            status_code=500)
 
 
 # ---------------------------------------------------------------------------
