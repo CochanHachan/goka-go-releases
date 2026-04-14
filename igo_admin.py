@@ -55,13 +55,35 @@ def admin_decrypt(encrypted: str) -> str:
             return "（復号不可）"
     return encrypted
 
-API_BASE_URL = "http://34.85.118.112:8000"
+# ---------------------------------------------------------------------------
+# 環境切替フラグ（constants_env.py から読み込み）
+# ステージングビルド時は constants_env.py の _ENV を "staging" に変更する
+# ---------------------------------------------------------------------------
+from igo.constants_env import _ENV
+
+_ADMIN_SERVER_CONFIG = {
+    "production": {
+        "api_base_url": "http://34.85.118.112:8000",
+        "title":        "碁華 - 管理者画面",
+    },
+    "staging": {
+        "api_base_url": "http://136.110.101.14:8000",
+        "title":        "碁華 - 管理者画面 [STAGING]",
+    },
+}
+
+_admin_cfg = _ADMIN_SERVER_CONFIG.get(_ENV)
+if _admin_cfg is None:
+    raise RuntimeError("Unknown _ENV={!r}. Must be 'production' or 'staging'.".format(_ENV))
+
+API_BASE_URL = _admin_cfg["api_base_url"]
+_ADMIN_TITLE = _admin_cfg["title"]
 
 
 class AdminApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("碁華 - 管理者画面")
+        self.root.title(_ADMIN_TITLE)
         self.root.configure(bg=T("root_bg"))
         self.root.geometry("1000x600")
         self.root.minsize(800, 500)

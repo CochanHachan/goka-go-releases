@@ -57,6 +57,7 @@ a = Analysis(
         'window_settings',
         # igo package modules (igo/ ディレクトリ内のモジュール)
         'igo',
+        'igo.constants_env',
         'igo.constants',
         'igo.config',
         'igo.elo',

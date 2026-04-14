@@ -21,14 +21,15 @@ jobs:
         shell: bash
         env:
           GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+          GOKA_STAGING_URL: ${{ secrets.GOKA_STAGING_URL }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          PROD_URL="http://34.85.118.112:8000"
+          STAGING_URL="${GOKA_STAGING_URL:-http://136.110.101.14:8000}"
           echo "ディスク容量を確認・クリーンアップ..."
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
-            "${PROD_URL}/admin/disk-cleanup" \
+            "${STAGING_URL}/admin/disk-cleanup" \
             --connect-timeout 15 --max-time 300)
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
@@ -44,22 +45,23 @@ jobs:
             echo "クリーンアップをスキップ（セットアップは続行します）"
           fi
 
-      - name: Setup staging environment on production server
+      - name: Setup staging environment
         shell: bash
         env:
           GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+          GOKA_STAGING_URL: ${{ secrets.GOKA_STAGING_URL }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          PROD_URL="http://34.85.118.112:8000"
+          STAGING_URL="${GOKA_STAGING_URL:-http://136.110.101.14:8000}"
           echo "========================================"
           echo "ステージング環境セットアップを開始します"
-          echo "本番サーバー: ${PROD_URL}"
+          echo "ステージングサーバー: ${STAGING_URL}"
           echo "========================================"
 
-          # 本番サーバーにステージングセットアップを要求
+          # ステージングサーバーにセットアップを要求
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
-            "${PROD_URL}/admin/setup-staging" \
+            "${STAGING_URL}/admin/setup-staging" \
             --connect-timeout 15 --max-time 600)
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
@@ -73,7 +75,7 @@ jobs:
             echo ""
             echo "========================================"
             echo "セットアップ完了！"
-            echo "ステージングサーバー: http://34.85.118.112:8001"
+            echo "ステージングサーバー: ${STAGING_URL}"
             echo "========================================"
           else
             echo ""
@@ -87,9 +89,10 @@ jobs:
         shell: bash
         env:
           GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+          GOKA_STAGING_URL: ${{ secrets.GOKA_STAGING_URL }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          STAGING_URL="http://34.85.118.112:8001"
+          STAGING_URL="${GOKA_STAGING_URL:-http://136.110.101.14:8000}"
           echo "ステージングサーバーの応答を確認..."
 
           # 少し待ってから確認

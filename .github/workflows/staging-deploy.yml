@@ -66,59 +66,75 @@ jobs:
       - name: Install dependencies
         run: pip install pyinstaller tksheet cryptography websockets pillow pygame
 
-      - name: Switch to staging server URL
+      - name: Switch to staging environment
         shell: python
         run: |
-          import re
+          import sys
 
-          # igo/constants.py のサーバーURLをステージングに切り替え
-          with open("igo/constants.py", "r", encoding="utf-8") as f:
+          # constants_env.py の _ENV フラグを "staging" に切り替える。
+          # constants.py と igo_admin.py は共に constants_env.py から _ENV を
+          # import しているので、この1ファイルの変更だけで全設定が連動する。
+          ENV_FILE = "igo/constants_env.py"
+          SEARCH   = '_ENV = "production"'
+          REPLACE  = '_ENV = "staging"'
+
+          errors = []
+
+          with open(ENV_FILE, "r", encoding="utf-8") as f:
               content = f.read()
 
-          # 本番サーバー → ステージングサーバー（別VM）に切り替え
-          content = content.replace(
-              'CLOUD_SERVER_URL = "ws://34.85.118.112:8000"',
-              'CLOUD_SERVER_URL = "ws://136.110.101.14:8000"'
-          )
-          content = content.replace(
-              'API_BASE_URL     = "http://34.85.118.112:8000"',
-              'API_BASE_URL     = "http://136.110.101.14:8000"'
-          )
+          if SEARCH not in content:
+              print(f"ERROR: '{SEARCH}' not found in {ENV_FILE}")
+              print(f"File contents:\n{content}")
+              sys.exit(1)
 
-          # アプリ名にステージング表記を追加
-          content = content.replace(
-              'APP_NAME        = "碁華 Goka GO"',
-              'APP_NAME        = "碁華 Goka GO [STAGING]"'
-          )
-          # タイトルバーにステージングラベルを表示
-          content = content.replace(
-              'STAGING_LABEL   = ""',
-              'STAGING_LABEL   = "[STAGING] "'
-          )
+          content = content.replace(SEARCH, REPLACE, 1)
 
-          with open("igo/constants.py", "w", encoding="utf-8") as f:
+          with open(ENV_FILE, "w", encoding="utf-8") as f:
               f.write(content)
 
-          # igo_admin.py のAPIベースURLをステージングに切り替え
+          print(f"{ENV_FILE}: switched to staging")
+
+          # --- 検証1: constants_env.py を import して _ENV を確認 ---
+          sys.path.insert(0, ".")
+          from igo.constants_env import _ENV as env_val
+          print(f"\nconstants_env.py: _ENV = {env_val!r}")
+          if env_val != "staging":
+              errors.append("constants_env.py: _ENV is not 'staging'")
+
+          # --- 検証2: constants.py を import して全定数を確認 ---
+          from igo.constants import _ENV as c_env, CLOUD_SERVER_URL, API_BASE_URL, STAGING_LABEL, APP_NAME
+          print(f"\nconstants.py verification:")
+          print(f"  _ENV             = {c_env!r}")
+          print(f"  CLOUD_SERVER_URL = {CLOUD_SERVER_URL!r}")
+          print(f"  API_BASE_URL     = {API_BASE_URL!r}")
+          print(f"  STAGING_LABEL    = {STAGING_LABEL!r}")
+          print(f"  APP_NAME         = {APP_NAME!r}")
+
+          if c_env != "staging":
+              errors.append("constants.py: _ENV is not 'staging'")
+          if "136.110.101.14" not in CLOUD_SERVER_URL:
+              errors.append("constants.py: CLOUD_SERVER_URL does not point to staging")
+          if "136.110.101.14" not in API_BASE_URL:
+              errors.append("constants.py: API_BASE_URL does not point to staging")
+          if "[STAGING]" not in STAGING_LABEL:
+              errors.append("constants.py: STAGING_LABEL missing [STAGING]")
+
+          # --- 検証3: igo_admin.py が constants_env から _ENV を import しているか ---
           with open("igo_admin.py", "r", encoding="utf-8") as f:
-              admin_content = f.read()
+              admin_text = f.read()
+          if "from igo.constants_env import _ENV" not in admin_text:
+              errors.append("igo_admin.py: does not import _ENV from constants_env")
 
-          admin_content = admin_content.replace(
-              'API_BASE_URL = "http://34.85.118.112:8000"',
-              'API_BASE_URL = "http://136.110.101.14:8000"'
-          )
-          # タイトルにステージング表記を追加
-          admin_content = admin_content.replace(
-              'self.root.title("碁華 - 管理者画面")',
-              'self.root.title("碁華 - 管理者画面 [STAGING]")'
-          )
+          print(f"\nigo_admin.py: imports constants_env = {'from igo.constants_env import _ENV' in admin_text}")
 
-          with open("igo_admin.py", "w", encoding="utf-8") as f:
-              f.write(admin_content)
+          if errors:
+              print("\nERROR: Verification failed!")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
 
-          print("Switched to staging server URLs (136.110.101.14:8000)")
-          print("App name updated to include [STAGING] label")
-          print("Admin panel switched to staging server URL")
+          print("\nAll verifications passed.")
 
       - name: Build client with PyInstaller
         run: pyinstaller goka_go.spec --noconfirm
