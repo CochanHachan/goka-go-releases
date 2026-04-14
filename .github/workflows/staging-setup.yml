@@ -1,0 +1,89 @@
+name: Staging Setup (初回セットアップ)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'セットアップを実行しますか？ "yes" と入力してください'
+        required: true
+        default: 'yes'
+
+permissions:
+  contents: read
+
+jobs:
+  setup-staging:
+    name: Setup Staging Environment
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'yes'
+    steps:
+      - name: Setup staging environment on production server
+        shell: bash
+        env:
+          GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+        run: |
+          TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
+          PROD_URL="http://34.24.176.248:8000"
+          echo "========================================"
+          echo "ステージング環境セットアップを開始します"
+          echo "本番サーバー: ${PROD_URL}"
+          echo "========================================"
+
+          # 本番サーバーにステージングセットアップを要求
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Token: ${TOKEN}" \
+            "${PROD_URL}/admin/setup-staging" \
+            --connect-timeout 15 --max-time 180)
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo ""
+          echo "HTTP ${HTTP_CODE}"
+          echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo ""
+            echo "========================================"
+            echo "セットアップ完了！"
+            echo "ステージングサーバー: http://34.24.176.248:8001"
+            echo "========================================"
+          else
+            echo ""
+            echo "========================================"
+            echo "エラー: セットアップに失敗しました (HTTP ${HTTP_CODE})"
+            echo "========================================"
+            exit 1
+          fi
+
+      - name: Verify staging server is running
+        shell: bash
+        env:
+          GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+        run: |
+          TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
+          STAGING_URL="http://34.24.176.248:8001"
+          echo "ステージングサーバーの応答を確認..."
+
+          # 少し待ってから確認
+          sleep 5
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "X-Token: ${TOKEN}" \
+            "${STAGING_URL}/admin/status" \
+            --connect-timeout 10 --max-time 30)
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "HTTP ${HTTP_CODE}: ${BODY}"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo ""
+            echo "✅ ステージングサーバーが正常に動作しています"
+          else
+            echo ""
+            echo "⚠️ ステージングサーバーの応答を確認できませんでした"
+            echo "ファイアウォールの設定が必要な場合があります"
+            echo "ログを確認してください"
+          fi
