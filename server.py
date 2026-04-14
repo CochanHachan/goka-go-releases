@@ -1455,6 +1455,7 @@ Environment=GOKA_SETTINGS_PATH={staging_settings}
 Environment=GOKA_ENV=staging
 Environment=GOKA_GIT_BRANCH=main
 Environment=GOKA_REPO_DIR={staging_dir}
+Environment=GOKA_ADMIN_TOKEN={ADMIN_TOKEN}
 ExecStart={sys.executable} {staging_dir}/server.py
 Restart=always
 RestartSec=5
@@ -1487,7 +1488,9 @@ WantedBy=multi-user.target
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
-                systemd_msg = "systemdサービス作成・起動成功（永続化完了）"
+                    systemd_msg = "systemd起動失敗。プロセスとして再起動済み"
+                else:
+                    systemd_msg = "systemdサービス作成・起動成功（永続化完了）"
             else:
                 systemd_msg = "systemdサービス作成スキップ（sudo権限なし）。プロセスとして起動中"
         except Exception as e:
