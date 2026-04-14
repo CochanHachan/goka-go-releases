@@ -1583,7 +1583,9 @@ class App:
                 pass  # SO_BROADCAST not supported on this platform
             self._match_listener_sock.settimeout(1.0)
             self._match_listener_sock.bind(("", NET_UDP_PORT))
-            threading.Thread(target=self._match_listen_loop, daemon=True).start()
+            # Pass socket as local arg so old threads don't share the new socket
+            sock = self._match_listener_sock
+            threading.Thread(target=self._match_listen_loop, args=(sock,), daemon=True).start()
         except OSError:
             logger.debug("Failed to bind match listener socket", exc_info=True)
             self._match_listening = False
@@ -1630,10 +1632,17 @@ class App:
                 logger.debug("Failed to bind taken cleanup listener", exc_info=True)
         threading.Thread(target=_listen, daemon=True).start()
 
-    def _match_listen_loop(self):
+    def _match_listen_loop(self, sock):
+        """Background thread for listening to UDP match offers.
+
+        Args:
+            sock: The socket this thread owns. Using a local reference
+                  prevents the race where an old thread survives restart
+                  and shares the new socket.
+        """
         while self._match_listening:
             try:
-                data, addr = self._match_listener_sock.recvfrom(4096)
+                data, addr = sock.recvfrom(4096)
                 msg = json.loads(data.decode("utf-8"))
                 if msg.get("type") == "match_offer":
                     my_name = ""
@@ -1652,10 +1661,11 @@ class App:
             except socket.timeout:
                 continue
             except OSError:
-                if self._match_listening:
-                    logger.debug("UDP recv error in match listener", exc_info=True)
-                    continue
-                return
+                # Socket was closed — exit if this is the old listener
+                if not self._match_listening or sock is not self._match_listener_sock:
+                    return
+                logger.debug("UDP recv error in match listener", exc_info=True)
+                continue
 
     def _show_offer(self, offer, addr):
         if not self.go_board or self.go_board.net_mode:
