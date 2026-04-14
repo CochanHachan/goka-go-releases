@@ -844,7 +844,7 @@ class GoBoard:
         if hasattr(self, "score_btn"):
             self.score_btn.config(state="disabled")
         # Cancel any pending delayed score calculation from previous game
-        if getattr(self, '_delayed_score_after_id', None):
+        if hasattr(self, '_delayed_score_after_id') and self._delayed_score_after_id:
             self.root.after_cancel(self._delayed_score_after_id)
             self._delayed_score_after_id = None
         # Ensure overlay is cleared and normal click binding is restored
@@ -871,7 +871,7 @@ class GoBoard:
         # Only save color/elo if not already saved (prevent overwrite by duplicate calls)
         if self.my_color is not None:
             self._last_my_color = self.my_color
-        if getattr(self, 'opponent_elo', None) is not None:
+        if hasattr(self, 'opponent_elo') and self.opponent_elo is not None:
             self._last_opponent_elo = self.opponent_elo
         self.net_mode = False
         self.my_color = None
@@ -895,7 +895,7 @@ class GoBoard:
         """Calculate territory using KataGo and show result."""
         from tkinter import messagebox as _mb
         # Cancel any pending delayed score callback
-        if getattr(self, '_delayed_score_after_id', None):
+        if hasattr(self, '_delayed_score_after_id') and self._delayed_score_after_id:
             self.root.after_cancel(self._delayed_score_after_id)
             self._delayed_score_after_id = None
         # Guard against double calls
@@ -961,7 +961,7 @@ class GoBoard:
         # Show result as overlay on board (same as resign/timeout)
         def _after_score_ok():
             # Update Elo if this was a network game result
-            if self.app and getattr(self, '_last_my_color', None) is not None:
+            if self.app and hasattr(self, '_last_my_color') and self._last_my_color is not None:
                 if winner == "\u9ed2":
                     self.app._update_elo_after_game(BLACK)
                 elif winner == "\u767d":
@@ -987,7 +987,7 @@ class GoBoard:
                 return
             # 挑戦状ダイアログが開いていれば、オファーを退避してから閉じる
             _pending_offers = {}
-            if getattr(self.app, '_current_offer_dialog', None):
+            if self.app._current_offer_dialog:
                 try:
                     _pending_offers = self.app._current_offer_dialog.get_offers()
                 except (AttributeError, TypeError):
@@ -1007,7 +1007,7 @@ class GoBoard:
     def _prepare_for_new_game(self):
         """対局開始前の共通処理：棋譜クリア・棋譜選択画面を閉じる・ボタン状態リセット。"""
         # Cancel any pending delayed score calculation
-        if getattr(self, '_delayed_score_after_id', None):
+        if hasattr(self, '_delayed_score_after_id') and self._delayed_score_after_id:
             self.root.after_cancel(self._delayed_score_after_id)
             self._delayed_score_after_id = None
         # 棋譜選択画面を閉じる
