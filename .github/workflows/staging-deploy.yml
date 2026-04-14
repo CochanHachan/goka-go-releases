@@ -69,56 +69,105 @@ jobs:
       - name: Switch to staging server URL
         shell: python
         run: |
-          import re
+          # -*- coding: utf-8 -*-
+          import re, sys
 
-          # igo/constants.py のサーバーURLをステージングに切り替え
+          PROD_IP = "34.85.118.112"
+          STAGING_IP = "136.110.101.14"
+          errors = []
+
+          # ---- igo/constants.py ----
           with open("igo/constants.py", "r", encoding="utf-8") as f:
               content = f.read()
+          original = content
 
-          # 本番サーバー → ステージングサーバー（別VM）に切り替え
+          # サーバーURL置換（純ASCII — エンコーディング問題なし）
           content = content.replace(
-              'CLOUD_SERVER_URL = "ws://34.85.118.112:8000"',
-              'CLOUD_SERVER_URL = "ws://136.110.101.14:8000"'
+              'CLOUD_SERVER_URL = "ws://' + PROD_IP + ':8000"',
+              'CLOUD_SERVER_URL = "ws://' + STAGING_IP + ':8000"'
           )
           content = content.replace(
-              'API_BASE_URL     = "http://34.85.118.112:8000"',
-              'API_BASE_URL     = "http://136.110.101.14:8000"'
+              'API_BASE_URL     = "http://' + PROD_IP + ':8000"',
+              'API_BASE_URL     = "http://' + STAGING_IP + ':8000"'
           )
 
-          # アプリ名にステージング表記を追加
-          content = content.replace(
-              'APP_NAME        = "碁華 Goka GO"',
-              'APP_NAME        = "碁華 Goka GO [STAGING]"'
+          # APP_NAME に [STAGING] を追加（正規表現で日本語文字列に依存しない）
+          content, n = re.subn(
+              r'^(APP_NAME\s+=\s+".*?)"',
+              r'\1 [STAGING]"',
+              content,
+              count=1,
+              flags=re.MULTILINE,
           )
-          # タイトルバーにステージングラベルを表示
+          if n == 0:
+              errors.append("APP_NAME replacement failed")
+
+          # STAGING_LABEL 置換（純ASCII）
           content = content.replace(
               'STAGING_LABEL   = ""',
               'STAGING_LABEL   = "[STAGING] "'
           )
 
+          # --- 検証 ---
+          if STAGING_IP not in content:
+              errors.append("constants.py: staging IP not found after replacement")
+          if "[STAGING]" not in content:
+              errors.append("constants.py: [STAGING] label not found after replacement")
+          if PROD_IP in content:
+              errors.append("constants.py: production IP still present after replacement")
+
           with open("igo/constants.py", "w", encoding="utf-8") as f:
               f.write(content)
 
-          # igo_admin.py のAPIベースURLをステージングに切り替え
+          # 置換後の内容をログに出力（デバッグ用）
+          print("=== constants.py (replaced) ===")
+          for line in content.splitlines()[:15]:
+              print(line)
+          print("...")
+          for line in content.splitlines():
+              if "SERVER_URL" in line or "API_BASE" in line:
+                  print(line)
+
+          # ---- igo_admin.py ----
           with open("igo_admin.py", "r", encoding="utf-8") as f:
               admin_content = f.read()
 
+          # URL置換（純ASCII）
           admin_content = admin_content.replace(
-              'API_BASE_URL = "http://34.85.118.112:8000"',
-              'API_BASE_URL = "http://136.110.101.14:8000"'
+              'API_BASE_URL = "http://' + PROD_IP + ':8000"',
+              'API_BASE_URL = "http://' + STAGING_IP + ':8000"'
           )
-          # タイトルにステージング表記を追加
-          admin_content = admin_content.replace(
-              'self.root.title("碁華 - 管理者画面")',
-              'self.root.title("碁華 - 管理者画面 [STAGING]")'
+
+          # タイトルに [STAGING] 追加（正規表現で日本語文字列に依存しない）
+          admin_content, n2 = re.subn(
+              r'(self\.root\.title\("[^"]*?)"(\))',
+              r'\1 [STAGING]"\2',
+              admin_content,
+              count=1,
           )
+          if n2 == 0:
+              errors.append("admin title replacement failed")
+
+          # --- 検証 ---
+          if PROD_IP in admin_content:
+              errors.append("igo_admin.py: production IP still present")
 
           with open("igo_admin.py", "w", encoding="utf-8") as f:
               f.write(admin_content)
 
-          print("Switched to staging server URLs (136.110.101.14:8000)")
-          print("App name updated to include [STAGING] label")
-          print("Admin panel switched to staging server URL")
+          print("\n=== igo_admin.py URL check ===")
+          for line in admin_content.splitlines():
+              if "API_BASE_URL" in line or "root.title" in line:
+                  print(line)
+
+          # --- エラーがあればビルドを失敗させる ---
+          if errors:
+              print("\nERROR: Replacement verification failed!")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+
+          print("\nAll replacements verified successfully.")
 
       - name: Build client with PyInstaller
         run: pyinstaller goka_go.spec --noconfirm
