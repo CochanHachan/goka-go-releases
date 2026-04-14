@@ -103,6 +103,11 @@ def play_timeout_sound():
     threading.Thread(target=_play, args=(filename,), daemon=True).start()
 
 
+def play_robot_appear():
+    """ロボ出現時の音声を再生する。"""
+    threading.Thread(target=_play, args=("robot_appear.mp3",), daemon=True).start()
+
+
 def _seconds_to_filename(sec):
     """残り秒数に対応するファイル名を返す。該当なしならNone。"""
     # 10秒刻み（単位付き）: 60, 50, 40, 30, 20, 10

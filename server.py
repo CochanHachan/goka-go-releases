@@ -536,7 +536,7 @@ async def update_settings(req: UpdateSettingsRequest):
     if req.fischer_increment is not None:
         settings["fischer_increment"] = req.fischer_increment
     if req.bot_offer_delay is not None:
-        settings["bot_offer_delay"] = req.bot_offer_delay
+        settings["bot_offer_delay"] = max(10, min(600, req.bot_offer_delay))
     _save_settings(settings)
     logger.info("Settings updated: %s", settings)
     return {"success": True, "settings": settings}
