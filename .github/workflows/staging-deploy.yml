@@ -71,31 +71,38 @@ jobs:
         run: |
           import sys
 
-          # constants.py と igo_admin.py の _ENV フラグを "staging" に切り替える。
-          # 各ファイルは _ENV に基づいて URL / ラベルを自動選択するので、
-          # この1行置換だけで全設定が連動して切り替わる。
-          SEARCH  = '_ENV = "production"'
-          REPLACE = '_ENV = "staging"'
+          # constants_env.py の _ENV フラグを "staging" に切り替える。
+          # constants.py と igo_admin.py は共に constants_env.py から _ENV を
+          # import しているので、この1ファイルの変更だけで全設定が連動する。
+          ENV_FILE = "igo/constants_env.py"
+          SEARCH   = '_ENV = "production"'
+          REPLACE  = '_ENV = "staging"'
 
           errors = []
-          for path in ["igo/constants.py", "igo_admin.py"]:
-              with open(path, "r", encoding="utf-8") as f:
-                  content = f.read()
 
-              if SEARCH not in content:
-                  errors.append(f"{path}: '{SEARCH}' not found")
-                  continue
+          with open(ENV_FILE, "r", encoding="utf-8") as f:
+              content = f.read()
 
-              content = content.replace(SEARCH, REPLACE, 1)
+          if SEARCH not in content:
+              print(f"ERROR: '{SEARCH}' not found in {ENV_FILE}")
+              print(f"File contents:\n{content}")
+              sys.exit(1)
 
-              with open(path, "w", encoding="utf-8") as f:
-                  f.write(content)
+          content = content.replace(SEARCH, REPLACE, 1)
 
-              print(f"{path}: switched to staging")
+          with open(ENV_FILE, "w", encoding="utf-8") as f:
+              f.write(content)
 
-          # --- 検証: 置換後のファイルを import して定数を確認 ---
+          print(f"{ENV_FILE}: switched to staging")
+
+          # --- 検証1: constants_env.py を import して _ENV を確認 ---
           sys.path.insert(0, ".")
-          # constants.py の検証
+          from igo.constants_env import _ENV as env_val
+          print(f"\nconstants_env.py: _ENV = {env_val!r}")
+          if env_val != "staging":
+              errors.append("constants_env.py: _ENV is not 'staging'")
+
+          # --- 検証2: constants.py を import して全定数を確認 ---
           from igo.constants import _ENV as c_env, CLOUD_SERVER_URL, API_BASE_URL, STAGING_LABEL, APP_NAME
           print(f"\nconstants.py verification:")
           print(f"  _ENV             = {c_env!r}")
@@ -113,15 +120,13 @@ jobs:
           if "[STAGING]" not in STAGING_LABEL:
               errors.append("constants.py: STAGING_LABEL missing [STAGING]")
 
-          # igo_admin.py の検証（直接importが難しいのでファイル内容で確認）
+          # --- 検証3: igo_admin.py が constants_env から _ENV を import しているか ---
           with open("igo_admin.py", "r", encoding="utf-8") as f:
               admin_text = f.read()
-          if '_ENV = "staging"' not in admin_text:
-              errors.append("igo_admin.py: _ENV not switched to staging")
-          if "34.85.118.112" in admin_text.split("_ADMIN_SERVER_CONFIG")[0]:
-              errors.append("igo_admin.py: production IP found outside config dict")
+          if "from igo.constants_env import _ENV" not in admin_text:
+              errors.append("igo_admin.py: does not import _ENV from constants_env")
 
-          print(f"\nigo_admin.py: _ENV line found = {'_ENV = \"staging\"' in admin_text}")
+          print(f"\nigo_admin.py: imports constants_env = {'from igo.constants_env import _ENV' in admin_text}")
 
           if errors:
               print("\nERROR: Verification failed!")

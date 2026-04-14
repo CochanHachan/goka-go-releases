@@ -56,9 +56,10 @@ def admin_decrypt(encrypted: str) -> str:
     return encrypted
 
 # ---------------------------------------------------------------------------
-# 環境切替フラグ（ステージングビルド時にこの1行だけを "staging" に変更する）
+# 環境切替フラグ（constants_env.py から読み込み）
+# ステージングビルド時は constants_env.py の _ENV を "staging" に変更する
 # ---------------------------------------------------------------------------
-_ENV = "production"
+from igo.constants_env import _ENV
 
 _ADMIN_SERVER_CONFIG = {
     "production": {
