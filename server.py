@@ -1329,6 +1329,42 @@ async def admin_disk_cleanup(request: Request):
     disk_before = shutil.disk_usage("/")
     log_lines.append(f"クリーンアップ前: 空き {disk_before.free // 1024 // 1024}MB")
 
+    # 古いリリースzipファイルの削除（sudo不要、最大の容量節約）
+    releases_dir = os.path.join(REPO_DIR, "releases")
+    if os.path.isdir(releases_dir):
+        try:
+            zips = sorted(
+                [f for f in os.listdir(releases_dir) if f.endswith(".zip")],
+                key=lambda f: os.path.getmtime(os.path.join(releases_dir, f)),
+            )
+            keep = 3
+            to_del = zips[:-keep] if len(zips) > keep else []
+            freed_bytes = 0
+            for fname in to_del:
+                fpath = os.path.join(releases_dir, fname)
+                try:
+                    freed_bytes += os.path.getsize(fpath)
+                    os.unlink(fpath)
+                except OSError:
+                    pass
+            log_lines.append(
+                f"古いリリースzip: {len(to_del)}件削除 "
+                f"({freed_bytes // 1024 // 1024}MB解放)"
+            )
+        except Exception as e:
+            log_lines.append(f"古いリリースzip: スキップ ({e})")
+
+    # __pycache__ 削除（sudo不要）
+    try:
+        for dirpath, dirnames, _filenames in os.walk(REPO_DIR):
+            if "__pycache__" in dirnames:
+                shutil.rmtree(
+                    os.path.join(dirpath, "__pycache__"), ignore_errors=True
+                )
+        log_lines.append("__pycache__: 削除完了")
+    except Exception:
+        pass
+
     # 安全なクリーンアップ対象のみ
     cleanup_cmds = [
         (["sudo", "-n", "apt-get", "clean"], "apt cache"),
