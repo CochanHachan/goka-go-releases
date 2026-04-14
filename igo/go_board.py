@@ -989,7 +989,7 @@ class GoBoard:
             _pending_offers = {}
             if getattr(self.app, '_current_offer_dialog', None):
                 try:
-                    _pending_offers = dict(self.app._current_offer_dialog._offers)
+                    _pending_offers = self.app._current_offer_dialog.get_offers()
                 except (AttributeError, TypeError):
                     logger.debug("Failed to copy pending offers", exc_info=True)
                 try:

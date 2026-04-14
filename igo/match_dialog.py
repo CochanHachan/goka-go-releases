@@ -67,6 +67,7 @@ class MatchDialog:
         self._listening = False
         self._offers = {}  # ip -> offer dict
         self._hosting = False
+        self._host_timeout_id = None  # after() ID for hosting timeout
 
         self._build_ui()
         self._start_udp_listen()
@@ -274,7 +275,7 @@ class MatchDialog:
             "copy", "cut", "paste", "undo", "delete")
         # Restore saved column widths or use defaults
         self._ws.restore_column_widths(self.match_list, 4, [120, 80, 120, 70])
-        self._match_highlighted_row = None
+        self._selected_offer_key = None  # offer key (ip or name), not row index
         self._offers_display_keys = []
         self.match_list.extra_bindings("cell_select", self._on_match_cell_select)
 
@@ -372,9 +373,8 @@ class MatchDialog:
                                time_control=time_control, fischer_increment=fischer_increment)
         self._host_timeout_id = self.win.after(get_offer_timeout_ms(), self._hosting_timeout)
 
-    def _hosting_timeout(self):
-        """ホスティング期間の自動終了（ボットタイマーは継続させる）。"""
-        # Broadcast match_taken so receivers close their dialogs silently
+    def _broadcast_match_taken(self):
+        """Broadcast match_taken so other clients remove their offer dialogs."""
         try:
             _tsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             _tsock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -384,7 +384,21 @@ class MatchDialog:
             _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
             _tsock.close()
         except OSError:
-            logger.debug("Failed to broadcast match_taken (timeout)", exc_info=True)
+            logger.debug("Failed to broadcast match_taken", exc_info=True)
+
+    def _cancel_host_timeout(self):
+        """Cancel the hosting timeout timer if active."""
+        if self._host_timeout_id is not None:
+            try:
+                self.win.after_cancel(self._host_timeout_id)
+            except tk.TclError:
+                pass  # timer already cancelled or window destroyed
+            self._host_timeout_id = None
+
+    def _hosting_timeout(self):
+        """ホスティング期間の自動終了（ボットタイマーは継続させる）。"""
+        self._host_timeout_id = None
+        self._broadcast_match_taken()
         if self._hosting:
             # reason="timeout" → サーバー側でボットタイマーをキャンセルしない
             self.app.stop_hosting(reason="timeout")
@@ -397,22 +411,8 @@ class MatchDialog:
 
     def _cancel_hosting(self):
         """Cancel the current match offer."""
-        if hasattr(self, "_host_timeout_id"):
-            try:
-                self.win.after_cancel(self._host_timeout_id)
-            except tk.TclError:
-                pass  # timer already cancelled or window destroyed
-        # Broadcast match_taken so receivers close their dialogs
-        try:
-            _tsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            _tsock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            _tmsg = json.dumps({"type": "match_taken",
-                "host_name": self.app.current_user["handle_name"] if self.app.current_user else ""
-            }).encode("utf-8")
-            _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
-            _tsock.close()
-        except OSError:
-            logger.debug("Failed to broadcast match_taken (cancel)", exc_info=True)
+        self._cancel_host_timeout()
+        self._broadcast_match_taken()
         if self._hosting:
             self.app.stop_hosting()
             self._hosting = False
@@ -426,8 +426,7 @@ class MatchDialog:
         self.win.after(0, lambda: self._handle_opponent(opponent_info))
 
     def _handle_opponent(self, opponent_info):
-        if hasattr(self, "_host_timeout_id"):
-            self.win.after_cancel(self._host_timeout_id)
+        self._cancel_host_timeout()
         self._on_close()
 
     def _start_udp_listen(self):
@@ -435,8 +434,8 @@ class MatchDialog:
         # 挑戦状受付ダイアログが既にポートを使用している場合、
         # そのオファー情報を共有する
         offer_dlg = getattr(self.app, '_current_offer_dialog', None)
-        if offer_dlg and hasattr(offer_dlg, '_offers'):
-            for name, offer in offer_dlg._offers.items():
+        if offer_dlg:
+            for name, offer in offer_dlg.get_offers().items():
                 if name not in self._offers:
                     self._offers[name] = offer
         self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -499,8 +498,8 @@ class MatchDialog:
         # UDPリスナーがない場合、OfferDialogからオファーを同期
         if self._udp_sock is None:
             offer_dlg = getattr(self.app, '_current_offer_dialog', None)
-            if offer_dlg and hasattr(offer_dlg, '_offers'):
-                for name, offer in offer_dlg._offers.items():
+            if offer_dlg:
+                for name, offer in offer_dlg.get_offers().items():
                     if name not in self._offers:
                         self._offers[name] = offer
         now = _time.time()
@@ -511,12 +510,7 @@ class MatchDialog:
                  or (v.get("_addr") is None and now - v.get("_time", 0) > cloud_timeout)]
         for k in stale:
             del self._offers[k]
-        # Save selection by name
-        sel_name = None
-        if self._match_highlighted_row is not None:
-            old_keys = list(self._offers_display_keys)
-            if self._match_highlighted_row < len(old_keys):
-                sel_name = old_keys[self._match_highlighted_row]
+        # Build display rows, tracking offer keys for selection
         rows = []
         new_keys = []
         new_sel_row = None
@@ -533,7 +527,7 @@ class MatchDialog:
             rows.append([offer.get("name", "?"), offer.get("rank", "?"),
                          time_str, komi_str])
             new_keys.append(ip)
-            if ip == sel_name:
+            if ip == self._selected_offer_key:
                 new_sel_row = len(rows) - 1
         self._offers_display_keys = new_keys
         self.match_list.set_sheet_data(rows, redraw=False, reset_col_positions=False)
@@ -542,30 +536,19 @@ class MatchDialog:
             self._match_col_widths_set = True
         self.match_list.redraw()
         # Restore or auto-select first row
+        self.match_list.deselect()
         if new_sel_row is not None:
-            if self._match_highlighted_row is not None and self._match_highlighted_row != new_sel_row:
-                try:
-                    self.match_list.dehighlight_rows(self._match_highlighted_row)
-                except (tk.TclError, IndexError):
-                    pass  # row index out of range after data refresh
             self.match_list.highlight_rows(rows=[new_sel_row], bg="#DCE9F6", fg="#000000")
-            self._match_highlighted_row = new_sel_row
+        elif new_keys:
+            # Auto-select first offer
+            try:
+                self.match_list.select_row(0)
+                self.match_list.highlight_rows(rows=[0], bg="#DCE9F6", fg="#000000")
+                self._selected_offer_key = new_keys[0]
+            except (tk.TclError, IndexError):
+                self._selected_offer_key = None
         else:
-            self.match_list.deselect()
-            if self._match_highlighted_row is not None:
-                try:
-                    self.match_list.dehighlight_rows(self._match_highlighted_row)
-                except (tk.TclError, IndexError):
-                    pass  # row index out of range after data refresh
-            if rows:
-                try:
-                    self.match_list.select_row(0)
-                    self.match_list.highlight_rows(rows=[0], bg="#DCE9F6", fg="#000000")
-                    self._match_highlighted_row = 0
-                except (tk.TclError, IndexError):
-                    self._match_highlighted_row = None
-            else:
-                self._match_highlighted_row = None
+            self._selected_offer_key = None
         # Show/hide accept & reject buttons based on offers
         if rows:
             self._match_accept_btn.pack(side="left", padx=(0, 8))
@@ -575,24 +558,22 @@ class MatchDialog:
             self._match_reject_btn.pack_forget()
 
     def _on_match_cell_select(self, event):
-        """Highlight selected row."""
+        """Highlight selected row and track by offer key."""
         selected_cells = self.match_list.get_selected_cells()
         if not selected_cells:
             return
         row_idx = list(selected_cells)[0][0]
-        if self._match_highlighted_row is not None:
-            self.match_list.dehighlight_rows(self._match_highlighted_row)
+        if row_idx < len(self._offers_display_keys):
+            self._selected_offer_key = self._offers_display_keys[row_idx]
+        self.match_list.deselect()
         self.match_list.highlight_rows(rows=[row_idx], bg="#DCE9F6", fg="#000000")
-        self._match_highlighted_row = row_idx
 
     def _accept_match(self):
-        if self._match_highlighted_row is None:
+        if self._selected_offer_key is None:
             return
-        idx = self._match_highlighted_row
-        keys = list(self._offers_display_keys)
-        if idx >= len(keys):
+        key = self._selected_offer_key
+        if key not in self._offers:
             return
-        key = keys[idx]
         offer = self._offers[key]
         self._listening = False
         if self._udp_sock:
@@ -620,16 +601,14 @@ class MatchDialog:
 
     def _reject_match(self):
         """Reject selected offer only."""
-        if self._match_highlighted_row is None:
+        if self._selected_offer_key is None:
             return
-        idx = self._match_highlighted_row
-        keys = list(self._offers_display_keys)
-        if idx >= len(keys):
+        key = self._selected_offer_key
+        if key not in self._offers:
             return
-        name = keys[idx]
-        self.app.decline_offer(name)
-        del self._offers[name]
-        self._match_highlighted_row = None
+        self.app.decline_offer(key)
+        del self._offers[key]
+        self._selected_offer_key = None
         self._refresh_list()
 
     def _close_reject_all(self):
@@ -660,22 +639,9 @@ class MatchDialog:
         self._save_col_widths()
         self._save_height()
         self._listening = False
-        if hasattr(self, "_host_timeout_id"):
-            try:
-                self.win.after_cancel(self._host_timeout_id)
-            except tk.TclError:
-                pass  # timer already cancelled or window destroyed
+        self._cancel_host_timeout()
         if self._hosting:
-            try:
-                _tsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                _tsock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                _tmsg = json.dumps({"type": "match_taken",
-                    "host_name": self.app.current_user["handle_name"] if self.app.current_user else ""
-                }).encode("utf-8")
-                _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
-                _tsock.close()
-            except OSError:
-                logger.debug("Failed to broadcast match_taken (close)", exc_info=True)
+            self._broadcast_match_taken()
             self.app.stop_hosting()
             self._hosting = False
         if self._udp_sock:
@@ -685,6 +651,18 @@ class MatchDialog:
                 pass  # socket already closed
         self.win.destroy()
         self.app.on_match_dialog_closed(self)
+
+    # --- Public interface for app.py ---
+
+    def remove_offer_by_name(self, name):
+        """Remove an offer by sender name. Called from app.py on match_cancelled/match_taken."""
+        if name in self._offers:
+            del self._offers[name]
+            self._refresh_list()
+
+    def get_offers(self):
+        """Return a copy of the current offers dict."""
+        return dict(self._offers)
 
 
 

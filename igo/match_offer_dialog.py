@@ -50,10 +50,13 @@ class MatchOfferDialog:
         # Offers dict: name -> {offer_data, addr, _time}
         self._offers = {}
         self._udp_sock = None
+        self._taken_sock = None
         self._listening = False
         self._taken_listening = False
         self._closed = False
         self._offer_col_widths_set = False
+        self._refresh_timer_id = None  # after() ID for periodic refresh
+        self._display_keys = []  # offer names in display order
 
         # Build UI
         bg = self._parchment_bg
@@ -121,7 +124,7 @@ class MatchOfferDialog:
             "copy", "cut", "paste", "undo", "delete")
         # Restore saved column widths or use defaults
         self._ws.restore_column_widths(self.offer_list, 4, [120, 80, 120, 70])
-        self._offer_highlighted_row = None
+        self._selected_offer_key = None  # offer name, not row index
         self.offer_list.extra_bindings("cell_select", self._on_offer_cell_select)
         from igo.glossy_pill_button import GlossyButton as GlossyPillButton
         _lang = get_language()
@@ -181,10 +184,11 @@ class MatchOfferDialog:
             self.offer_list.CH.config(background="#e8dcc8")
             self.offer_list.redraw()
             self.offer_list.deselect()
-            if self._offers and self._offer_highlighted_row is None:
+            if self._offers and self._selected_offer_key is None:
+                keys = list(self._offers.keys())
                 try:
                     self.offer_list.select_row(0)
-                    self._offer_highlighted_row = 0
+                    self._selected_offer_key = keys[0]
                 except (tk.TclError, IndexError):
                     pass  # list empty or widget not ready
         _force_header_color()
@@ -243,7 +247,7 @@ class MatchOfferDialog:
         if self._closed:
             return
         self._refresh_list()
-        self.win.after(2000, self._refresh_timer)
+        self._refresh_timer_id = self.win.after(2000, self._refresh_timer)
 
     def _refresh_list(self):
         now = _time.time()
@@ -252,21 +256,17 @@ class MatchOfferDialog:
         stale = [k for k, v in self._offers.items() if now - v.get("_time", 0) > timeout]
         for k in stale:
             del self._offers[k]
-        # Save selection
-        sel_name = None
-        sel = self.offer_list.get_currently_selected()
-        if sel and sel.row is not None:
-            old_keys = self._get_display_keys()
-            if sel.row < len(old_keys):
-                sel_name = old_keys[sel.row]
-        # Update sheet
+        # Build display rows, tracking offer keys for selection
         rows = []
+        display_keys = []
         new_sel_row = None
         for i, (name, offer) in enumerate(self._offers.items()):
             vals = self._format_offer_values(offer)
             rows.append(list(vals))
-            if name == sel_name:
+            display_keys.append(name)
+            if name == self._selected_offer_key:
                 new_sel_row = i
+        self._display_keys = display_keys
         self.offer_list.set_sheet_data(rows, redraw=False, reset_col_positions=False)
         if not self._offer_col_widths_set:
             self._ws.restore_column_widths(self.offer_list, 4, [120, 80, 120, 70])
@@ -276,17 +276,19 @@ class MatchOfferDialog:
         self.offer_list.set_options(header_bg="#e8dcc8", header_fg="#4a3520")
         self.offer_list.CH.config(background="#e8dcc8")
         self.offer_list.redraw()
+        self.offer_list.deselect()
         if new_sel_row is not None:
             self.offer_list.highlight_rows(rows=[new_sel_row], bg="#DCE9F6", fg="#000000")
-            self._offer_highlighted_row = new_sel_row
+        elif display_keys:
+            # Auto-select first offer
+            try:
+                self.offer_list.select_row(0)
+                self.offer_list.highlight_rows(rows=[0], bg="#DCE9F6", fg="#000000")
+                self._selected_offer_key = display_keys[0]
+            except (tk.TclError, IndexError):
+                self._selected_offer_key = None
         else:
-            self.offer_list.deselect()
-            if self._offers:
-                try:
-                    self.offer_list.select_row(0)
-                    self._offer_highlighted_row = 0
-                except (tk.TclError, IndexError):
-                    pass  # list empty or widget not ready
+            self._selected_offer_key = None
         # Auto-close if no offers remain
         if not self._offers:
             self._close()
@@ -371,49 +373,42 @@ class MatchOfferDialog:
 
     def _decline(self):
         """Decline selected offer and remove from list."""
-        keys = list(self._offers.keys())
-        if not keys:
+        if not self._offers:
             self._close()
             return
-        if self._offer_highlighted_row is None:
+        if self._selected_offer_key is None:
             return
-        idx = self._offer_highlighted_row
-        if idx >= len(keys):
+        name = self._selected_offer_key
+        if name not in self._offers:
             return
-        name = keys[idx]
         self.app.decline_offer(name)
         del self._offers[name]
-        self._offer_highlighted_row = None
+        self._selected_offer_key = None
         self._refresh_list()
         # Close if no offers remain
         if not self._offers:
             self._close()
 
     def _on_offer_cell_select(self, event):
-        """Highlight selected row."""
+        """Highlight selected row and track by offer key."""
         selected_cells = self.offer_list.get_selected_cells()
         if not selected_cells:
             return
         row_idx = list(selected_cells)[0][0]
-        if self._offer_highlighted_row is not None:
-            self.offer_list.dehighlight_rows(self._offer_highlighted_row)
+        if row_idx < len(self._display_keys):
+            self._selected_offer_key = self._display_keys[row_idx]
+        self.offer_list.deselect()
         self.offer_list.highlight_rows(rows=[row_idx], bg="#DCE9F6", fg="#000000")
-        self._offer_highlighted_row = row_idx
 
     def _accept(self):
-        keys = list(self._offers.keys())
-        if not keys:
+        if self._selected_offer_key is None:
             return
-        if self._offer_highlighted_row is None:
+        name = self._selected_offer_key
+        if name not in self._offers:
             return
-        idx = self._offer_highlighted_row
-        if idx >= len(keys):
-            return
-        name = keys[idx]
         offer = self._offers[name]
         self._save_col_widths()
-        self._cleanup()
-        self.win.destroy()
+        self._shutdown(reason="accept")
         if self.app.go_board:
             self.app.go_board._prepare_for_new_game()
 
@@ -455,27 +450,55 @@ class MatchOfferDialog:
             logger.debug("Failed to save offer dialog geometry", exc_info=True)
 
     def _close(self):
+        """Normal close path: save state, shutdown, notify app."""
         self._save_col_widths()
-        self._cleanup()
-        try:
-            self.win.destroy()
-        except tk.TclError:
-            pass  # window already destroyed
-        self.app.on_offer_dialog_closed(self)
+        self._shutdown(reason="close")
 
-    def _cleanup(self):
+    def _shutdown(self, reason="close"):
+        """Consolidated shutdown: stop threads, close sockets, destroy window, notify app.
+
+        reason: 'close' (user closed), 'accept' (offer accepted), 'auto' (no offers left)
+        """
+        if self._closed:
+            return
         self._closed = True
         self._listening = False
         self._taken_listening = False
+        # Cancel refresh timer
+        if self._refresh_timer_id is not None:
+            try:
+                self.win.after_cancel(self._refresh_timer_id)
+            except tk.TclError:
+                pass  # window already destroyed
+            self._refresh_timer_id = None
+        # Close sockets
         if self._udp_sock:
             try:
                 self._udp_sock.close()
             except OSError:
                 pass  # socket already closed
-        if hasattr(self, "_taken_sock") and self._taken_sock:
+        if self._taken_sock:
             try:
                 self._taken_sock.close()
             except OSError:
                 pass  # socket already closed
+        # Destroy window
+        try:
+            self.win.destroy()
+        except tk.TclError:
+            pass  # window already destroyed
+        self.app.on_offer_dialog_closed(self, reason=reason)
+
+    # --- Public interface for app.py ---
+
+    def remove_offer_by_name(self, name):
+        """Remove an offer by sender name. Called from app.py on match_cancelled/match_taken."""
+        if name in self._offers:
+            del self._offers[name]
+            self._refresh_list()
+
+    def get_offers(self):
+        """Return a copy of the current offers dict."""
+        return dict(self._offers)
 
 
