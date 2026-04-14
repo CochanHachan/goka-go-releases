@@ -1573,7 +1573,8 @@ class App:
 
     def _start_match_listener(self):
         if self._match_listening:
-            return
+            self._stop_match_listener()
+            # fall through to restart cleanly
         self._match_listening = True
         self._offer_dialog_open = False
         self._start_taken_cleanup_listener()
@@ -2344,9 +2345,9 @@ class App:
         # Also stop any hosting on the App level
         if self._server:
             try:
-                self._server.close()
+                self._server.stop()
             except (OSError, AttributeError):
-                logger.debug("Failed to close server during reset", exc_info=True)
+                logger.debug("Failed to stop server during reset", exc_info=True)
             self._server = None
         # Clear declined offers
         self._declined_offers = set()
