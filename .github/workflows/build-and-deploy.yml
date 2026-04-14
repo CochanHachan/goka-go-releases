@@ -395,16 +395,45 @@ jobs:
           # デフォルト値（secretsが未設定の場合）
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
           URL="${GOKA_SERVER_URL:-http://34.24.176.248:8000}"
-          echo "Deploying server at ${URL}..."
+
+          echo "=== 通常デプロイ (git pull) ==="
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
             "${URL}/admin/update" \
-            --connect-timeout 10 --max-time 60)
+            --connect-timeout 10 --max-time 120)
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -n -1)
           echo "HTTP ${HTTP_CODE}: ${BODY}"
+
           if [ "$HTTP_CODE" = "200" ]; then
             echo "Server deploy triggered successfully."
+            exit 0
+          fi
+
+          echo ""
+          echo "=== 通常デプロイ失敗。ホットパッチ (HTTP直接更新) を試行 ==="
+          # server.pyをGitHub rawから取得してサーバーに直接送信
+          RAW_URL="https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/server.py"
+          echo "Downloading server.py from ${RAW_URL}..."
+          SERVER_PY=$(curl -sL "${RAW_URL}")
+          if [ -z "$SERVER_PY" ]; then
+            echo "WARNING: Failed to download server.py"
+            exit 0
+          fi
+          echo "Downloaded $(echo "$SERVER_PY" | wc -c) bytes"
+
+          RESPONSE2=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Token: ${TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @- \
+            "${URL}/admin/hotpatch" \
+            --connect-timeout 10 --max-time 30 <<< "$SERVER_PY")
+          HTTP_CODE2=$(echo "$RESPONSE2" | tail -1)
+          BODY2=$(echo "$RESPONSE2" | head -n -1)
+          echo "Hotpatch HTTP ${HTTP_CODE2}: ${BODY2}"
+
+          if [ "$HTTP_CODE2" = "200" ]; then
+            echo "Server hotpatch applied successfully."
           else
-            echo "WARNING: Server deploy may have failed (HTTP ${HTTP_CODE})"
+            echo "WARNING: Server deploy may have failed (both methods)"
           fi

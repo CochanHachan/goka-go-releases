@@ -1206,6 +1206,80 @@ def _check_admin_token(request: Request) -> bool:
     return token == ADMIN_TOKEN
 
 
+def _cleanup_old_releases(keep: int = 3) -> str:
+    """古いリリースzipを削除してディスク容量を確保する（sudo不要）。"""
+    releases_dir = os.path.join(REPO_DIR, "releases")
+    if not os.path.isdir(releases_dir):
+        return ""
+    try:
+        zips = sorted(
+            [f for f in os.listdir(releases_dir) if f.endswith(".zip")],
+            key=lambda f: os.path.getmtime(os.path.join(releases_dir, f)),
+        )
+        to_delete = zips[:-keep] if len(zips) > keep else []
+        freed = 0
+        for fname in to_delete:
+            fpath = os.path.join(releases_dir, fname)
+            try:
+                freed += os.path.getsize(fpath)
+                os.unlink(fpath)
+            except OSError:
+                pass
+        if to_delete:
+            return f"古いリリース{len(to_delete)}件削除({freed // 1024 // 1024}MB解放)"
+    except Exception:
+        pass
+    return ""
+
+
+def _cleanup_pycache() -> None:
+    """__pycache__ ディレクトリを削除する。"""
+    try:
+        for dirpath, dirnames, _filenames in os.walk(REPO_DIR):
+            if "__pycache__" in dirnames:
+                shutil.rmtree(
+                    os.path.join(dirpath, "__pycache__"), ignore_errors=True
+                )
+    except Exception:
+        pass
+
+
+def _ensure_disk_space() -> str:
+    """デプロイ前にディスク容量を確保する。git fetch失敗のデッドロックを防止。"""
+    disk = shutil.disk_usage("/")
+    free_mb = disk.free // 1024 // 1024
+    if free_mb >= 50:
+        return ""
+    msgs = []
+    # 1. 古いリリースzipを削除（最大効果: 数GB）
+    r = _cleanup_old_releases(keep=3)
+    if r:
+        msgs.append(r)
+    # 2. __pycache__ 削除
+    _cleanup_pycache()
+    # 3. git shallow化を試行
+    try:
+        subprocess.run(
+            ["git", "fetch", "--depth", "1", "origin", "main"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=120,
+        )
+        subprocess.run(
+            ["git", "reflog", "expire", "--expire=now", "--all"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=30,
+        )
+        subprocess.run(
+            ["git", "gc", "--prune=now"],
+            cwd=REPO_DIR, capture_output=True, text=True, timeout=120,
+        )
+    except Exception:
+        pass
+    disk2 = shutil.disk_usage("/")
+    freed = (disk2.free - disk.free) // 1024 // 1024
+    if freed > 0:
+        msgs.append(f"合計{freed}MB解放")
+    return "; ".join(msgs) if msgs else ""
+
+
 @app.post("/admin/update")
 async def admin_update(request: Request):
     """GitHubから最新コードを取得してサーバーを再起動する。"""
@@ -1227,6 +1301,9 @@ async def admin_update(request: Request):
                 content={"status": "error", "detail": "Invalid branch name"},
                 status_code=400)
 
+        # ディスク容量不足時は自動クリーンアップ（デッドロック防止）
+        cleanup_msg = await asyncio.to_thread(_ensure_disk_space)
+
         # 現在のコミットハッシュを記録（ブランチ切り替え検出用）
         old_hash = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -1242,7 +1319,8 @@ async def admin_update(request: Request):
         if fetch_result.returncode != 0:
             return JSONResponse(
                 content={"status": "error",
-                         "git": fetch_result.stdout + fetch_result.stderr},
+                         "git": fetch_result.stdout + fetch_result.stderr,
+                         "cleanup": cleanup_msg},
                 status_code=500)
         checkout = subprocess.run(
             ["git", "checkout", branch],
@@ -1272,7 +1350,7 @@ async def admin_update(request: Request):
         ).stdout.strip()
 
         if old_hash == new_hash:
-            return {"status": "no_change", "git": git_output}
+            return {"status": "no_change", "git": git_output, "cleanup": cleanup_msg}
 
         # サーバー再起動（環境変数を引き継いで新しいプロセスを起動してから自分を終了）
         subprocess.Popen(
@@ -1283,10 +1361,59 @@ async def admin_update(request: Request):
         )
         # 少し待ってから自分を終了
         asyncio.get_event_loop().call_later(1.0, lambda: os.kill(os.getpid(), 9))
-        return {"status": "updating", "git": git_output}
+        return {"status": "updating", "git": git_output, "cleanup": cleanup_msg}
     except Exception as e:
         logger.error("Deploy error: %s", e)
         return JSONResponse(content={"status": "error", "detail": str(e)}, status_code=500)
+
+
+@app.post("/admin/hotpatch")
+async def admin_hotpatch(request: Request):
+    """server.pyをHTTP経由で直接更新する（git不要のフォールバックデプロイ）。
+
+    ディスク容量不足でgit fetchが失敗する場合の緊急デプロイ手段。
+    既存ファイルの上書きなので追加ディスク容量は不要。
+    """
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
+    try:
+        body = await request.body()
+        if len(body) < 100:
+            return JSONResponse(
+                content={"status": "error", "detail": "Request body too small"},
+                status_code=400)
+
+        content = body.decode("utf-8")
+        # 基本的な安全チェック: Pythonファイルであること
+        if "import " not in content or "def " not in content:
+            return JSONResponse(
+                content={"status": "error",
+                         "detail": "Content does not look like a Python file"},
+                status_code=400)
+
+        target = os.path.join(REPO_DIR, "server.py")
+
+        # まずディスク容量を確保（古いリリース削除）
+        _cleanup_old_releases(keep=3)
+        _cleanup_pycache()
+
+        # 既存ファイルを上書き（truncate→writeなので追加容量不要）
+        with open(target, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        # サーバー再起動
+        subprocess.Popen(
+            [sys.executable, target],
+            cwd=REPO_DIR,
+            start_new_session=True,
+            env={**os.environ},
+        )
+        asyncio.get_event_loop().call_later(1.0, lambda: os.kill(os.getpid(), 9))
+        return {"status": "hotpatch_applied", "size": len(content)}
+    except Exception as e:
+        logger.error("Hotpatch error: %s", e)
+        return JSONResponse(
+            content={"status": "error", "detail": str(e)}, status_code=500)
 
 
 @app.get("/admin/status")
