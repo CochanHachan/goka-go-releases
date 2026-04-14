@@ -471,7 +471,7 @@ class MatchDialog:
                         self._offers[sender_name] = msg
             except socket.timeout:
                 continue
-            except OSError:
+            except (OSError, ValueError, UnicodeDecodeError):
                 if self._listening:
                     logger.debug("UDP recv error in match dialog", exc_info=True)
                     continue

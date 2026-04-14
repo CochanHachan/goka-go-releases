@@ -1221,13 +1221,14 @@ class App:
             self._last_focused_dialog = None
         self._start_match_listener()
 
-    def on_offer_dialog_closed(self, dialog) -> None:
+    def on_offer_dialog_closed(self, dialog, reason="close") -> None:
         """MatchOfferDialog が閉じられたときの後処理。"""
         self._offer_dialog_open = False
         self._current_offer_dialog = None
         if self._last_focused_dialog is dialog:
             self._last_focused_dialog = None
-        self._resume_match_listener()
+        if reason != "accept":
+            self._resume_match_listener()
 
     def on_kifu_dialog_closed(self, dialog) -> None:
         """KifuDialog が閉じられたときの後処理。"""

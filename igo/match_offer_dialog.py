@@ -328,7 +328,7 @@ class MatchOfferDialog:
                         self._offers[sender] = msg
             except socket.timeout:
                 continue
-            except OSError:
+            except (OSError, ValueError, UnicodeDecodeError):
                 if self._listening:
                     logger.debug("UDP recv error in offer dialog", exc_info=True)
                     continue
@@ -365,7 +365,7 @@ class MatchOfferDialog:
                             pass  # window already destroyed
             except socket.timeout:
                 continue
-            except OSError:
+            except (OSError, ValueError, UnicodeDecodeError):
                 if self._taken_listening:
                     logger.debug("Taken listener recv error", exc_info=True)
                     continue
