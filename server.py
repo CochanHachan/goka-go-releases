@@ -1405,7 +1405,9 @@ async def admin_setup_staging(request: Request):
                     f"http://localhost:{staging_port}/admin/status",
                     headers={"X-Token": ADMIN_TOKEN},
                 )
-                with urllib.request.urlopen(req, timeout=3) as resp:
+                resp = await asyncio.to_thread(
+                    urllib.request.urlopen, req, timeout=3)
+                with resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     if data.get("env") == "staging":
                         staging_ok = True
@@ -1455,7 +1457,7 @@ Environment=GOKA_SETTINGS_PATH={staging_settings}
 Environment=GOKA_ENV=staging
 Environment=GOKA_GIT_BRANCH=main
 Environment=GOKA_REPO_DIR={staging_dir}
-Environment=GOKA_ADMIN_TOKEN={ADMIN_TOKEN}
+EnvironmentFile=/etc/goka-staging.env
 ExecStart={sys.executable} {staging_dir}/server.py
 Restart=always
 RestartSec=5
@@ -1466,6 +1468,15 @@ WantedBy=multi-user.target
         service_path = "/etc/systemd/system/goka-staging.service"
         try:
             # sudoなしで書き込みを試行（権限があれば成功する）
+            # 管理トークンを制限付きファイルに書き込み（0600権限）
+            env_file = "/etc/goka-staging.env"
+            env_content = f"GOKA_ADMIN_TOKEN={ADMIN_TOKEN}\n"
+            await _run(
+                ["sudo", "-n", "tee", env_file],
+                input=env_content,
+            )
+            await _run(["sudo", "-n", "chmod", "0600", env_file])
+
             write_result = await _run(
                 ["sudo", "-n", "tee", service_path],
                 input=service_content,
