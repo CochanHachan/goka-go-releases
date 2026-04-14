@@ -1372,7 +1372,7 @@ async def admin_setup_staging(request: Request):
                     try:
                         os.kill(int(pid_str), 9)
                         _log(f"旧ステージングプロセスを停止: PID {pid_str}")
-                    except ProcessLookupError:
+                    except (ProcessLookupError, PermissionError):
                         pass
 
         # 3. ステージングサーバーをバックグラウンドで起動
@@ -1405,14 +1405,14 @@ async def admin_setup_staging(request: Request):
                     f"http://localhost:{staging_port}/admin/status",
                     headers={"X-Token": ADMIN_TOKEN},
                 )
-                resp = await asyncio.to_thread(
-                    urllib.request.urlopen, req, timeout=3)
-                with resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    if data.get("env") == "staging":
-                        staging_ok = True
-                        _log(f"ステージングサーバー応答確認: {data}")
-                        break
+                def _check_staging():
+                    with urllib.request.urlopen(req, timeout=3) as r:
+                        return json.loads(r.read().decode("utf-8"))
+                data = await asyncio.to_thread(_check_staging)
+                if data.get("env") == "staging":
+                    staging_ok = True
+                    _log(f"ステージングサーバー応答確認: {data}")
+                    break
             except Exception:
                 continue
 
