@@ -18,8 +18,6 @@ from igo.enums import format_komi_display, format_time_display
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 # Lazy import: tksheet
 Sheet = None
 def _ensure_tksheet():

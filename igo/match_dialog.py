@@ -25,8 +25,6 @@ from igo.match_state import broadcast_match_taken
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 # Lazy import: tksheet
 Sheet = None
 def _ensure_tksheet():
