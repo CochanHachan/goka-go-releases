@@ -17,6 +17,13 @@ from igo.theme import T
 from igo.elo import elo_to_display_rank
 from igo.config import get_offer_timeout_ms
 from igo.ui_helpers import _configure_combo_style, _apply_combo_listbox_style
+from igo.enums import (
+    TimeControl, parse_main_time_minutes, parse_byo_time_seconds,
+    parse_byo_periods, parse_komi, format_komi_display, format_time_display,
+)
+from igo.match_state import broadcast_match_taken
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -316,27 +323,18 @@ class MatchDialog:
             self._byo_periods_cb.config(state="readonly")
 
     def _get_byo_periods_int(self):
-        v = self.byo_periods_var.get()
-        if v == "\u221e":
-            return 0
-        return int(v.replace("\u56de", ""))
+        return parse_byo_periods(self.byo_periods_var.get())
 
     def _get_komi_float(self):
-        v = self.komi_var.get()
-        if "5" in v:
-            return 5.5
-        elif "6" in v:
-            return 6.5
-        elif "7" in v:
-            return 7.5
-        return 7.5
+        return parse_komi(self.komi_var.get())
 
     def _start_hosting(self):
         if self._hosting:
             return
         self._hosting = True
         time_val = self.main_time_var.get()
-        if time_val == "Fischer":
+        tc = TimeControl.from_display(time_val)
+        if tc is TimeControl.FISCHER:
             time_control = "fischer"
             main_t = 300  # default 5 min, configurable via admin
             byo_t = 0
@@ -349,8 +347,8 @@ class MatchDialog:
             fischer_increment = f_inc
         else:
             time_control = "byoyomi"
-            main_t = int(time_val.replace("\u5206", "")) * 60
-            byo_t = int(self.byo_time_var.get().replace("\u79d2", ""))
+            main_t = parse_main_time_minutes(time_val) * 60
+            byo_t = parse_byo_time_seconds(self.byo_time_var.get())
             byo_p = self._get_byo_periods_int()
             fischer_increment = 0
         komi = self._get_komi_float()
@@ -515,15 +513,15 @@ class MatchDialog:
         new_keys = []
         new_sel_row = None
         for ip, offer in self._offers.items():
-            byo_p = offer.get("byo_periods", 5)
-            byo_str = "\u221e" if byo_p == 0 else str(byo_p)
-            main_m = offer.get("main_time", 600) // 60
             komi = offer.get("komi", 7.5)
-            komi_str = "{}\u76ee\u534a".format(int(komi))
-            if offer.get("time_control") == "fischer":
-                time_str = "F {}\u5206+{}\u79d2".format(main_m, offer.get("fischer_increment", 10))
-            else:
-                time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, offer.get("byo_time", 30), byo_str)
+            komi_str = format_komi_display(komi)
+            time_str = format_time_display(
+                offer.get("time_control", "byoyomi"),
+                offer.get("main_time", 600),
+                offer.get("byo_time", 30),
+                offer.get("byo_periods", 5),
+                fischer_increment=offer.get("fischer_increment", 0),
+            )
             rows.append([offer.get("name", "?"), offer.get("rank", "?"),
                          time_str, komi_str])
             new_keys.append(ip)

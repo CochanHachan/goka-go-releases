@@ -14,6 +14,9 @@ from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.config import get_offer_timeout_ms
 from igo.theme import T
 from igo.elo import elo_to_display_rank
+from igo.enums import format_komi_display, format_time_display
+
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -228,19 +231,15 @@ class MatchOfferDialog:
     def _format_offer_values(self, offer):
         name = offer.get("name", "?")
         rank = offer.get("rank", "?")
-        tc = offer.get("time_control", "byoyomi")
         komi = offer.get("komi", 7.5)
-        komi_str = "{}\u76ee\u534a".format(int(komi))
-        if tc == "fischer":
-            main_m = offer.get("main_time", 300) // 60
-            inc = offer.get("fischer_increment", 10)
-            time_str = "F {}\u5206+{}\u79d2".format(main_m, inc)
-        else:
-            main_m = offer.get("main_time", 600) // 60
-            byo_t = offer.get("byo_time", 30)
-            byo_p = offer.get("byo_periods", 5)
-            byo_str = "\u221e" if byo_p == 0 else str(byo_p)
-            time_str = "{}\u5206+{}\u79d2\u00d7{}".format(main_m, byo_t, byo_str)
+        komi_str = format_komi_display(komi)
+        time_str = format_time_display(
+            offer.get("time_control", "byoyomi"),
+            offer.get("main_time", 600),
+            offer.get("byo_time", 30),
+            offer.get("byo_periods", 5),
+            fischer_increment=offer.get("fischer_increment", 0),
+        )
         return (name, rank, time_str, komi_str)
 
     def _refresh_timer(self):

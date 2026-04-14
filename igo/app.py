@@ -48,7 +48,10 @@ from igo.match_dialog import MatchDialog
 from igo.match_offer_dialog import MatchOfferDialog
 from igo.kifu_dialog import KifuDialog
 from igo.go_board import GoBoard
+from igo.match_state import MatchSettings, broadcast_match_taken
 import igo.rendering as _rendering_mod
+
+logger = logging.getLogger(__name__)
 
 
 class App:
@@ -109,6 +112,7 @@ class App:
         self._cloud_client = None
         self._auth_token = None
         self._is_hosting = False  # ホスティング中フラグ（再接続時に再送信用）
+        self._cloud_match_settings = MatchSettings()  # クラウド対局設定の集約
 
         # AI mode
         self._ai_mode = False
@@ -1250,12 +1254,10 @@ class App:
 
         if self._cloud_mode and self._cloud_client:
             # Cloud mode: broadcast offer via WebSocket
-            self._cloud_main_time = main_time
-            self._cloud_byo_time = byo_time
-            self._cloud_byo_periods = byo_periods
-            self._cloud_komi = komi
-            self._cloud_time_control = time_control
-            self._cloud_fischer_increment = fischer_increment
+            self._cloud_match_settings = MatchSettings(
+                main_time=main_time, byo_time=byo_time, byo_periods=byo_periods,
+                komi=komi, time_control=time_control, fischer_increment=fischer_increment,
+            )
             self._is_hosting = True
             self._cloud_client.send({
                 "type": "match_offer_broadcast",
@@ -1751,17 +1753,14 @@ class App:
                 return
             rank = elo_to_display_rank(user["elo_rating"])
             elo = user["elo_rating"]
-            self._cloud_client.send({
+            ms = self._cloud_match_settings
+            msg_data = {
                 "type": "match_offer_broadcast",
                 "rank": rank,
                 "elo": elo,
-                "main_time": getattr(self, '_cloud_main_time', 600),
-                "byo_time": getattr(self, '_cloud_byo_time', 30),
-                "byo_periods": getattr(self, '_cloud_byo_periods', 5),
-                "komi": getattr(self, '_cloud_komi', 7.5),
-                "time_control": getattr(self, '_cloud_time_control', 'byoyomi'),
-                "fischer_increment": getattr(self, '_cloud_fischer_increment', 0),
-            })
+            }
+            msg_data.update(ms.to_dict())
+            self._cloud_client.send(msg_data)
 
     def _handle_cloud_message(self, msg):
         """Handle messages from the cloud server."""
@@ -1832,7 +1831,7 @@ class App:
             pass  # could show notification
 
         elif msg_type == "match_cancelled":
-            # An offer was cancelled - remove from dialogs too
+            # An offer was cancelled - remove from dialogs via public interface
             sender = msg.get("from", "")
             self.undecline_offer(sender)
             if sender:
@@ -1897,16 +1896,12 @@ class App:
             self._current_offer_dialog = None
             self._offer_dialog_open = False
         # Use current match settings or defaults
-        main_time = getattr(self, '_cloud_main_time', 600)
-        byo_time = getattr(self, '_cloud_byo_time', 30)
-        byo_periods = getattr(self, '_cloud_byo_periods', 5)
-        komi = getattr(self, '_cloud_komi', 7.5)
-        time_control = getattr(self, '_cloud_time_control', "byoyomi")
-        fischer_increment = getattr(self, '_cloud_fischer_increment', 0)
-
+        ms = self._cloud_match_settings
         self._start_network_game(my_color, opponent_name, opponent_rank,
-                                  main_time, byo_time, byo_periods, komi, opponent_elo,
-                                  time_control=time_control, fischer_increment=fischer_increment)
+                                  ms.main_time, ms.byo_time, ms.byo_periods,
+                                  ms.komi, opponent_elo,
+                                  time_control=ms.time_control,
+                                  fischer_increment=ms.fischer_increment)
 
     def _start_ai_game(self, my_color, opponent_name, opponent_rank, opponent_elo, bot_visits):
         """Start a game against AI bot using KataGo GTP."""
@@ -1936,16 +1931,12 @@ class App:
         self._ai_color = WHITE if my_color == BLACK else BLACK  # AI's color
 
         # Use current match settings
-        main_time = getattr(self, '_cloud_main_time', 600)
-        byo_time = getattr(self, '_cloud_byo_time', 30)
-        byo_periods = getattr(self, '_cloud_byo_periods', 5)
-        komi = getattr(self, '_cloud_komi', 7.5)
-        time_control = getattr(self, '_cloud_time_control', "byoyomi")
-        fischer_increment = getattr(self, '_cloud_fischer_increment', 0)
-
+        ms = self._cloud_match_settings
         self._start_network_game(my_color, opponent_name, opponent_rank,
-                                  main_time, byo_time, byo_periods, komi, opponent_elo,
-                                  time_control=time_control, fischer_increment=fischer_increment)
+                                  ms.main_time, ms.byo_time, ms.byo_periods,
+                                  ms.komi, opponent_elo,
+                                  time_control=ms.time_control,
+                                  fischer_increment=ms.fischer_increment)
 
         # Start KataGo in background thread (model loading takes time)
         def _init_katago():
@@ -2245,6 +2236,22 @@ class App:
             self.go_board._board_tex = None
             self.go_board._board_tex_size = (0, 0)
             self.go_board._full_redraw()
+
+    def _close_all_match_dialogs(self):
+        """Close all open match/offer dialogs safely."""
+        if self._current_match_dialog:
+            try:
+                self._current_match_dialog._on_close()
+            except tk.TclError:
+                pass  # window already destroyed
+            self._current_match_dialog = None
+        if self._current_offer_dialog:
+            try:
+                self._current_offer_dialog._close()
+            except tk.TclError:
+                pass  # window already destroyed
+            self._current_offer_dialog = None
+            self._offer_dialog_open = False
 
     def _cancel_hosting_if_active(self):
         """ホスト中なら match_taken をブロードキャストして申請を取り消す。"""
