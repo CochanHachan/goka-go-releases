@@ -437,8 +437,11 @@ class MatchOfferDialog:
 
     def _close_all(self):
         """Close button / X button: decline all offers and close."""
+        # Bot offers should NOT be added to declined list so they can
+        # send new offers on the next match request
         for name in list(self._offers.keys()):
-            self.app._declined_offers.add(name)
+            if not name.startswith("AIロボ"):
+                self.app._declined_offers.add(name)
         self._close()
 
     def _save_col_widths(self):

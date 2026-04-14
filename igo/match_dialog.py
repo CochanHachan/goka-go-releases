@@ -637,9 +637,11 @@ class MatchDialog:
 
     def _close_reject_all(self):
         """Cancel own hosting, reject all incoming offers, close dialog."""
-        # Add all current offers to declined list
+        # Add human offers to declined list (bot offers should NOT be declined
+        # so that the same bot can send a new offer on the next match request)
         for name in list(self._offers.keys()):
-            self.app._declined_offers.add(name)
+            if not name.startswith("AIロボ"):
+                self.app._declined_offers.add(name)
         self._offers.clear()
         self._on_close()
 
