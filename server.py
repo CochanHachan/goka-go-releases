@@ -1349,9 +1349,14 @@ async def admin_disk_cleanup(request: Request):
 
     # 本番リポジトリの git gc
     if os.path.isdir(REPO_DIR):
-        r = await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
-        if r.returncode == 0:
-            log_lines.append("git gc (本番リポジトリ): 成功")
+        try:
+            r = await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
+            if r.returncode == 0:
+                log_lines.append("git gc (本番リポジトリ): 成功")
+            else:
+                log_lines.append(f"git gc (本番リポジトリ): スキップ ({r.stderr.strip()[:80]})")
+        except Exception as e:
+            log_lines.append(f"git gc (本番リポジトリ): スキップ ({e})")
 
     disk_after = shutil.disk_usage("/")
     freed = (disk_after.free - disk_before.free) // 1024 // 1024
@@ -1418,7 +1423,10 @@ async def admin_setup_staging(request: Request):
                 except Exception:
                     pass
             if os.path.isdir(REPO_DIR):
-                await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
+                try:
+                    await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
+                except Exception:
+                    pass
             disk = shutil.disk_usage("/")
             free_mb = disk.free // 1024 // 1024
             _log(f"クリーンアップ後の空き容量: {free_mb}MB")
