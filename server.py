@@ -1457,7 +1457,7 @@ Environment=GOKA_SETTINGS_PATH={staging_settings}
 Environment=GOKA_ENV=staging
 Environment=GOKA_GIT_BRANCH=main
 Environment=GOKA_REPO_DIR={staging_dir}
-EnvironmentFile=/etc/goka-staging.env
+EnvironmentFile=-/etc/goka-staging.env
 ExecStart={sys.executable} {staging_dir}/server.py
 Restart=always
 RestartSec=5
