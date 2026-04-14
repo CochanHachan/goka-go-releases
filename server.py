@@ -1310,7 +1310,14 @@ async def admin_status(request: Request):
 
 @app.post("/admin/disk-cleanup")
 async def admin_disk_cleanup(request: Request):
-    """ディスク容量を確保するためのクリーンアップを実行する。"""
+    """ディスク容量を確保するためのクリーンアップを実行する。
+
+    sudo不要のユーザーレベルクリーンアップを優先的に実行する:
+    1. 古いリリースzipファイルの削除（最新3つのみ残す）
+    2. __pycache__ / .pyc ファイルの削除
+    3. gitリポジトリのshallow化（履歴を深さ1に変換）
+    4. sudo可能な場合はシステムレベルのクリーンアップも試行
+    """
     if not _check_admin_token(request):
         raise HTTPException(status_code=403, detail="forbidden")
 
@@ -1322,41 +1329,134 @@ async def admin_disk_cleanup(request: Request):
 
     async def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
         return await asyncio.to_thread(
-            subprocess.run, cmd, capture_output=True, text=True, timeout=120, **kwargs
+            subprocess.run, cmd, capture_output=True, text=True, timeout=180, **kwargs
         )
 
     log_lines: list = []
     disk_before = shutil.disk_usage("/")
     log_lines.append(f"クリーンアップ前: 空き {disk_before.free // 1024 // 1024}MB")
 
-    # 安全なクリーンアップ対象のみ
-    cleanup_cmds = [
+    # --- ユーザーレベルクリーンアップ（sudo不要） ---
+
+    # 1. 古いリリースzipファイルの削除（最大の容量節約が期待できる）
+    releases_dir = os.path.join(REPO_DIR, "releases")
+    if os.path.isdir(releases_dir):
+        try:
+            zips = sorted(
+                [f for f in os.listdir(releases_dir) if f.endswith(".zip")],
+                key=lambda f: os.path.getmtime(os.path.join(releases_dir, f)),
+            )
+            keep_count = 3  # 最新3つのみ残す
+            to_delete = zips[:-keep_count] if len(zips) > keep_count else []
+            deleted_size = 0
+            for fname in to_delete:
+                fpath = os.path.join(releases_dir, fname)
+                try:
+                    fsize = os.path.getsize(fpath)
+                    os.unlink(fpath)
+                    deleted_size += fsize
+                except OSError:
+                    pass
+            deleted_mb = deleted_size // 1024 // 1024
+            log_lines.append(
+                f"古いリリースzip: {len(to_delete)}件削除 ({deleted_mb}MB解放)、"
+                f"{min(len(zips), keep_count)}件残存"
+            )
+        except Exception as e:
+            log_lines.append(f"古いリリースzip: スキップ ({e})")
+
+    # 2. __pycache__ / .pyc ファイルの削除
+    try:
+        pycache_count = 0
+        pycache_size = 0
+        for dirpath, dirnames, filenames in os.walk(REPO_DIR):
+            if "__pycache__" in dirnames:
+                cache_dir = os.path.join(dirpath, "__pycache__")
+                try:
+                    dir_size = sum(
+                        os.path.getsize(os.path.join(cache_dir, f))
+                        for f in os.listdir(cache_dir)
+                        if os.path.isfile(os.path.join(cache_dir, f))
+                    )
+                    shutil.rmtree(cache_dir)
+                    pycache_count += 1
+                    pycache_size += dir_size
+                except OSError:
+                    pass
+        log_lines.append(
+            f"__pycache__: {pycache_count}ディレクトリ削除 "
+            f"({pycache_size // 1024}KB解放)"
+        )
+    except Exception as e:
+        log_lines.append(f"__pycache__: スキップ ({e})")
+
+    # 3. gitリポジトリのshallow化（大幅な容量節約）
+    if os.path.isdir(REPO_DIR):
+        try:
+            # まず現在のgitサイズを確認
+            git_dir = os.path.join(REPO_DIR, ".git")
+            git_size_before = 0
+            for dirpath, _dirnames, filenames in os.walk(git_dir):
+                for f in filenames:
+                    try:
+                        git_size_before += os.path.getsize(
+                            os.path.join(dirpath, f)
+                        )
+                    except OSError:
+                        pass
+
+            # shallow化を試行: fetch --depth 1 → reflog expire → gc
+            r = await _run(
+                ["git", "fetch", "--depth", "1", "origin", "main"],
+                cwd=REPO_DIR,
+            )
+            if r.returncode == 0:
+                await _run(
+                    ["git", "reflog", "expire", "--expire=now", "--all"],
+                    cwd=REPO_DIR,
+                )
+                await _run(
+                    ["git", "gc", "--prune=now"],
+                    cwd=REPO_DIR,
+                )
+                git_size_after = 0
+                for dirpath, _dirnames, filenames in os.walk(git_dir):
+                    for f in filenames:
+                        try:
+                            git_size_after += os.path.getsize(
+                                os.path.join(dirpath, f)
+                            )
+                        except OSError:
+                            pass
+                freed_git = (git_size_before - git_size_after) // 1024 // 1024
+                log_lines.append(
+                    f"git shallow化: 成功 "
+                    f"({git_size_before // 1024 // 1024}MB → "
+                    f"{git_size_after // 1024 // 1024}MB、"
+                    f"{freed_git}MB解放)"
+                )
+            else:
+                log_lines.append(
+                    f"git shallow化: スキップ ({r.stderr.strip()[:80]})"
+                )
+        except Exception as e:
+            log_lines.append(f"git shallow化: スキップ ({e})")
+
+    # --- システムレベルクリーンアップ（sudo必要、失敗してもOK） ---
+    sudo_cmds = [
         (["sudo", "-n", "apt-get", "clean"], "apt cache"),
         (["sudo", "-n", "apt-get", "autoremove", "-y"], "apt autoremove"),
         (["sudo", "-n", "journalctl", "--vacuum-size=50M"], "journal logs"),
-        (["sudo", "-n", "find", "/tmp", "-type", "f", "-atime", "+7", "-delete"], "old /tmp files"),
-        (["sudo", "-n", "find", "/var/log", "-name", "*.gz", "-delete"], "compressed logs"),
     ]
-    for cmd, label in cleanup_cmds:
+    for cmd, label in sudo_cmds:
         try:
             r = await _run(cmd)
             if r.returncode == 0:
                 log_lines.append(f"{label}: クリーンアップ成功")
             else:
-                log_lines.append(f"{label}: スキップ ({r.stderr.strip()[:80]})")
+                log_lines.append(f"{label}: スキップ (sudo権限なし)")
         except Exception as e:
             log_lines.append(f"{label}: スキップ ({e})")
-
-    # 本番リポジトリの git gc
-    if os.path.isdir(REPO_DIR):
-        try:
-            r = await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
-            if r.returncode == 0:
-                log_lines.append("git gc (本番リポジトリ): 成功")
-            else:
-                log_lines.append(f"git gc (本番リポジトリ): スキップ ({r.stderr.strip()[:80]})")
-        except Exception as e:
-            log_lines.append(f"git gc (本番リポジトリ): スキップ ({e})")
 
     disk_after = shutil.disk_usage("/")
     freed = (disk_after.free - disk_before.free) // 1024 // 1024
@@ -1410,23 +1510,65 @@ async def admin_setup_staging(request: Request):
         _log(f"ディスク空き容量: {free_mb}MB")
         if free_mb < 200:
             _log("空き容量不足のため自動クリーンアップを実行...")
-            cleanup_cmds = [
+
+            # ユーザーレベル: 古いリリースzipを削除（最新3つのみ残す）
+            releases_dir = os.path.join(REPO_DIR, "releases")
+            if os.path.isdir(releases_dir):
+                try:
+                    zips = sorted(
+                        [f for f in os.listdir(releases_dir) if f.endswith(".zip")],
+                        key=lambda f: os.path.getmtime(
+                            os.path.join(releases_dir, f)
+                        ),
+                    )
+                    keep_count = 3
+                    for fname in (zips[:-keep_count] if len(zips) > keep_count else []):
+                        try:
+                            os.unlink(os.path.join(releases_dir, fname))
+                        except OSError:
+                            pass
+                    _log(f"古いリリースzip削除: {max(0, len(zips) - keep_count)}件")
+                except Exception:
+                    pass
+
+            # ユーザーレベル: __pycache__ 削除
+            try:
+                for dirpath, dirnames, _filenames in os.walk(REPO_DIR):
+                    if "__pycache__" in dirnames:
+                        shutil.rmtree(
+                            os.path.join(dirpath, "__pycache__"),
+                            ignore_errors=True,
+                        )
+            except Exception:
+                pass
+
+            # ユーザーレベル: git shallow化
+            if os.path.isdir(REPO_DIR):
+                try:
+                    r = await _run(
+                        ["git", "fetch", "--depth", "1", "origin", "main"],
+                        cwd=REPO_DIR,
+                    )
+                    if r.returncode == 0:
+                        await _run(
+                            ["git", "reflog", "expire", "--expire=now", "--all"],
+                            cwd=REPO_DIR,
+                        )
+                        await _run(["git", "gc", "--prune=now"], cwd=REPO_DIR)
+                except Exception:
+                    pass
+
+            # システムレベル（sudo不要なら実行）
+            for cmd in [
                 ["sudo", "-n", "apt-get", "clean"],
                 ["sudo", "-n", "apt-get", "autoremove", "-y"],
                 ["sudo", "-n", "journalctl", "--vacuum-size=50M"],
-                ["sudo", "-n", "find", "/tmp", "-type", "f", "-atime", "+7", "-delete"],
-                ["sudo", "-n", "find", "/var/log", "-name", "*.gz", "-delete"],
-            ]
-            for cmd in cleanup_cmds:
+            ]:
                 try:
                     await _run(cmd)
                 except Exception:
                     pass
-            if os.path.isdir(REPO_DIR):
-                try:
-                    await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
-                except Exception:
-                    pass
+
             disk = shutil.disk_usage("/")
             free_mb = disk.free // 1024 // 1024
             _log(f"クリーンアップ後の空き容量: {free_mb}MB")

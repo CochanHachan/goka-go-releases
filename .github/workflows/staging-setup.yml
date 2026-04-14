@@ -29,7 +29,7 @@ jobs:
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
             "${PROD_URL}/admin/disk-cleanup" \
-            --connect-timeout 15 --max-time 120)
+            --connect-timeout 15 --max-time 300)
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -n -1)
@@ -60,7 +60,7 @@ jobs:
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
             "${PROD_URL}/admin/setup-staging" \
-            --connect-timeout 15 --max-time 180)
+            --connect-timeout 15 --max-time 600)
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -n -1)
