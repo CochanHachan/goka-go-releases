@@ -10,11 +10,14 @@
   9〜1秒           → {prefix}P{sec:02d}c.mp3
   0秒 (時間切れ)   → {prefix}TimeOut.mp3
 """
+import logging
 import os
 import threading
 
 from igo.config import _get_install_dir
 from igo.lang import get_language
+
+_logger = logging.getLogger(__name__)
 
 
 # pygame.mixer を遅延初期化
@@ -34,8 +37,8 @@ def _init_mixer():
         import pygame
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
         _mixer_ready = True
-    except Exception as e:
-        print("[byoyomi_sound] mixer init failed:", e)
+    except (OSError, RuntimeError) as e:
+        _logger.warning("mixer init failed: %s", e, exc_info=True)
         return False
 
     # sounds/ フォルダを探す
@@ -62,8 +65,8 @@ def _get_sound(filename):
         snd = pygame.mixer.Sound(path)
         _cache[filename] = snd
         return snd
-    except Exception as e:
-        print("[byoyomi_sound] load failed:", filename, e)
+    except (OSError, RuntimeError) as e:
+        _logger.warning("sound load failed: %s %s", filename, e, exc_info=True)
         return None
 
 
@@ -122,5 +125,5 @@ def _play(filename):
         snd = _get_sound(filename)
         if snd:
             snd.play()
-    except Exception as e:
-        print("[byoyomi_sound] play error:", filename, e)
+    except (OSError, RuntimeError) as e:
+        _logger.warning("play error: %s %s", filename, e, exc_info=True)

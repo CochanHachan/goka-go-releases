@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 """碁華 設定管理"""
+import logging
 import os
 import sys
 import json
 import socket
 
 from igo.constants import API_BASE_URL
+
+logger = logging.getLogger(__name__)
 
 
 def _get_app_data_dir():
@@ -39,16 +42,16 @@ def _init_config_if_needed():
             try:
                 import shutil
                 shutil.copy2(install_cfg, app_cfg)
-            except Exception:
-                pass
+            except OSError:
+                logger.warning("Failed to copy config from install dir", exc_info=True)
         else:
             # Create default config
             try:
                 default_cfg = {"theme": "light", "language": "ja"}
                 with open(app_cfg, "w", encoding="utf-8") as f:
                     json.dump(default_cfg, f, ensure_ascii=False, indent=2)
-            except Exception:
-                pass
+            except OSError:
+                logger.warning("Failed to create default config", exc_info=True)
     # Fetch theme from server and apply locally
     try:
         import urllib.request as _ur
@@ -83,8 +86,8 @@ def _init_config_if_needed():
         if changed:
             with open(app_cfg, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass  # Server unreachable, use local config
+    except (OSError, ValueError, KeyError):
+        logger.debug("Server unreachable, using local config", exc_info=True)
 
 
 def _get_db_path():
@@ -111,16 +114,16 @@ def _get_db_path():
                         s.connect((host, 445))  # SMB port
                         s.close()
                         return p
-                    except Exception:
-                        pass
+                    except OSError:
+                        logger.debug("UNC path check failed for %s", p, exc_info=True)
                 print("[WARN] db_path not accessible: {} -> using local DB".format(p))
             else:
                 # Local path - just check directly
                 if os.path.exists(os.path.dirname(p)):
                     return p
                 print("[WARN] db_path not accessible: {} -> using local DB".format(p))
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError, KeyError):
+        logger.warning("Failed to read db_path from config", exc_info=True)
     return os.path.join(script_dir, "igo_users.db")
 
 
@@ -132,7 +135,8 @@ def get_offer_timeout_ms():
             cfg = json.load(f)
         minutes = int(cfg.get("offer_timeout_min", 3))
         return max(1, minutes) * 60 * 1000
-    except Exception:
+    except (OSError, json.JSONDecodeError, ValueError, KeyError):
+        logger.debug("Failed to read offer_timeout, using default", exc_info=True)
         return 180000
 
 def get_fischer_settings():
@@ -145,6 +149,7 @@ def get_fischer_settings():
         main_t = int(cfg.get("fischer_main_time", 300))
         inc = int(cfg.get("fischer_increment", 10))
         return (max(60, main_t), max(1, inc))
-    except Exception:
+    except (OSError, json.JSONDecodeError, ValueError, KeyError):
+        logger.debug("Failed to read fischer settings, using defaults", exc_info=True)
         return (300, 10)
 

@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """碁華 テーマシステム"""
+import logging
 import os
 import json
 
 from igo.config import _get_app_data_dir
 from igo.lang import set_language, get_language
+
+logger = logging.getLogger(__name__)
 
 THEMES = {
     "dark": {
@@ -144,8 +147,8 @@ def _load_theme_from_config():
         name = cfg.get("theme", "light")
         if name in THEMES:
             _current_theme = THEMES[name]
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError, KeyError):
+        logger.warning("Failed to load theme from config", exc_info=True)
 
 
 def T(key):
@@ -169,8 +172,8 @@ def _load_language_from_config():
             cfg = json.load(f)
         lang = cfg.get("language", "ja")
         set_language(lang)
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError, KeyError):
+        logger.warning("Failed to load language from config", exc_info=True)
 
 
 def _save_language_to_config(lang):
@@ -180,10 +183,11 @@ def _save_language_to_config(lang):
         try:
             with open(cfg_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
-        except Exception:
+        except (OSError, json.JSONDecodeError):
+            logger.debug("No existing config, creating new", exc_info=True)
             cfg = {}
         cfg["language"] = lang
         with open(cfg_path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    except OSError:
+        logger.warning("Failed to save language to config", exc_info=True)

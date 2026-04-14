@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 碁盤GUI"""
+import logging
 import tkinter as tk
 from tkinter import messagebox
 import os
@@ -8,6 +9,8 @@ import json
 import time as _time
 
 from igo.lang import L, get_language
+
+logger = logging.getLogger(__name__)
 from igo.constants import (
     BOARD_SIZE, CELL_SIZE, MARGIN, STONE_RADIUS, STAR_RADIUS,
     EMPTY, BLACK, WHITE, STAR_POINTS, TIME_LIMIT,
@@ -492,8 +495,8 @@ class GoBoard:
         board_w = (BOARD_SIZE - 1) * cs + 2 * pad
         try:
             win_w = self.root.winfo_width()
-        except Exception:
-            return
+        except tk.TclError:
+            return  # window not yet realized
         side_pad = max(6, (win_w - board_w) // 2)
         self.top_frame.pack_configure(padx=side_pad)
         if hasattr(self, '_toolbar_outer'):
@@ -659,8 +662,8 @@ class GoBoard:
         if self._last_move_marker is not None:
             try:
                 self.canvas.delete(self._last_move_marker)
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # canvas item already deleted
             self._last_move_marker = None
         self._last_move_pos = (bx, by)
         cx = self.offset_x + self.margin + bx * self.cell_size
@@ -724,8 +727,8 @@ class GoBoard:
         def _remove():
             try:
                 self.canvas.delete(tag)
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # canvas or tag already gone
         self.root.after(duration, _remove)
 
     def handle_network_pass(self):
@@ -901,8 +904,8 @@ class GoBoard:
         # Remove pass notification overlay before showing progress dialog
         try:
             self.canvas.delete("_temp_overlay")
-        except Exception:
-            pass
+        except tk.TclError:
+            pass  # overlay already removed
         self.score_btn.config(state="disabled")
         # Show progress centered on main window
         self._score_progress = tk.Toplevel(self.root)
@@ -930,7 +933,8 @@ class GoBoard:
                     self.game.board, self._komi, self.game.move_history,
                     self._rules)
                 self.root.after(0, lambda: self._show_score_result(winner, result_text))
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
+                logger.warning("KataGo scoring failed", exc_info=True)
                 self.root.after(0, lambda: self._show_score_result(None, str(e)))
 
         t = threading.Thread(target=run_katago, daemon=True)
@@ -978,20 +982,20 @@ class GoBoard:
                 try:
                     self.app._current_match_dialog.win.lift()
                     self.app._last_focused_dialog = self.app._current_match_dialog
-                except Exception:
-                    pass
+                except tk.TclError:
+                    pass  # match dialog window destroyed
                 return
             # 挑戦状ダイアログが開いていれば、オファーを退避してから閉じる
             _pending_offers = {}
             if getattr(self.app, '_current_offer_dialog', None):
                 try:
                     _pending_offers = dict(self.app._current_offer_dialog._offers)
-                except Exception:
-                    pass
+                except (AttributeError, TypeError):
+                    logger.debug("Failed to copy pending offers", exc_info=True)
                 try:
                     self.app._current_offer_dialog._close()
-                except Exception:
-                    pass
+                except tk.TclError:
+                    logger.debug("Failed to close offer dialog", exc_info=True)
             self._prepare_for_new_game()
             self.app._stop_match_listener()
             from igo.match_dialog import MatchDialog as _MD
@@ -1010,8 +1014,8 @@ class GoBoard:
         if self.app and self.app._current_kifu_dialog:
             try:
                 self.app._current_kifu_dialog._close()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Failed to close kifu dialog", exc_info=True)
         # 棋譜をクリアして盤面をリセット
         self.hide_nav_bar()
         self._reviewing = False
@@ -1088,8 +1092,8 @@ class GoBoard:
             for item in confirm_items:
                 try:
                     self.canvas.delete(item)
-                except Exception:
-                    pass
+                except tk.TclError:
+                    pass  # canvas item already deleted
         def _on_yes():
             _cleanup()
             self.game.resign(self.my_color)
@@ -1258,8 +1262,8 @@ class GoBoard:
             max_y = parent_h - nav_h - 2
             if y > max_y:
                 y = max_y
-        except Exception:
-            pass
+        except tk.TclError:
+            pass  # widget not yet realized
         self.nav_frame.place(relx=0.5, y=y, anchor="n")
         self.nav_frame.lift()
 
@@ -1313,8 +1317,8 @@ class GoBoard:
                                                        rules=self._rules)
                 if bwr is not None:
                     self.root.after(0, lambda: self._display_winrate(bwr, wwr))
-            except Exception:
-                pass
+            except (OSError, RuntimeError, ValueError):
+                logger.debug("KataGo winrate calculation failed", exc_info=True)
             finally:
                 self._winrate_running = False
         threading.Thread(target=_run, daemon=True).start()
@@ -1471,8 +1475,8 @@ class GoBoard:
             try:
                 self.canvas.delete(bg_rect)
                 self.canvas.delete(btn_win)
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # canvas items already deleted
             self._after_game_end()
         btn.config(command=_on_click)
 

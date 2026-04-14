@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 対局申し込み通知ダイアログ"""
+import logging
 import tkinter as tk
 from tkinter import ttk
 import socket
@@ -13,6 +14,8 @@ from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.config import get_offer_timeout_ms
 from igo.theme import T
 from igo.elo import elo_to_display_rank
+
+logger = logging.getLogger(__name__)
 
 # Lazy import: tksheet
 Sheet = None
@@ -77,8 +80,8 @@ class MatchOfferDialog:
                 if new_w > 50 and new_w != self._banner._width:
                     self._banner.update_size(new_w, 48)
             banner_frame.bind("<Configure>", _on_banner_resize)
-        except Exception as e:
-            print("TealBanner error:", e)
+        except (ImportError, tk.TclError) as e:
+            logger.debug("TealBanner unavailable: %s", e)
             tk.Label(self.win, text=L("offer_arrived"),
                      font=("", 14, "bold"), fg=T("accent_gold"), bg=bg).pack(pady=(12, 8))
 
@@ -109,8 +112,8 @@ class MatchOfferDialog:
         try:
             self.offer_list.font(("Yu Gothic UI", 10, "normal"))
             self.offer_list.header_font(("Yu Gothic UI", 10, "normal"))
-        except Exception:
-            pass
+        except (tk.TclError, AttributeError):
+            pass  # font not available on this platform
         self.offer_list.enable_bindings()
         self.offer_list.disable_bindings("edit_cell", "edit_header", "edit_index",
             "rc_select", "rc_insert_row", "rc_delete_row",
@@ -182,8 +185,8 @@ class MatchOfferDialog:
                 try:
                     self.offer_list.select_row(0)
                     self._offer_highlighted_row = 0
-                except Exception:
-                    pass
+                except (tk.TclError, IndexError):
+                    pass  # list empty or widget not ready
         _force_header_color()
         self.win.after(200, _force_header_color)
 
@@ -199,8 +202,8 @@ class MatchOfferDialog:
                 if e.widget.winfo_toplevel() == win:
                     win.lift()
                     a._last_focused_dialog = dlg
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # widget destroyed during focus event
         self.win.bind("<FocusIn>", _on_focus)
 
     def add_cloud_offer(self, offer):
@@ -282,8 +285,8 @@ class MatchOfferDialog:
                 try:
                     self.offer_list.select_row(0)
                     self._offer_highlighted_row = 0
-                except Exception:
-                    pass
+                except (tk.TclError, IndexError):
+                    pass  # list empty or widget not ready
         # Auto-close if no offers remain
         if not self._offers:
             self._close()
@@ -298,12 +301,13 @@ class MatchOfferDialog:
             self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            except Exception:
-                pass
+            except OSError:
+                pass  # SO_BROADCAST not supported on this platform
             self._udp_sock.settimeout(1.0)
             self._udp_sock.bind(("", NET_UDP_PORT))
             threading.Thread(target=self._udp_recv_loop, daemon=True).start()
-        except Exception:
+        except OSError:
+            logger.debug("Failed to bind UDP socket for offer listener", exc_info=True)
             self._listening = False
 
     def _udp_recv_loop(self):
@@ -322,8 +326,9 @@ class MatchOfferDialog:
                         self._offers[sender] = msg
             except socket.timeout:
                 continue
-            except Exception:
+            except OSError:
                 if self._listening:
+                    logger.debug("UDP recv error in offer dialog", exc_info=True)
                     continue
                 return
 
@@ -335,7 +340,8 @@ class MatchOfferDialog:
             self._taken_sock.settimeout(1.0)
             self._taken_sock.bind(("", NET_UDP_PORT + 1))
             threading.Thread(target=self._taken_listen_loop, daemon=True).start()
-        except Exception:
+        except OSError:
+            logger.debug("Failed to bind taken listener socket", exc_info=True)
             self._taken_listening = False
 
     def _taken_listen_loop(self):
@@ -353,12 +359,13 @@ class MatchOfferDialog:
                     if changed:
                         try:
                             self.win.after(0, self._refresh_list)
-                        except Exception:
-                            pass
+                        except tk.TclError:
+                            pass  # window already destroyed
             except socket.timeout:
                 continue
-            except Exception:
+            except OSError:
                 if self._taken_listening:
+                    logger.debug("Taken listener recv error", exc_info=True)
                     continue
                 return
 
@@ -440,35 +447,35 @@ class MatchOfferDialog:
         try:
             widths = [self.offer_list.column_width(column=i) for i in range(4)]
             self._ws.save("column_widths", widths)
-        except Exception:
-            pass
+        except (tk.TclError, AttributeError):
+            logger.debug("Failed to save offer column widths", exc_info=True)
         try:
             self._ws.save("geometry", self.win.geometry())
-        except Exception:
-            pass
+        except tk.TclError:
+            logger.debug("Failed to save offer dialog geometry", exc_info=True)
 
     def _close(self):
         self._save_col_widths()
         self._cleanup()
         try:
             self.win.destroy()
-        except Exception:
-            pass
+        except tk.TclError:
+            pass  # window already destroyed
         self.app.on_offer_dialog_closed(self)
 
     def _cleanup(self):
         self._closed = True
         self._listening = False
         self._taken_listening = False
-        try:
-            if self._udp_sock:
+        if self._udp_sock:
+            try:
                 self._udp_sock.close()
-        except Exception:
-            pass
-        try:
-            if hasattr(self, "_taken_sock") and self._taken_sock:
+            except OSError:
+                pass  # socket already closed
+        if hasattr(self, "_taken_sock") and self._taken_sock:
+            try:
                 self._taken_sock.close()
-        except Exception:
-            pass
+            except OSError:
+                pass  # socket already closed
 
 

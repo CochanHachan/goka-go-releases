@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 棋譜ダイアログ"""
+import logging
 import tkinter as tk
 
 from igo.glossy_button import GlossyButton
@@ -7,6 +8,8 @@ from igo.lang import L
 from igo.constants import BLACK, WHITE
 from igo.sgf import _parse_sgf_text
 from igo.window_settings import WindowSettings
+
+logger = logging.getLogger(__name__)
 
 # Lazy import: tksheet
 Sheet = None
@@ -41,8 +44,8 @@ class KifuDialog:
                 if e.widget.winfo_toplevel() == win:
                     win.lift()
                     a._last_focused_dialog = dlg
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # widget destroyed during focus event
         self.dlg.bind("<FocusIn>", _on_focus)
 
         # Restore saved geometry or center on parent
@@ -92,8 +95,8 @@ class KifuDialog:
         try:
             self.kifu_list.font(("Yu Gothic UI", 10, "normal"))
             self.kifu_list.header_font(("Yu Gothic UI", 10, "normal"))
-        except Exception:
-            pass
+        except (tk.TclError, AttributeError):
+            pass  # font not available on this platform
         self.kifu_list.enable_bindings()
         self.kifu_list.disable_bindings("edit_cell", "edit_header", "edit_index",
             "rc_select", "rc_insert_row", "rc_delete_row",
@@ -229,8 +232,8 @@ class KifuDialog:
     def _close(self):
         try:
             self._ws.save_window(self.dlg, self.kifu_list, 5)
-        except Exception:
-            pass
+        except (tk.TclError, AttributeError):
+            logger.debug("Failed to save kifu dialog settings", exc_info=True)
         self.app.on_kifu_dialog_closed(self)
         self.dlg.destroy()
 

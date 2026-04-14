@@ -80,15 +80,15 @@ class CloudClient:
         asyncio.set_event_loop(self._loop)
         try:
             self._loop.run_until_complete(self._connect_and_listen())
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.error("CloudClient loop error: %s", e)
         finally:
             self._connected = False
             self._running = False
             try:
                 self._loop.close()
-            except Exception:
-                pass
+            except (OSError, RuntimeError):
+                logger.debug("Event loop close failed", exc_info=True)
             self._loop = None
 
     async def _connect_and_listen(self):
@@ -117,7 +117,7 @@ class CloudClient:
                         if self._connected_once and self.on_reconnect_cb:
                             try:
                                 self.on_reconnect_cb()
-                            except Exception as e:
+                            except (OSError, RuntimeError) as e:
                                 logger.error("Reconnect callback error: %s", e)
                         self._connected_once = True
                         retry_delay = 2  # reset retry delay on success
@@ -136,12 +136,12 @@ class CloudClient:
                             self.on_message_cb(msg)
                         except json.JSONDecodeError:
                             logger.warning("Invalid JSON from server")
-                        except Exception as e:
+                        except (TypeError, KeyError, AttributeError) as e:
                             logger.error("Error handling message: %s", e)
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.warning("Connection lost: %s. Reconnecting in %ds...", e, retry_delay)
                 self._connected = False
                 self._ws = None
@@ -160,7 +160,7 @@ class CloudClient:
         if self._ws:
             try:
                 await self._ws.send(json.dumps(msg_dict, ensure_ascii=False))
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.error("Send error: %s", e)
 
     async def _close_ws(self):
@@ -168,5 +168,5 @@ class CloudClient:
         if self._ws:
             try:
                 await self._ws.close()
-            except Exception:
-                pass
+            except (OSError, RuntimeError):
+                logger.debug("WebSocket close failed", exc_info=True)

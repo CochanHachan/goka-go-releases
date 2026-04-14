@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 ネットワーク対局"""
+import logging
 import socket
 import threading
 import json
@@ -7,6 +8,8 @@ import struct
 import time as _time
 
 from igo.constants import NET_UDP_PORT, NET_BROADCAST_INTERVAL
+
+logger = logging.getLogger(__name__)
 
 
 def _net_send(sock, msg_dict):
@@ -33,7 +36,8 @@ def _net_recv(sock):
                 return None
             data += chunk
         return json.loads(data.decode("utf-8"))
-    except Exception:
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        logger.debug("_net_recv failed", exc_info=True)
         return None
 
 
@@ -76,12 +80,12 @@ class GameServer:
         self._running = False
         try:
             self._tcp_sock.close()
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("TCP socket close failed", exc_info=True)
         try:
             self._udp_sock.close()
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("UDP socket close failed", exc_info=True)
 
     def _accept_loop(self):
         while self._running:
@@ -95,8 +99,9 @@ class GameServer:
                     conn.close()
             except socket.timeout:
                 continue
-            except Exception:
+            except OSError:
                 if self._running:
+                    logger.debug("accept_loop error", exc_info=True)
                     continue
                 return
 
@@ -117,8 +122,8 @@ class GameServer:
         while self._running:
             try:
                 self._udp_sock.sendto(offer, ("<broadcast>", NET_UDP_PORT))
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("UDP broadcast failed", exc_info=True)
             _time.sleep(NET_BROADCAST_INTERVAL)
 
 
@@ -140,13 +145,14 @@ class NetworkGame:
         self._running = False
         try:
             self.sock.close()
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("NetworkGame socket close failed", exc_info=True)
 
     def send(self, msg_dict):
         try:
             _net_send(self.sock, msg_dict)
-        except Exception:
+        except OSError:
+            logger.warning("NetworkGame send failed", exc_info=True)
             self.stop()
 
     def _recv_loop(self):

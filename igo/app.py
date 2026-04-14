@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 アプリケーションコントローラ"""
+import logging
 import sys
 import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
@@ -9,6 +10,8 @@ import threading
 import json
 import time as _time
 import random
+
+logger = logging.getLogger(__name__)
 
 from igo.glossy_button import GlossyButton
 from igo.window_settings import WindowSettings
@@ -241,7 +244,7 @@ class App:
             win_w = self.root.winfo_width()
             # タイトルバーフォント: 全角≒12px程度
             total_chars = max(30, win_w // 12)
-        except Exception:
+        except tk.TclError:
             total_chars = 55
         # OS側ボタン(閉じる等)とアイコン分の補正
         # テキストが長い(対局中VS表示)場合は補正を控えめに
@@ -267,16 +270,16 @@ class App:
         self._byoyomi_voice_enabled = val == "on"
         try:
             self._ws.save("byoyomi_voice", val)
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("Failed to save byoyomi_voice setting", exc_info=True)
 
     def _change_ai_setting(self):
         """AIロボ設定を変更してDBに保存し、サーバーに通知。"""
         val = self._ai_enabled_var.get()
         try:
             self._ws.save("ai_enabled", val)
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("Failed to save ai_enabled setting", exc_info=True)
         # サーバーに通知
         if self._cloud_client and self._cloud_client.connected:
             self._cloud_client.send({
@@ -381,8 +384,8 @@ class App:
                 self._ws.save("bot_main_time", main_var.get())
                 self._ws.save("bot_byo_time", byo_var.get())
                 self._ws.save("bot_byo_periods", periods_var.get())
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("Failed to save bot settings", exc_info=True)
             self._send_bot_conditions_to_server()
             messagebox.showinfo(
                 L("ai_bot_settings_title"), L("ai_bot_saved"),
@@ -528,7 +531,7 @@ class App:
         try:
             with open(cls._marker_path(), "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError):
             return {}
 
     @classmethod
@@ -536,15 +539,15 @@ class App:
         try:
             with open(cls._marker_path(), "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
-        except Exception:
-            pass
+        except OSError:
+            pass  # marker file write failure is non-critical
 
     @classmethod
     def _delete_marker(cls):
         try:
             os.remove(cls._marker_path())
-        except Exception:
-            pass
+        except OSError:
+            pass  # marker file already removed or not writable
 
     @classmethod
     def _should_skip_update(cls, target_version, _log=None):
@@ -590,8 +593,8 @@ class App:
             try:
                 with open(_log_path, "a", encoding="utf-8") as _f:
                     _f.write("{}\n".format(msg))
-            except Exception:
-                pass
+            except OSError:
+                pass  # log write failure is non-critical
 
         # ── アップデート直後の再起動時は同期的にスキップ（高速化） ──
         _marker = self._read_marker()
@@ -609,7 +612,7 @@ class App:
                 ctx = ssl.create_default_context()
                 with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx) as r:
                     return json.loads(r.read().decode("utf-8"))
-            except Exception as e1:
+            except (OSError, urllib.error.URLError) as e1:
                 _write_log("SSL verified request failed: {}".format(e1))
 
             # 2回目: SSL検証なし（PyInstallerバンドルでの証明書問題を回避）
@@ -650,13 +653,10 @@ class App:
                 _write_log("No update needed")
                 self.root.after(0, self.show_login)
                 return
-            except Exception as _ue:
+            except (OSError, ValueError, KeyError) as _ue:
                 _write_log("Error: {}".format(_ue))
-                try:
-                    import traceback
-                    _write_log(traceback.format_exc())
-                except Exception:
-                    pass
+                import traceback
+                _write_log(traceback.format_exc())
             # 更新不要 or チェック失敗 → ログイン画面を表示
             self.root.after(0, self.show_login)
         threading.Thread(target=_worker, daemon=True).start()
@@ -667,7 +667,7 @@ class App:
         def _v(s):
             try:
                 return tuple(int(x) for x in s.strip().split("."))
-            except Exception:
+            except (ValueError, AttributeError):
                 return (0,)
         return _v(remote) > _v(current)
 
@@ -803,8 +803,8 @@ class App:
             try:
                 with open(_log_path, "a", encoding="utf-8") as f:
                     f.write("{}\n".format(msg))
-            except Exception:
-                pass
+            except OSError:
+                pass  # log write failure is non-critical
 
         _log("=== _do_update called ===")
         # ── アップデート中ロックファイル作成（二重起動防止） ──
@@ -836,7 +836,7 @@ class App:
                             import shutil as _shutil
                             _shutil.copyfileobj(resp, zf_out)
                     _dl_ok = True
-                except Exception as _e1:
+                except (OSError, urllib.error.URLError) as _e1:
                     _log("SSL download failed: {}".format(_e1))
                 if not _dl_ok:
                     _log("Retrying without SSL verification")
@@ -969,7 +969,7 @@ class App:
                 _log("Batch: {}".format(bat_path))
                 self.root.after(0, lambda: self._launch_update(
                     prog, bat_path, _log))
-            except Exception as e:
+            except (OSError, zipfile.BadZipFile, RuntimeError) as e:
                 import traceback
                 _log("WORKER ERROR: {}".format(e))
                 _log(traceback.format_exc())
@@ -994,8 +994,8 @@ class App:
             import time as _t
             with open(self._update_lock_path(), "w") as f:
                 f.write(str(_t.time()))
-        except Exception:
-            pass
+        except OSError:
+            pass  # lock file creation failure is non-critical
 
     def _remove_update_lock(self):
         """\u30a2\u30c3\u30d7\u30c7\u30fc\u30c8\u5b8c\u4e86\u6642\u306b\u30ed\u30c3\u30af\u30d5\u30a1\u30a4\u30eb\u3092\u524a\u9664\u3002"""
@@ -1003,8 +1003,8 @@ class App:
             p = self._update_lock_path()
             if os.path.isfile(p):
                 os.remove(p)
-        except Exception:
-            pass
+        except OSError:
+            pass  # lock file removal failure is non-critical
 
     def _launch_update(self, prog, bat_path, _log=None):
         """バッチを起動してアプリを終了する。"""
@@ -1026,7 +1026,7 @@ class App:
             if _log:
                 _log("batch launched, destroying root")
             self.root.destroy()
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             if _log:
                 import traceback
                 _log("LAUNCH ERROR: {}".format(e))
@@ -1112,8 +1112,8 @@ class App:
                     method="PUT"
                 )
                 _urlreq.urlopen(_req, timeout=5).close()
-            except Exception as _e:
-                print("[Language update failed]", _e)
+            except (OSError, ValueError) as _e:
+                logger.debug("Language update failed: %s", _e)
         _thr.Thread(target=_do, daemon=True).start()
 
     def on_login_success(self, user):
@@ -1300,8 +1300,8 @@ class App:
             }).encode("utf-8")
             _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
             _tsock.close()
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("Failed to broadcast match_taken", exc_info=True)
         import random
         host_color = random.choice([BLACK, WHITE])
         accepter_color = "white" if host_color == BLACK else "black"
@@ -1368,7 +1368,7 @@ class App:
                         on_done_cb()
                 else:
                     sock.close()
-            except Exception as e:
+            except (OSError, ConnectionError, socket.timeout) as e:
                 self.root.after(0, lambda: messagebox.showerror(
                     "\u30a8\u30e9\u30fc", "\u63a5\u7d9a\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: {}".format(e)))
         threading.Thread(target=_connect, daemon=True).start()
@@ -1458,10 +1458,7 @@ class App:
             old_idx = rank_order.index(old_rank) if old_rank in rank_order else len(rank_order)
             new_idx = rank_order.index(new_rank) if new_rank in rank_order else len(rank_order)
             if new_idx < old_idx:  # lower index = higher rank
-                try:
-                    pname = user["handle_name"]
-                except Exception:
-                    pname = ""
+                pname = user.get("handle_name", "")
                 self._promotion_popup = PromotionPopup(self.root, rank=new_rank, player_name=pname)
                 self._promotion_popup.show()
 
@@ -1483,8 +1480,8 @@ class App:
                 komi=gb._komi,
                 move_history=history
             )
-        except Exception as e:
-            print("棋譜保存エラー:", e)
+        except (OSError, ValueError) as e:
+            logger.warning("棋譜保存エラー: %s", e, exc_info=True)
 
     def send_net_message(self, msg):
         if getattr(self, '_ai_mode', False):
@@ -1562,8 +1559,8 @@ class App:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             sock.sendto(msg, ("<broadcast>", 19940))
             sock.close()
-        except Exception:
-            pass
+        except OSError:
+            pass  # UDP broadcast not available
 
     def _online_heartbeat(self):
         if self.current_user and self._current_frame == self._game_frame:
@@ -1583,21 +1580,22 @@ class App:
             self._match_listener_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 self._match_listener_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            except Exception:
-                pass
+            except OSError:
+                pass  # SO_BROADCAST not supported on this platform
             self._match_listener_sock.settimeout(1.0)
             self._match_listener_sock.bind(("", NET_UDP_PORT))
             threading.Thread(target=self._match_listen_loop, daemon=True).start()
-        except Exception:
+        except OSError:
+            logger.debug("Failed to bind match listener socket", exc_info=True)
             self._match_listening = False
 
     def _stop_match_listener(self):
         self._match_listening = False
-        try:
-            if self._match_listener_sock:
+        if self._match_listener_sock:
+            try:
                 self._match_listener_sock.close()
-        except Exception:
-            pass
+            except OSError:
+                pass  # socket already closed
         self._match_listener_sock = None
 
     def _resume_match_listener(self):
@@ -1624,13 +1622,13 @@ class App:
                             self._declined_offers.discard(host_name)
                     except socket.timeout:
                         continue
-                    except Exception:
+                    except OSError:
                         if self._taken_cleanup_running:
                             continue
                         break
                 s.close()
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("Failed to bind taken cleanup listener", exc_info=True)
         threading.Thread(target=_listen, daemon=True).start()
 
     def _match_listen_loop(self):
@@ -1654,8 +1652,9 @@ class App:
                             self.root.after(0, lambda m=msg, a=addr[0]: self._show_offer(m, a))
             except socket.timeout:
                 continue
-            except Exception:
+            except OSError:
                 if self._match_listening:
+                    logger.debug("UDP recv error in match listener", exc_info=True)
                     continue
                 return
 
@@ -1689,8 +1688,8 @@ class App:
                     method="PUT"
                 )
                 _urlreq.urlopen(_req, timeout=5).close()
-            except Exception as _e:
-                print("[ELO update failed]", _e)
+            except (OSError, ValueError) as _e:
+                logger.debug("ELO update failed: %s", _e)
         _thr.Thread(target=_do, daemon=True).start()
 
     def _connect_cloud(self):
@@ -1878,7 +1877,8 @@ class App:
             return
         try:
             self._current_offer_dialog = MatchOfferDialog(self.root, self, offer, None, cloud_mode=True)
-        except Exception:
+        except tk.TclError:
+            logger.debug("Failed to create cloud offer dialog", exc_info=True)
             self._offer_dialog_open = False
 
     def _start_cloud_game(self, my_color, opponent_name, opponent_rank, opponent_elo):
@@ -1893,14 +1893,14 @@ class App:
         if self._current_match_dialog:
             try:
                 self._current_match_dialog._on_close()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Failed to close match dialog", exc_info=True)
             self._current_match_dialog = None
         if self._current_offer_dialog:
             try:
                 self._current_offer_dialog._close()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Failed to close offer dialog", exc_info=True)
             self._current_offer_dialog = None
             self._offer_dialog_open = False
         # Use current match settings or defaults
@@ -1927,14 +1927,14 @@ class App:
         if self._current_match_dialog:
             try:
                 self._current_match_dialog._on_close()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Failed to close match dialog for AI game", exc_info=True)
             self._current_match_dialog = None
         if self._current_offer_dialog:
             try:
                 self._current_offer_dialog._close()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Failed to close offer dialog for AI game", exc_info=True)
             self._current_offer_dialog = None
             self._offer_dialog_open = False
 
@@ -1966,7 +1966,8 @@ class App:
                 # If AI is black (plays first), make AI move
                 if self._ai_color == BLACK:
                     self.root.after(100, self._ai_make_move)
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
+                logger.warning("KataGo init failed", exc_info=True)
                 self.root.after(0, lambda: self._ai_init_failed(str(e)))
 
         threading.Thread(target=_init_katago, daemon=True).start()
@@ -1996,8 +1997,8 @@ class App:
                 result = self._ai_katago.genmove(ai_color_str)
                 if result:
                     self.root.after(0, lambda: self._ai_apply_move(result))
-            except Exception:
-                pass
+            except (OSError, RuntimeError, ValueError):
+                logger.debug("KataGo genmove failed", exc_info=True)
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
@@ -2073,8 +2074,8 @@ class App:
         if self._ai_katago:
             try:
                 self._ai_katago.stop()
-            except Exception:
-                pass
+            except (OSError, RuntimeError):
+                logger.debug("Failed to stop KataGo", exc_info=True)
             self._ai_katago = None
         self._ai_mode = False
         # サーバーの game_pairs をクリアするため game_end を送信 (AI対局中の場合のみ)
@@ -2264,12 +2265,12 @@ class App:
                 }).encode("utf-8")
                 _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
                 _tsock.close()
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("Failed to broadcast match_taken on cancel", exc_info=True)
             try:
                 self.stop_hosting()
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("Failed to stop hosting", exc_info=True)
 
     def _lift_open_dialogs(self):
         """Bring all open dialogs above the main board window.
@@ -2286,14 +2287,14 @@ class App:
             if dlg is not last:
                 try:
                     win.lift()
-                except Exception:
-                    pass
+                except tk.TclError:
+                    pass  # dialog window destroyed
         for dlg, win in entries:
             if dlg is last:
                 try:
                     win.lift()
-                except Exception:
-                    pass
+                except tk.TclError:
+                    pass  # dialog window destroyed
 
     def _reset_to_initial(self):
         """Reset everything to initial logged-in state."""
@@ -2319,8 +2320,8 @@ class App:
                 dlg = self._current_offer_dialog
                 dlg._cleanup()
                 dlg.win.destroy()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Failed to close offer dialog during reset", exc_info=True)
             self._offer_dialog_open = False
             self._current_offer_dialog = None
         if getattr(self, '_current_match_dialog', None):
@@ -2330,21 +2331,21 @@ class App:
                 if hasattr(dlg, '_hosting') and dlg._hosting:
                     try:
                         dlg._cancel_hosting()
-                    except Exception:
-                        pass
+                    except (tk.TclError, OSError):
+                        logger.debug("Failed to cancel hosting during reset", exc_info=True)
                 # Stop listening
                 if hasattr(dlg, '_listening'):
                     dlg._listening = False
                 dlg.win.destroy()
-            except Exception:
-                pass
+            except tk.TclError:
+                logger.debug("Failed to close match dialog during reset", exc_info=True)
             self._current_match_dialog = None
         # Also stop any hosting on the App level
         if self._server:
             try:
                 self._server.close()
-            except Exception:
-                pass
+            except (OSError, AttributeError):
+                logger.debug("Failed to close server during reset", exc_info=True)
             self._server = None
         # Clear declined offers
         self._declined_offers = set()
@@ -2411,7 +2412,7 @@ class App:
             return
         try:
             moves, metadata = load_sgf(path)
-        except Exception as e:
+        except (OSError, ValueError, IndexError) as e:
             from tkinter import messagebox as _mb
             _mb.showerror("\u30a8\u30e9\u30fc", "SGF\u30d5\u30a1\u30a4\u30eb\u306e\u8aad\u307f\u8fbc\u307f\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\n{}".format(e))
             return
@@ -2460,7 +2461,7 @@ class App:
                      black_name=gb.black_name, white_name=gb.white_name,
                      black_rank=gb.black_rank, white_rank=gb.white_rank,
                      komi=gb._komi, result=result)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             from tkinter import messagebox as _mb
             _mb.showerror("\u30a8\u30e9\u30fc", "\u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\n{}".format(e))
 

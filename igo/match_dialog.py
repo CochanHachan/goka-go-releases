@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 対局申し込みダイアログ"""
+import logging
 import tkinter as tk
 from tkinter import ttk
 import os
@@ -16,6 +17,8 @@ from igo.theme import T
 from igo.elo import elo_to_display_rank
 from igo.config import get_offer_timeout_ms
 from igo.ui_helpers import _configure_combo_style, _apply_combo_listbox_style
+
+logger = logging.getLogger(__name__)
 
 # Lazy import: tksheet
 Sheet = None
@@ -76,8 +79,8 @@ class MatchDialog:
                 if e.widget.winfo_toplevel() == win:
                     win.lift()
                     a._last_focused_dialog = dlg
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # widget destroyed during focus event
         self.win.bind("<FocusIn>", _on_focus)
 
     def _build_ui(self):
@@ -114,8 +117,8 @@ class MatchDialog:
                 if new_w > 50 and new_w != self._banner._width:
                     self._banner.update_size(new_w, 48)
             banner_frame.bind("<Configure>", _on_match_banner_resize)
-        except Exception as e:
-            print("TealBanner error:", e)
+        except (ImportError, tk.TclError, ValueError) as e:
+            logger.debug("TealBanner error: %s", e)
             tk.Label(self.win, text=player_text,
                      font=("", 13, "bold"), fg=fg, bg=bg).pack(pady=(12, 4))
 
@@ -262,8 +265,8 @@ class MatchDialog:
         try:
             self.match_list.font(("Yu Gothic UI", 10, "normal"))
             self.match_list.header_font(("Yu Gothic UI", 10, "normal"))
-        except Exception:
-            pass
+        except (tk.TclError, AttributeError):
+            pass  # font not available on this platform
         self.match_list.enable_bindings()
         self.match_list.disable_bindings("edit_cell", "edit_header", "edit_index",
             "rc_select", "rc_insert_row", "rc_delete_row",
@@ -339,13 +342,10 @@ class MatchDialog:
             byo_p = 0
             fischer_increment = 10  # default 10 sec, configurable via admin
             # Try to load admin settings
-            try:
-                from igo.config import get_fischer_settings
-                f_main, f_inc = get_fischer_settings()
-                main_t = f_main
-                fischer_increment = f_inc
-            except Exception:
-                pass
+            from igo.config import get_fischer_settings
+            f_main, f_inc = get_fischer_settings()
+            main_t = f_main
+            fischer_increment = f_inc
         else:
             time_control = "byoyomi"
             main_t = int(time_val.replace("\u5206", "")) * 60
@@ -383,8 +383,8 @@ class MatchDialog:
             }).encode("utf-8")
             _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
             _tsock.close()
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("Failed to broadcast match_taken (timeout)", exc_info=True)
         if self._hosting:
             # reason="timeout" → サーバー側でボットタイマーをキャンセルしない
             self.app.stop_hosting(reason="timeout")
@@ -400,8 +400,8 @@ class MatchDialog:
         if hasattr(self, "_host_timeout_id"):
             try:
                 self.win.after_cancel(self._host_timeout_id)
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # timer already cancelled or window destroyed
         # Broadcast match_taken so receivers close their dialogs
         try:
             _tsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -411,8 +411,8 @@ class MatchDialog:
             }).encode("utf-8")
             _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
             _tsock.close()
-        except Exception:
-            pass
+        except OSError:
+            logger.debug("Failed to broadcast match_taken (cancel)", exc_info=True)
         if self._hosting:
             self.app.stop_hosting()
             self._hosting = False
@@ -443,8 +443,8 @@ class MatchDialog:
         self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self._udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        except Exception:
-            pass
+        except OSError:
+            pass  # SO_BROADCAST not supported on this platform
         self._udp_sock.settimeout(1.0)
         try:
             self._udp_sock.bind(("", NET_UDP_PORT))
@@ -472,8 +472,9 @@ class MatchDialog:
                         self._offers[sender_name] = msg
             except socket.timeout:
                 continue
-            except Exception:
+            except OSError:
                 if self._listening:
+                    logger.debug("UDP recv error in match dialog", exc_info=True)
                     continue
                 return
 
@@ -545,8 +546,8 @@ class MatchDialog:
             if self._match_highlighted_row is not None and self._match_highlighted_row != new_sel_row:
                 try:
                     self.match_list.dehighlight_rows(self._match_highlighted_row)
-                except Exception:
-                    pass
+                except (tk.TclError, IndexError):
+                    pass  # row index out of range after data refresh
             self.match_list.highlight_rows(rows=[new_sel_row], bg="#DCE9F6", fg="#000000")
             self._match_highlighted_row = new_sel_row
         else:
@@ -554,14 +555,14 @@ class MatchDialog:
             if self._match_highlighted_row is not None:
                 try:
                     self.match_list.dehighlight_rows(self._match_highlighted_row)
-                except Exception:
-                    pass
+                except (tk.TclError, IndexError):
+                    pass  # row index out of range after data refresh
             if rows:
                 try:
                     self.match_list.select_row(0)
                     self.match_list.highlight_rows(rows=[0], bg="#DCE9F6", fg="#000000")
                     self._match_highlighted_row = 0
-                except Exception:
+                except (tk.TclError, IndexError):
                     self._match_highlighted_row = None
             else:
                 self._match_highlighted_row = None
@@ -594,10 +595,11 @@ class MatchDialog:
         key = keys[idx]
         offer = self._offers[key]
         self._listening = False
-        try:
-            self._udp_sock.close()
-        except Exception:
-            pass
+        if self._udp_sock:
+            try:
+                self._udp_sock.close()
+            except OSError:
+                pass  # socket already closed
 
         if offer.get("_addr") is None:
             # Cloud offer: accept via WebSocket
@@ -644,15 +646,15 @@ class MatchDialog:
         try:
             widths = [self.match_list.column_width(column=i) for i in range(4)]
             self._ws.save("column_widths", widths)
-        except Exception:
-            pass
+        except (tk.TclError, AttributeError):
+            logger.debug("Failed to save column widths", exc_info=True)
 
     def _save_height(self):
         """Save current dialog geometry to DB."""
         try:
             self._ws.save("geometry", self.win.geometry())
-        except Exception:
-            pass
+        except tk.TclError:
+            logger.debug("Failed to save dialog geometry", exc_info=True)
 
     def _on_close(self):
         self._save_col_widths()
@@ -661,8 +663,8 @@ class MatchDialog:
         if hasattr(self, "_host_timeout_id"):
             try:
                 self.win.after_cancel(self._host_timeout_id)
-            except Exception:
-                pass
+            except tk.TclError:
+                pass  # timer already cancelled or window destroyed
         if self._hosting:
             try:
                 _tsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -672,14 +674,15 @@ class MatchDialog:
                 }).encode("utf-8")
                 _tsock.sendto(_tmsg, ("<broadcast>", NET_UDP_PORT + 1))
                 _tsock.close()
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("Failed to broadcast match_taken (close)", exc_info=True)
             self.app.stop_hosting()
             self._hosting = False
-        try:
-            self._udp_sock.close()
-        except Exception:
-            pass
+        if self._udp_sock:
+            try:
+                self._udp_sock.close()
+            except OSError:
+                pass  # socket already closed
         self.win.destroy()
         self.app.on_match_dialog_closed(self)
 

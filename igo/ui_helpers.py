@@ -38,8 +38,8 @@ def _ime_halfwidth_alphanumeric(widget):
             imm32.ImmSetConversionStatus(himc, new_conv, sent.value)
         finally:
             imm32.ImmReleaseContext(hwnd, himc)
-    except Exception:
-        pass  # Non-Windows or IME not available
+    except (ImportError, OSError, AttributeError):
+        pass  # Non-Windows or IME not available — expected on non-Windows platforms
 
 
 def _entry_cfg():

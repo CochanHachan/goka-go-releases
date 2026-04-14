@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 KataGo AI エンジン"""
+import logging
 import os
 import platform
 import subprocess
@@ -10,6 +11,8 @@ import time as _time
 
 from igo.constants import BLACK, WHITE, EMPTY
 from igo.config import _get_install_dir
+
+logger = logging.getLogger(__name__)
 
 
 class KataGoGTP:
@@ -63,7 +66,8 @@ class KataGoGTP:
                         break
                     response_lines.append(line.strip())
                 return "\n".join(response_lines)
-            except Exception:
+            except (OSError, BrokenPipeError, ValueError):
+                logger.warning("GTP send_command failed: %s", cmd, exc_info=True)
                 return None
 
     def set_boardsize(self, size=19):
@@ -94,11 +98,12 @@ class KataGoGTP:
                 self.proc.stdin.write(b"quit\n")
                 self.proc.stdin.flush()
                 self.proc.wait(timeout=3)
-            except Exception:
+            except (OSError, subprocess.TimeoutExpired):
+                logger.debug("KataGo quit/wait failed, killing", exc_info=True)
                 try:
                     self.proc.kill()
-                except Exception:
-                    pass
+                except OSError:
+                    logger.debug("KataGo kill also failed", exc_info=True)
             self.proc = None
 
     @staticmethod
@@ -199,8 +204,8 @@ def _log_katago_stderr(stderr_lines):
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
             for raw in stderr_lines:
                 f.write(raw.decode("utf-8", errors="replace"))
-    except Exception:
-        pass
+    except OSError:
+        logger.debug("Failed to write KataGo stderr log", exc_info=True)
 
 
 def _moves_to_katago(move_history, size=19):
@@ -273,8 +278,8 @@ def _katago_score(move_history, komi=7.5, size=19, rules="chinese"):
             try:
                 for raw in proc.stderr:
                     stderr_lines.append(raw)
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("_katago_score stderr drain error", exc_info=True)
 
         threading.Thread(target=_drain_stderr, daemon=True).start()
 
@@ -291,8 +296,8 @@ def _katago_score(move_history, komi=7.5, size=19, rules="chinese"):
             try:
                 for raw_line in proc.stdout:
                     line_q.put(raw_line)
-            except Exception:
-                pass
+            except (OSError, ValueError):
+                logger.debug("_katago_score reader error", exc_info=True)
             line_q.put(None)  # sentinel
 
         reader_t = threading.Thread(target=_reader, daemon=True)
@@ -377,8 +382,8 @@ def _katago_winrate(move_history, komi=7.5, size=19, rules="chinese"):
             try:
                 for raw in proc.stderr:
                     stderr_lines.append(raw)
-            except Exception:
-                pass
+            except OSError:
+                logger.debug("_katago_winrate stderr drain error", exc_info=True)
 
         threading.Thread(target=_drain_stderr, daemon=True).start()
 
@@ -394,8 +399,8 @@ def _katago_winrate(move_history, komi=7.5, size=19, rules="chinese"):
             try:
                 for raw_line in proc.stdout:
                     line_q.put(raw_line)
-            except Exception:
-                pass
+            except (OSError, ValueError):
+                logger.debug("_katago_winrate reader error", exc_info=True)
             line_q.put(None)
 
         reader_t = threading.Thread(target=_reader, daemon=True)
@@ -466,7 +471,7 @@ def calculate_territory_chinese(board, komi=7.5, move_history=None, rules="chine
                 return ("黒", diff_str + "勝ち")
             else:
                 return ("白", diff_str + "勝ち")
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
             # Log the failure so it can be diagnosed
             try:
                 log_path = os.path.join(os.path.expanduser("~"), "goka_katago_log.txt")
@@ -476,8 +481,8 @@ def calculate_territory_chinese(board, komi=7.5, move_history=None, rules="chine
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                     f.write("Error: {}\n".format(exc))
                     f.write("Falling back to simple counting (dead stones NOT detected)\n")
-            except Exception:
-                pass
+            except OSError:
+                logger.warning("Failed to write KataGo score fallback log", exc_info=True)
             _used_fallback = True
 
     # Fallback: simple Chinese counting (no dead stone detection)

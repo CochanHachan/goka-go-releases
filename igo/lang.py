@@ -794,6 +794,7 @@ def L(key: str, *args) -> str:
     if args:
         try:
             text = text.format(*args)
-        except Exception:
-            pass
+        except (IndexError, KeyError, ValueError):
+            import logging as _logging
+            _logging.getLogger(__name__).debug("L() format failed for key=%s", key, exc_info=True)
     return text

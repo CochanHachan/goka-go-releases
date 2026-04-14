@@ -205,8 +205,9 @@ def _resolve_canvas_font(font_name, text_size):
         for name in candidates:
             if name in families:
                 return (name, size, "bold")
-    except Exception:
-        pass
+    except (tk.TclError, RuntimeError):
+        import logging as _logging
+        _logging.getLogger(__name__).debug("Font resolution failed", exc_info=True)
     return ("TkDefaultFont", size, "bold")
 
 
