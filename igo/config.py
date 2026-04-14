@@ -135,7 +135,7 @@ def get_offer_timeout_ms():
             cfg = json.load(f)
         minutes = int(cfg.get("offer_timeout_min", 3))
         return max(1, minutes) * 60 * 1000
-    except (OSError, json.JSONDecodeError, ValueError, KeyError):
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
         logger.debug("Failed to read offer_timeout, using default", exc_info=True)
         return 180000
 
@@ -149,7 +149,7 @@ def get_fischer_settings():
         main_t = int(cfg.get("fischer_main_time", 300))
         inc = int(cfg.get("fischer_increment", 10))
         return (max(60, main_t), max(1, inc))
-    except (OSError, json.JSONDecodeError, ValueError, KeyError):
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
         logger.debug("Failed to read fischer settings, using defaults", exc_info=True)
         return (300, 10)
 
