@@ -1330,28 +1330,30 @@ async def admin_setup_staging(request: Request):
         logger.info("[setup-staging] %s", msg)
         log_lines.append(msg)
 
-    def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=120, **kwargs)
+    async def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
+        return await asyncio.to_thread(
+            subprocess.run, cmd, capture_output=True, text=True, timeout=120, **kwargs
+        )
 
     try:
         # 1. ステージング用リポジトリの準備
         if os.path.isdir(staging_dir):
             _log(f"既存のステージングリポジトリを更新: {staging_dir}")
-            r = _run(["git", "fetch", "origin"], cwd=staging_dir)
+            r = await _run(["git", "fetch", "origin"], cwd=staging_dir)
             if r.returncode != 0:
                 return JSONResponse(
                     content={"status": "error", "detail": "git fetch failed",
                              "output": r.stdout + r.stderr},
                     status_code=500)
-            _run(["git", "checkout", "main"], cwd=staging_dir)
-            r = _run(["git", "pull", "origin", "main"], cwd=staging_dir)
+            await _run(["git", "checkout", "main"], cwd=staging_dir)
+            r = await _run(["git", "pull", "origin", "main"], cwd=staging_dir)
             _log(f"git pull: {r.stdout.strip()}")
         else:
             _log(f"ステージングリポジトリをクローン: {staging_dir}")
-            remote_url = _run(
+            remote_url = (await _run(
                 ["git", "remote", "get-url", "origin"], cwd=REPO_DIR
-            ).stdout.strip()
-            r = _run(["git", "clone", remote_url, staging_dir])
+            )).stdout.strip()
+            r = await _run(["git", "clone", remote_url, staging_dir])
             if r.returncode != 0:
                 return JSONResponse(
                     content={"status": "error", "detail": "git clone failed",
@@ -1361,7 +1363,7 @@ async def admin_setup_staging(request: Request):
 
         # 2. 既存のステージングプロセスを停止
         _log("既存のステージングプロセスを確認...")
-        ps_result = _run(["pgrep", "-f", f"GOKA_PORT={staging_port}.*server.py"])
+        ps_result = await _run(["pgrep", "-f", f"{staging_dir}/server.py"])
         if ps_result.returncode == 0:
             old_pids = ps_result.stdout.strip().split("\n")
             for pid_str in old_pids:
@@ -1417,10 +1419,10 @@ async def admin_setup_staging(request: Request):
 
         # 5. ファイアウォール設定を試行
         fw_msg = ""
-        fw_check = _run(["which", "gcloud"])
+        fw_check = await _run(["which", "gcloud"])
         if fw_check.returncode == 0:
             _log("gcloudでファイアウォールルール作成を試行...")
-            fw_result = _run([
+            fw_result = await _run([
                 "gcloud", "compute", "firewall-rules", "create", "goka-staging",
                 "--allow=tcp:8001",
                 "--description=Allow staging server port 8001",
@@ -1463,17 +1465,28 @@ WantedBy=multi-user.target
         service_path = "/etc/systemd/system/goka-staging.service"
         try:
             # sudoなしで書き込みを試行（権限があれば成功する）
-            write_result = _run(
+            write_result = await _run(
                 ["sudo", "-n", "tee", service_path],
                 input=service_content,
             )
             if write_result.returncode == 0:
-                _run(["sudo", "-n", "systemctl", "daemon-reload"])
-                _run(["sudo", "-n", "systemctl", "enable", "goka-staging"])
+                await _run(["sudo", "-n", "systemctl", "daemon-reload"])
+                await _run(["sudo", "-n", "systemctl", "enable", "goka-staging"])
                 # バックグラウンドプロセスをsystemdに切り替え
                 if staging_proc.poll() is None:
                     os.kill(staging_proc.pid, 9)
-                _run(["sudo", "-n", "systemctl", "start", "goka-staging"])
+                start_result = await _run(["sudo", "-n", "systemctl", "start", "goka-staging"])
+                if start_result.returncode != 0:
+                    # systemd起動失敗時はプロセスを再起動（フォールバック）
+                    _log("systemd起動失敗、プロセスとして再起動...")
+                    staging_proc = subprocess.Popen(
+                        [sys.executable, os.path.join(staging_dir, "server.py")],
+                        cwd=staging_dir,
+                        start_new_session=True,
+                        env=staging_env,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
                 systemd_msg = "systemdサービス作成・起動成功（永続化完了）"
             else:
                 systemd_msg = "systemdサービス作成スキップ（sudo権限なし）。プロセスとして起動中"
