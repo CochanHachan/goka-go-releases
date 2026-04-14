@@ -37,7 +37,7 @@ def _init_mixer():
         import pygame
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
         _mixer_ready = True
-    except (OSError, RuntimeError) as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("mixer init failed: %s", e, exc_info=True)
         return False
 
@@ -65,7 +65,7 @@ def _get_sound(filename):
         snd = pygame.mixer.Sound(path)
         _cache[filename] = snd
         return snd
-    except (OSError, RuntimeError) as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("sound load failed: %s %s", filename, e, exc_info=True)
         return None
 
@@ -125,5 +125,5 @@ def _play(filename):
         snd = _get_sound(filename)
         if snd:
             snd.play()
-    except (OSError, RuntimeError) as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)

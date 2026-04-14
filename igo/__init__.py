@@ -8,13 +8,17 @@ _log_dir = _os.path.join(
     _os.environ.get("APPDATA") or _os.path.expanduser("~"),
     "GokaGo",
 )
-_os.makedirs(_log_dir, exist_ok=True)
-_log_path = _os.path.join(_log_dir, "goka_debug.log")
+try:
+    _os.makedirs(_log_dir, exist_ok=True)
+except OSError:
+    _log_dir = None  # fallback: no file logging
 
-_logging.basicConfig(
-    level=_logging.DEBUG,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    handlers=[
-        _logging.FileHandler(_log_path, encoding="utf-8", delay=True),
-    ],
-)
+if _log_dir:
+    _log_path = _os.path.join(_log_dir, "goka_debug.log")
+    _logging.basicConfig(
+        level=_logging.DEBUG,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+        handlers=[
+            _logging.FileHandler(_log_path, encoding="utf-8", delay=True),
+        ],
+    )

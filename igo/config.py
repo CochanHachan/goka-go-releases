@@ -86,7 +86,7 @@ def _init_config_if_needed():
         if changed:
             with open(app_cfg, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, AttributeError):
         logger.debug("Server unreachable, using local config", exc_info=True)
 
 
@@ -122,7 +122,7 @@ def _get_db_path():
                 if os.path.exists(os.path.dirname(p)):
                     return p
                 print("[WARN] db_path not accessible: {} -> using local DB".format(p))
-    except (OSError, json.JSONDecodeError, KeyError):
+    except (OSError, json.JSONDecodeError, KeyError, AttributeError):
         logger.warning("Failed to read db_path from config", exc_info=True)
     return os.path.join(script_dir, "igo_users.db")
 
