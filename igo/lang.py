@@ -107,6 +107,7 @@ STRINGS = {
         "col_black":        "黒番",
         "col_white":        "白番",
         "col_result":       "勝敗",
+        "kifu_load_failed": "棋譜の読み込みに失敗しました。",
 
         # --- Offer dialog ---
         "offer_arrived":    "挑戦状が届いています！",
@@ -302,6 +303,7 @@ STRINGS = {
         "col_black":        "Black",
         "col_white":        "White",
         "col_result":       "Result",
+        "kifu_load_failed": "Failed to load game record.",
 
         # --- Offer dialog ---
         "offer_arrived":    "You have received a match offer!",
@@ -497,6 +499,7 @@ STRINGS = {
         "col_black":        "黑方",
         "col_white":        "白方",
         "col_result":       "胜负",
+        "kifu_load_failed": "棋谱加载失败。",
 
         # --- Offer dialog ---
         "offer_arrived":    "收到挑战书！",
@@ -692,6 +695,7 @@ STRINGS = {
         "col_black":        "흑",
         "col_white":        "백",
         "col_result":       "결과",
+        "kifu_load_failed": "기보를 불러오지 못했습니다.",
 
         # --- Offer dialog ---
         "offer_arrived":    "도전장이 도착했습니다!",

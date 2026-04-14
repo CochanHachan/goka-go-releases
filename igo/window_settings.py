@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sqlite3
+import tkinter as tk
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class WindowSettings:
             if row:
                 return json.loads(row[0])
             return default
-        except (OSError, json.JSONDecodeError, ValueError):
+        except (OSError, json.JSONDecodeError, ValueError, sqlite3.Error):
             logger.debug("Failed to load setting %s/%s", self._screen_name, key, exc_info=True)
             return default
         finally:
