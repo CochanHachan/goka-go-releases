@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import secrets
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -1293,6 +1294,7 @@ async def admin_status(request: Request):
     """サーバーの状態を返す。"""
     if not _check_admin_token(request):
         raise HTTPException(status_code=403, detail="forbidden")
+    disk = shutil.disk_usage("/")
     return {
         "env": _ENV_LABEL,
         "port": PORT,
@@ -1300,6 +1302,67 @@ async def admin_status(request: Request):
         "users": list(connected_users.keys()),
         "active_games": len(active_games),
         "pid": os.getpid(),
+        "disk_total_mb": round(disk.total / 1024 / 1024),
+        "disk_used_mb": round(disk.used / 1024 / 1024),
+        "disk_free_mb": round(disk.free / 1024 / 1024),
+    }
+
+
+@app.post("/admin/disk-cleanup")
+async def admin_disk_cleanup(request: Request):
+    """ディスク容量を確保するためのクリーンアップを実行する。"""
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    if _ENV_LABEL != "production":
+        return JSONResponse(
+            content={"status": "error",
+                     "detail": "This endpoint is only available on the production server"},
+            status_code=400)
+
+    async def _run(cmd: list, **kwargs) -> subprocess.CompletedProcess:
+        return await asyncio.to_thread(
+            subprocess.run, cmd, capture_output=True, text=True, timeout=120, **kwargs
+        )
+
+    log_lines: list = []
+    disk_before = shutil.disk_usage("/")
+    log_lines.append(f"クリーンアップ前: 空き {disk_before.free // 1024 // 1024}MB")
+
+    # 安全なクリーンアップ対象のみ
+    cleanup_cmds = [
+        (["sudo", "-n", "apt-get", "clean"], "apt cache"),
+        (["sudo", "-n", "apt-get", "autoremove", "-y"], "apt autoremove"),
+        (["sudo", "-n", "journalctl", "--vacuum-size=50M"], "journal logs"),
+        (["sudo", "-n", "find", "/tmp", "-type", "f", "-atime", "+7", "-delete"], "old /tmp files"),
+        (["sudo", "-n", "find", "/var/log", "-name", "*.gz", "-delete"], "compressed logs"),
+    ]
+    for cmd, label in cleanup_cmds:
+        try:
+            r = await _run(cmd)
+            if r.returncode == 0:
+                log_lines.append(f"{label}: クリーンアップ成功")
+            else:
+                log_lines.append(f"{label}: スキップ ({r.stderr.strip()[:80]})")
+        except Exception as e:
+            log_lines.append(f"{label}: スキップ ({e})")
+
+    # 本番リポジトリの git gc
+    if os.path.isdir(REPO_DIR):
+        r = await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
+        if r.returncode == 0:
+            log_lines.append("git gc (本番リポジトリ): 成功")
+
+    disk_after = shutil.disk_usage("/")
+    freed = (disk_after.free - disk_before.free) // 1024 // 1024
+    log_lines.append(f"クリーンアップ後: 空き {disk_after.free // 1024 // 1024}MB (解放: {freed}MB)")
+
+    return {
+        "status": "success",
+        "disk_free_mb_before": disk_before.free // 1024 // 1024,
+        "disk_free_mb_after": disk_after.free // 1024 // 1024,
+        "freed_mb": freed,
+        "log": log_lines,
     }
 
 
@@ -1336,6 +1399,38 @@ async def admin_setup_staging(request: Request):
         )
 
     try:
+        # 0. ディスク容量チェック＆自動クリーンアップ
+        disk = shutil.disk_usage("/")
+        free_mb = disk.free // 1024 // 1024
+        _log(f"ディスク空き容量: {free_mb}MB")
+        if free_mb < 200:
+            _log("空き容量不足のため自動クリーンアップを実行...")
+            cleanup_cmds = [
+                ["sudo", "-n", "apt-get", "clean"],
+                ["sudo", "-n", "apt-get", "autoremove", "-y"],
+                ["sudo", "-n", "journalctl", "--vacuum-size=50M"],
+                ["sudo", "-n", "find", "/tmp", "-type", "f", "-atime", "+7", "-delete"],
+                ["sudo", "-n", "find", "/var/log", "-name", "*.gz", "-delete"],
+            ]
+            for cmd in cleanup_cmds:
+                try:
+                    await _run(cmd)
+                except Exception:
+                    pass
+            if os.path.isdir(REPO_DIR):
+                await _run(["git", "gc", "--aggressive", "--prune=now"], cwd=REPO_DIR)
+            disk = shutil.disk_usage("/")
+            free_mb = disk.free // 1024 // 1024
+            _log(f"クリーンアップ後の空き容量: {free_mb}MB")
+            if free_mb < 100:
+                return JSONResponse(
+                    content={"status": "error",
+                             "detail": f"ディスク空き容量が不足しています ({free_mb}MB)。"
+                                        "VMのディスク拡張が必要です。",
+                             "disk_free_mb": free_mb,
+                             "log": log_lines},
+                    status_code=500)
+
         # 1. ステージング用リポジトリの準備
         if os.path.isdir(staging_dir):
             _log(f"既存のステージングリポジトリを更新: {staging_dir}")
@@ -1353,13 +1448,13 @@ async def admin_setup_staging(request: Request):
             remote_url = (await _run(
                 ["git", "remote", "get-url", "origin"], cwd=REPO_DIR
             )).stdout.strip()
-            r = await _run(["git", "clone", remote_url, staging_dir])
+            r = await _run(["git", "clone", "--depth", "1", remote_url, staging_dir])
             if r.returncode != 0:
                 return JSONResponse(
                     content={"status": "error", "detail": "git clone failed",
                              "output": r.stdout + r.stderr},
                     status_code=500)
-            _log("クローン完了")
+            _log("クローン完了（shallow clone）")
 
         # 2. 既存のステージングプロセスを停止
         _log("既存のステージングプロセスを確認...")

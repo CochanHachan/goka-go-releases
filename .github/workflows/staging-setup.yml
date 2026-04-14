@@ -17,6 +17,33 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.inputs.confirm == 'yes'
     steps:
+      - name: Disk cleanup (ディスク容量確保)
+        shell: bash
+        env:
+          GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+        run: |
+          TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
+          PROD_URL="http://34.24.176.248:8000"
+          echo "ディスク容量を確認・クリーンアップ..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Token: ${TOKEN}" \
+            "${PROD_URL}/admin/disk-cleanup" \
+            --connect-timeout 15 --max-time 120)
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+
+          echo "HTTP ${HTTP_CODE}"
+          echo "${BODY}" | python3 -m json.tool 2>/dev/null || echo "${BODY}"
+
+          # クリーンアップは失敗してもセットアップを続行する
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "ディスククリーンアップ完了"
+          else
+            echo "クリーンアップをスキップ（セットアップは続行します）"
+          fi
+
       - name: Setup staging environment on production server
         shell: bash
         env:
