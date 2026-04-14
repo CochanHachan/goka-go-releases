@@ -1191,7 +1191,7 @@ class App:
         """ダイアログ一括閉じ時に使う。AIロボは除外する
         （次回の対局申請で再度出現させるため）。
         """
-        for name in names:
+        for name in list(names):
             if not name.startswith(self._BOT_NAME_PREFIX):
                 self._declined_offers.add(name)
 
