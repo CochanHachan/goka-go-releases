@@ -99,35 +99,66 @@ jobs:
           with open("igo/constants.py", "w", encoding="utf-8") as f:
               f.write(content)
 
+          # igo_admin.py のAPIベースURLをステージングに切り替え
+          with open("igo_admin.py", "r", encoding="utf-8") as f:
+              admin_content = f.read()
+
+          admin_content = admin_content.replace(
+              'API_BASE_URL = "http://34.85.118.112:8000"',
+              'API_BASE_URL = "http://34.85.118.112:8001"'
+          )
+          # タイトルにステージング表記を追加
+          admin_content = admin_content.replace(
+              'self.root.title("碁華 - 管理者画面")',
+              'self.root.title("碁華 - 管理者画面 [STAGING]")'
+          )
+
+          with open("igo_admin.py", "w", encoding="utf-8") as f:
+              f.write(admin_content)
+
           print("Switched to staging server URLs (port 8001)")
           print("App name updated to include [STAGING] label")
+          print("Admin panel switched to staging server URL")
 
-      - name: Build with PyInstaller
+      - name: Build client with PyInstaller
         run: pyinstaller goka_go.spec --noconfirm
 
-      - name: Create staging ZIP
+      - name: Build admin panel with PyInstaller
+        run: pyinstaller igo_admin.spec --noconfirm
+
+      - name: Create staging ZIPs
         shell: python
         run: |
           import zipfile, os
 
-          src = "dist/goka_go"
-          dst = "dist/goka_go_staging.zip"
-          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
-              for root, dirs, files in os.walk(src):
-                  for f in files:
-                      fp = os.path.join(root, f)
-                      arcname = os.path.relpath(fp, src)
-                      try:
-                          zf.write(fp, arcname)
-                      except PermissionError as e:
-                          print(f"WARNING: Could not add {fp}: {e}")
+          def create_zip(src, dst):
+              with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
+                  for root, dirs, files in os.walk(src):
+                      for f in files:
+                          fp = os.path.join(root, f)
+                          arcname = os.path.relpath(fp, src)
+                          try:
+                              zf.write(fp, arcname)
+                          except PermissionError as e:
+                              print(f"WARNING: Could not add {fp}: {e}")
+              size_mb = os.path.getsize(dst) / (1024 * 1024)
+              print(f"Created {dst} ({size_mb:.1f} MB)")
 
-          size_mb = os.path.getsize(dst) / (1024 * 1024)
-          print(f"Created {dst} ({size_mb:.1f} MB)")
+          # クライアント
+          create_zip("dist/goka_go", "dist/goka_go_staging.zip")
+          # 管理者画面
+          create_zip("dist/igo_admin", "dist/igo_admin_staging.zip")
 
-      - name: Upload staging build
+      - name: Upload staging client
         uses: actions/upload-artifact@v4
         with:
           name: goka-go-staging
           path: dist/goka_go_staging.zip
+          retention-days: 7
+
+      - name: Upload staging admin panel
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-admin-staging
+          path: dist/igo_admin_staging.zip
           retention-days: 7
