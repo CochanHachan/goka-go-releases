@@ -66,108 +66,70 @@ jobs:
       - name: Install dependencies
         run: pip install pyinstaller tksheet cryptography websockets pillow pygame
 
-      - name: Switch to staging server URL
+      - name: Switch to staging environment
         shell: python
         run: |
-          # -*- coding: utf-8 -*-
-          import re, sys
+          import sys
 
-          PROD_IP = "34.85.118.112"
-          STAGING_IP = "136.110.101.14"
+          # constants.py と igo_admin.py の _ENV フラグを "staging" に切り替える。
+          # 各ファイルは _ENV に基づいて URL / ラベルを自動選択するので、
+          # この1行置換だけで全設定が連動して切り替わる。
+          SEARCH  = '_ENV = "production"'
+          REPLACE = '_ENV = "staging"'
+
           errors = []
+          for path in ["igo/constants.py", "igo_admin.py"]:
+              with open(path, "r", encoding="utf-8") as f:
+                  content = f.read()
 
-          # ---- igo/constants.py ----
-          with open("igo/constants.py", "r", encoding="utf-8") as f:
-              content = f.read()
-          original = content
+              if SEARCH not in content:
+                  errors.append(f"{path}: '{SEARCH}' not found")
+                  continue
 
-          # サーバーURL置換（純ASCII — エンコーディング問題なし）
-          content = content.replace(
-              'CLOUD_SERVER_URL = "ws://' + PROD_IP + ':8000"',
-              'CLOUD_SERVER_URL = "ws://' + STAGING_IP + ':8000"'
-          )
-          content = content.replace(
-              'API_BASE_URL     = "http://' + PROD_IP + ':8000"',
-              'API_BASE_URL     = "http://' + STAGING_IP + ':8000"'
-          )
+              content = content.replace(SEARCH, REPLACE, 1)
 
-          # APP_NAME に [STAGING] を追加（正規表現で日本語文字列に依存しない）
-          content, n = re.subn(
-              r'^(APP_NAME\s+=\s+".*?)"',
-              r'\1 [STAGING]"',
-              content,
-              count=1,
-              flags=re.MULTILINE,
-          )
-          if n == 0:
-              errors.append("APP_NAME replacement failed")
+              with open(path, "w", encoding="utf-8") as f:
+                  f.write(content)
 
-          # STAGING_LABEL 置換（純ASCII）
-          content = content.replace(
-              'STAGING_LABEL   = ""',
-              'STAGING_LABEL   = "[STAGING] "'
-          )
+              print(f"{path}: switched to staging")
 
-          # --- 検証 ---
-          if STAGING_IP not in content:
-              errors.append("constants.py: staging IP not found after replacement")
-          if "[STAGING]" not in content:
-              errors.append("constants.py: [STAGING] label not found after replacement")
-          if PROD_IP in content:
-              errors.append("constants.py: production IP still present after replacement")
+          # --- 検証: 置換後のファイルを import して定数を確認 ---
+          sys.path.insert(0, ".")
+          # constants.py の検証
+          from igo.constants import _ENV as c_env, CLOUD_SERVER_URL, API_BASE_URL, STAGING_LABEL, APP_NAME
+          print(f"\nconstants.py verification:")
+          print(f"  _ENV             = {c_env!r}")
+          print(f"  CLOUD_SERVER_URL = {CLOUD_SERVER_URL!r}")
+          print(f"  API_BASE_URL     = {API_BASE_URL!r}")
+          print(f"  STAGING_LABEL    = {STAGING_LABEL!r}")
+          print(f"  APP_NAME         = {APP_NAME!r}")
 
-          with open("igo/constants.py", "w", encoding="utf-8") as f:
-              f.write(content)
+          if c_env != "staging":
+              errors.append("constants.py: _ENV is not 'staging'")
+          if "136.110.101.14" not in CLOUD_SERVER_URL:
+              errors.append("constants.py: CLOUD_SERVER_URL does not point to staging")
+          if "136.110.101.14" not in API_BASE_URL:
+              errors.append("constants.py: API_BASE_URL does not point to staging")
+          if "[STAGING]" not in STAGING_LABEL:
+              errors.append("constants.py: STAGING_LABEL missing [STAGING]")
 
-          # 置換後の内容をログに出力（デバッグ用）
-          print("=== constants.py (replaced) ===")
-          for line in content.splitlines()[:15]:
-              print(line)
-          print("...")
-          for line in content.splitlines():
-              if "SERVER_URL" in line or "API_BASE" in line:
-                  print(line)
-
-          # ---- igo_admin.py ----
+          # igo_admin.py の検証（直接importが難しいのでファイル内容で確認）
           with open("igo_admin.py", "r", encoding="utf-8") as f:
-              admin_content = f.read()
+              admin_text = f.read()
+          if '_ENV = "staging"' not in admin_text:
+              errors.append("igo_admin.py: _ENV not switched to staging")
+          if "34.85.118.112" in admin_text.split("_ADMIN_SERVER_CONFIG")[0]:
+              errors.append("igo_admin.py: production IP found outside config dict")
 
-          # URL置換（純ASCII）
-          admin_content = admin_content.replace(
-              'API_BASE_URL = "http://' + PROD_IP + ':8000"',
-              'API_BASE_URL = "http://' + STAGING_IP + ':8000"'
-          )
+          print(f"\nigo_admin.py: _ENV line found = {'_ENV = \"staging\"' in admin_text}")
 
-          # タイトルに [STAGING] 追加（正規表現で日本語文字列に依存しない）
-          admin_content, n2 = re.subn(
-              r'(self\.root\.title\("[^"]*?)"(\))',
-              r'\1 [STAGING]"\2',
-              admin_content,
-              count=1,
-          )
-          if n2 == 0:
-              errors.append("admin title replacement failed")
-
-          # --- 検証 ---
-          if PROD_IP in admin_content:
-              errors.append("igo_admin.py: production IP still present")
-
-          with open("igo_admin.py", "w", encoding="utf-8") as f:
-              f.write(admin_content)
-
-          print("\n=== igo_admin.py URL check ===")
-          for line in admin_content.splitlines():
-              if "API_BASE_URL" in line or "root.title" in line:
-                  print(line)
-
-          # --- エラーがあればビルドを失敗させる ---
           if errors:
-              print("\nERROR: Replacement verification failed!")
+              print("\nERROR: Verification failed!")
               for e in errors:
                   print(f"  - {e}")
               sys.exit(1)
 
-          print("\nAll replacements verified successfully.")
+          print("\nAll verifications passed.")
 
       - name: Build client with PyInstaller
         run: pyinstaller goka_go.spec --noconfirm
