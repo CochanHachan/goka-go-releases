@@ -184,14 +184,14 @@ class KifuDialog:
         sgf_text = self.app.db.get_game_record_sgf(record_id)
         if not sgf_text:
             logger.debug("No SGF text found for record_id=%s", record_id)
-            messagebox.showwarning(L("title_error"), L("kifu_load_failed"))
+            messagebox.showwarning(L("msg_error"), L("kifu_load_failed"))
             return
         try:
             moves, metadata = _parse_sgf_text(sgf_text)
             self.go_board.load_sgf_to_board(moves, metadata)
         except Exception:
             logger.debug("Failed to load kifu record_id=%s", record_id, exc_info=True)
-            messagebox.showerror(L("title_error"), L("kifu_load_failed"))
+            messagebox.showerror(L("msg_error"), L("kifu_load_failed"))
             return
         self._close()
 
