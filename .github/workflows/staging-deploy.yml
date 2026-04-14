@@ -29,7 +29,7 @@ jobs:
           DEPLOY_BRANCH: ${{ github.event.inputs.branch || 'main' }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          URL="${GOKA_STAGING_URL:-http://34.24.176.248:8001}"
+          URL="${GOKA_STAGING_URL:-http://34.85.118.112:8001}"
           echo "Deploying staging server at ${URL} (branch: ${DEPLOY_BRANCH})..."
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
@@ -77,12 +77,12 @@ jobs:
 
           # ポート8000 → 8001 に変更
           content = content.replace(
-              'CLOUD_SERVER_URL = "ws://34.24.176.248:8000"',
-              'CLOUD_SERVER_URL = "ws://34.24.176.248:8001"'
+              'CLOUD_SERVER_URL = "ws://34.85.118.112:8000"',
+              'CLOUD_SERVER_URL = "ws://34.85.118.112:8001"'
           )
           content = content.replace(
-              'API_BASE_URL     = "http://34.24.176.248:8000"',
-              'API_BASE_URL     = "http://34.24.176.248:8001"'
+              'API_BASE_URL     = "http://34.85.118.112:8000"',
+              'API_BASE_URL     = "http://34.85.118.112:8001"'
           )
 
           # アプリ名にステージング表記を追加

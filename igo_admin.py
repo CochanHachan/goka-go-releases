@@ -55,7 +55,7 @@ def admin_decrypt(encrypted: str) -> str:
             return "（復号不可）"
     return encrypted
 
-API_BASE_URL = "http://34.24.176.248:8000"
+API_BASE_URL = "http://34.85.118.112:8000"
 
 
 class AdminApp:
