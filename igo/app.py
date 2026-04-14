@@ -1211,12 +1211,7 @@ class App:
         """対局承諾時のクラウド対局パラメータをセットする。
         ダイアログ側で個別に app._cloud_xxx を触る必要をなくす。
         """
-        self._cloud_main_time = offer.get("main_time", 600)
-        self._cloud_byo_time = offer.get("byo_time", 30)
-        self._cloud_byo_periods = offer.get("byo_periods", 5)
-        self._cloud_komi = offer.get("komi", 7.5)
-        self._cloud_time_control = offer.get("time_control", "byoyomi")
-        self._cloud_fischer_increment = offer.get("fischer_increment", 0)
+        self._cloud_match_settings = MatchSettings.from_dict(offer)
 
     def on_match_dialog_closed(self, dialog) -> None:
         """MatchDialog が閉じられたときの後処理。"""
