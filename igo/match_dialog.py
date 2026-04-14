@@ -466,7 +466,7 @@ class MatchDialog:
                     if self.app.current_user:
                         my_name = self.app.current_user["handle_name"]
                     sender_name = msg.get("name", "")
-                    if sender_name != my_name and sender_name not in self.app._declined_offers:
+                    if sender_name != my_name and not self.app.is_offer_declined(sender_name):
                         msg["_addr"] = addr[0]
                         msg["_time"] = _time.time()
                         self._offers[sender_name] = msg
@@ -604,12 +604,7 @@ class MatchDialog:
             user = self.app.current_user
             rank = elo_to_display_rank(user["elo_rating"]) if user else "?"
             elo = user["elo_rating"] if user else 0
-            self.app._cloud_main_time = offer.get("main_time", 600)
-            self.app._cloud_byo_time = offer.get("byo_time", 30)
-            self.app._cloud_byo_periods = offer.get("byo_periods", 5)
-            self.app._cloud_komi = offer.get("komi", 7.5)
-            self.app._cloud_time_control = offer.get("time_control", "byoyomi")
-            self.app._cloud_fischer_increment = offer.get("fischer_increment", 0)
+            self.app.set_cloud_game_params(offer)
             self.app.send_cloud_message({
                 "type": "match_accept",
                 "target": key,
@@ -630,18 +625,14 @@ class MatchDialog:
         if idx >= len(keys):
             return
         name = keys[idx]
-        self.app._declined_offers.add(name)
+        self.app.decline_offer(name)
         del self._offers[name]
         self._match_highlighted_row = None
         self._refresh_list()
 
     def _close_reject_all(self):
         """Cancel own hosting, reject all incoming offers, close dialog."""
-        # Add human offers to declined list (bot offers should NOT be declined
-        # so that the same bot can send a new offer on the next match request)
-        for name in list(self._offers.keys()):
-            if not name.startswith("AIロボ"):
-                self.app._declined_offers.add(name)
+        self.app.decline_all_offers(self._offers.keys())
         self._offers.clear()
         self._on_close()
 
@@ -690,10 +681,7 @@ class MatchDialog:
         except Exception:
             pass
         self.win.destroy()
-        self.app._current_match_dialog = None
-        if self.app._last_focused_dialog is self:
-            self.app._last_focused_dialog = None
-        self.app._start_match_listener()
+        self.app.on_match_dialog_closed(self)
 
 
 

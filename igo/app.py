@@ -1174,6 +1174,65 @@ class App:
         self.root.bind_all("<Control-Shift-A>", lambda e: self._file_save_as())
         self.root.after(5000, self._online_heartbeat)
 
+    # =================================================================
+    # 共有状態の公開インターフェース（カプセル化）
+    # 他クラスはこれらのメソッド経由でのみ状態を変更すること
+    # =================================================================
+
+    _BOT_NAME_PREFIX = "AIロボ"
+
+    def decline_offer(self, name: str) -> None:
+        """指定オファーを辞退リストに追加する。
+        AIロボはリストに追加しない（次回の対局申請で再度出現させるため）。
+        """
+        if not name.startswith(self._BOT_NAME_PREFIX):
+            self._declined_offers.add(name)
+
+    def decline_all_offers(self, names) -> None:
+        """複数オファーを一括辞退する（AIロボは除外）。"""
+        for name in names:
+            self.decline_offer(name)
+
+    def is_offer_declined(self, name: str) -> bool:
+        """指定オファーが辞退済みかどうかを返す。"""
+        return name in self._declined_offers
+
+    def undecline_offer(self, name: str) -> None:
+        """辞退リストからオファーを取り除く。"""
+        self._declined_offers.discard(name)
+
+    def set_cloud_game_params(self, offer: dict) -> None:
+        """対局承諾時のクラウド対局パラメータをセットする。
+        ダイアログ側で個別に app._cloud_xxx を触る必要をなくす。
+        """
+        self._cloud_main_time = offer.get("main_time", 600)
+        self._cloud_byo_time = offer.get("byo_time", 30)
+        self._cloud_byo_periods = offer.get("byo_periods", 5)
+        self._cloud_komi = offer.get("komi", 7.5)
+        self._cloud_time_control = offer.get("time_control", "byoyomi")
+        self._cloud_fischer_increment = offer.get("fischer_increment", 0)
+
+    def on_match_dialog_closed(self, dialog) -> None:
+        """MatchDialog が閉じられたときの後処理。"""
+        self._current_match_dialog = None
+        if self._last_focused_dialog is dialog:
+            self._last_focused_dialog = None
+        self._start_match_listener()
+
+    def on_offer_dialog_closed(self, dialog) -> None:
+        """MatchOfferDialog が閉じられたときの後処理。"""
+        self._offer_dialog_open = False
+        self._current_offer_dialog = None
+        if self._last_focused_dialog is dialog:
+            self._last_focused_dialog = None
+        self._resume_match_listener()
+
+    def on_kifu_dialog_closed(self, dialog) -> None:
+        """KifuDialog が閉じられたときの後処理。"""
+        self._current_kifu_dialog = None
+        if self._last_focused_dialog is dialog:
+            self._last_focused_dialog = None
+
     # --- Network match methods ---
 
     def start_hosting(self, main_time, byo_time, byo_periods, komi, on_connect_cb,
@@ -1715,7 +1774,7 @@ class App:
             sender = msg.get("from", "")
             if not self.go_board or self.go_board.net_mode:
                 return
-            if sender in self._declined_offers:
+            if self.is_offer_declined(sender):
                 return
             offer = {
                 "type": "match_offer",
@@ -1773,7 +1832,7 @@ class App:
         elif msg_type == "match_cancelled":
             # An offer was cancelled - remove from dialogs too
             sender = msg.get("from", "")
-            self._declined_offers.discard(sender)
+            self.undecline_offer(sender)
             if sender:
                 if self._current_offer_dialog:
                     if sender in self._current_offer_dialog._offers:
