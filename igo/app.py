@@ -2257,6 +2257,7 @@ class App:
         """ホスト中なら match_taken をブロードキャストして申請を取り消す。"""
         dlg = getattr(self, '_current_match_dialog', None)
         if dlg and hasattr(dlg, '_hosting') and dlg._hosting:
+            dlg._hosting = False
             try:
                 _tsock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 _tsock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
