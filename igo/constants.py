@@ -34,5 +34,5 @@ GO_RANKS = ["{}段".format(i) for i in range(9, 0, -1)] + \
 
 # Cloud client is imported lazily in _connect_cloud() to avoid slow startup
 HAS_CLOUD = True
-CLOUD_SERVER_URL = "ws://34.24.176.248:8000"
-API_BASE_URL     = "http://34.24.176.248:8000"
+CLOUD_SERVER_URL = "ws://34.85.118.112:8000"
+API_BASE_URL     = "http://34.85.118.112:8000"
