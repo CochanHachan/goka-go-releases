@@ -22,6 +22,14 @@ except ImportError:
 
 logger = logging.getLogger("igo_cloud")
 
+# Build WebSocket exception tuple dynamically (websockets may not be installed)
+_ws_errors = (OSError, RuntimeError)
+if websockets is not None:
+    try:
+        _ws_errors = (OSError, RuntimeError, websockets.exceptions.WebSocketException)
+    except AttributeError:
+        pass  # unexpected websockets version
+
 
 class CloudClient:
     """WebSocket client for cloud-based Go game server."""
@@ -88,7 +96,7 @@ class CloudClient:
             try:
                 self._loop.close()
             except Exception:
-                pass
+                logger.debug("Event loop close failed", exc_info=True)
             self._loop = None
 
     async def _connect_and_listen(self):
@@ -141,7 +149,7 @@ class CloudClient:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except (*_ws_errors, asyncio.TimeoutError) as e:
                 logger.warning("Connection lost: %s. Reconnecting in %ds...", e, retry_delay)
                 self._connected = False
                 self._ws = None
@@ -160,7 +168,7 @@ class CloudClient:
         if self._ws:
             try:
                 await self._ws.send(json.dumps(msg_dict, ensure_ascii=False))
-            except Exception as e:
+            except (*_ws_errors,) as e:
                 logger.error("Send error: %s", e)
 
     async def _close_ws(self):
@@ -168,5 +176,5 @@ class CloudClient:
         if self._ws:
             try:
                 await self._ws.close()
-            except Exception:
-                pass
+            except (*_ws_errors,):
+                logger.debug("WebSocket close failed", exc_info=True)

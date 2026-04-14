@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """碁華 石・盤面テクスチャ描画"""
+import logging
 import os
 import math
 import tkinter as tk
+
+logger = logging.getLogger(__name__)
 
 
 def _make_stone_photoimage(root, radius, is_black, bg_rgb):
@@ -125,7 +128,8 @@ def _load_board_texture_original(root, force_reload=False):
         try:
             _board_texture_original = tk.PhotoImage(master=root, file=tex_path)
             return _board_texture_original
-        except Exception:
+        except tk.TclError:
+            logger.warning("Failed to load board texture: %s", tex_path, exc_info=True)
             return None
     return None
 
@@ -148,6 +152,7 @@ def _make_board_texture(root, width, height):
         img.tk.call(img, 'copy', orig,
                     '-from', 0, 0, src_w, src_h,
                     '-subsample', sub, sub)
-    except Exception:
+    except tk.TclError:
+        logger.debug("tk.call copy failed, falling back to subsample", exc_info=True)
         img = orig.subsample(sub, sub)
     return img

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """碁華 昇段・昇級ポップアップ"""
+import logging
 import tkinter as tk
 import math
 import random
@@ -7,6 +8,8 @@ import os
 
 from igo.elo import _is_dan_rank
 from igo.lang import L
+
+logger = logging.getLogger(__name__)
 
 
 class PromotionPopup(tk.Toplevel):
@@ -43,11 +46,11 @@ class PromotionPopup(tk.Toplevel):
                 try:
                     img = tk.PhotoImage(file=name)
                     self.sakura_images.append(img)
-                except Exception:
-                    pass
+                except tk.TclError:
+                    logger.debug("Failed to load sakura image: %s", name, exc_info=True)
             self.tk.eval("cd {%s}" % old_tcl_cwd.replace("\\", "/"))
-        except Exception:
-            pass
+        except (tk.TclError, OSError):
+            logger.debug("Failed to load sakura images from %s", img_dir, exc_info=True)
 
         # 桜パーティクル（背面）→ テキスト（前面）の順で作成
         # 画像読み込みの成否に関わらず必ず粒子を生成する

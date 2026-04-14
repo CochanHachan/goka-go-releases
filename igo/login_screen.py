@@ -167,7 +167,7 @@ class LoginScreen:
             )
             with _urlreq.urlopen(_req, timeout=10) as _resp:
                 _result = _json.loads(_resp.read().decode("utf-8"))
-        except Exception as _e:
+        except (OSError, ValueError) as _e:
             self.error_label.config(text=L("login_server_error"))
             return
         if not _result.get("success"):

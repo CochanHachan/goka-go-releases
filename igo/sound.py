@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """碁華 着手音"""
+import logging
 import os
 import platform
 
 from igo.config import _get_install_dir
+
+logger = logging.getLogger(__name__)
 
 
 _stone_sound_path = None
@@ -32,6 +35,6 @@ def _play_stone_sound():
         path = _find_stone_sound()
         if path:
             winsound.PlaySound(path, winsound.SND_FILENAME | winsound.SND_ASYNC)
-    except Exception:
-        pass
+    except (OSError, RuntimeError):
+        logger.debug("Stone sound playback failed", exc_info=True)
 

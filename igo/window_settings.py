@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """画面設定の保存・復元クラス (SQLite)"""
 import json
+import logging
 import os
 import sqlite3
+import tkinter as tk
+
+logger = logging.getLogger(__name__)
 
 
 class WindowSettings:
@@ -50,7 +54,8 @@ class WindowSettings:
             if row:
                 return json.loads(row[0])
             return default
-        except Exception:
+        except (OSError, json.JSONDecodeError, ValueError, sqlite3.Error):
+            logger.debug("Failed to load setting %s/%s", self._screen_name, key, exc_info=True)
             return default
         finally:
             conn.close()
@@ -67,14 +72,14 @@ class WindowSettings:
             if root.state() == "iconic":
                 return  # 最小化中は保存しない
             self.save("geometry", root.geometry())
-        except Exception:
-            pass
+        except (tk.TclError, OSError):
+            logger.debug("Failed to save window geometry", exc_info=True)
         if tree and ncols > 0:
             try:
                 widths = [tree.column_width(column=i) for i in range(ncols)]
                 self.save("column_widths", widths)
-            except Exception:
-                pass
+            except (tk.TclError, OSError):
+                logger.debug("Failed to save column widths", exc_info=True)
 
     def restore_window(self, root, default_geometry: str = ""):
         """ウィンドウのgeometryを復元する。
@@ -87,7 +92,8 @@ class WindowSettings:
         if geo:
             try:
                 root.geometry(geo)
-            except Exception:
+            except tk.TclError:
+                logger.debug("Failed to restore geometry, using default", exc_info=True)
                 if default_geometry:
                     root.geometry(default_geometry)
         elif default_geometry:

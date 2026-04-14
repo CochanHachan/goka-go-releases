@@ -1,6 +1,17 @@
 # -*- coding: utf-8 -*-
 """碁華 碁盤ロジック"""
+import json
+import logging
+import math
+import os
+import platform
+import subprocess
+import threading
+import time as _time
+
 from igo.constants import BOARD_SIZE, EMPTY, BLACK, WHITE, TIME_LIMIT
+
+logger = logging.getLogger(__name__)
 
 
 def _neighbors(x, y):
@@ -90,7 +101,8 @@ class KataGoGTP:
                         break
                     response_lines.append(line.strip())
                 return "\n".join(response_lines)
-            except Exception:
+            except (OSError, BrokenPipeError, ValueError):
+                logger.warning("GTP send_command failed: %s", cmd, exc_info=True)
                 return None
 
     def set_boardsize(self, size=19):
@@ -121,11 +133,12 @@ class KataGoGTP:
                 self.proc.stdin.write(b"quit\n")
                 self.proc.stdin.flush()
                 self.proc.wait(timeout=3)
-            except Exception:
+            except (OSError, subprocess.TimeoutExpired):
+                logger.debug("KataGo quit/wait failed, killing", exc_info=True)
                 try:
                     self.proc.kill()
-                except Exception:
-                    pass
+                except OSError:
+                    logger.debug("KataGo kill also failed", exc_info=True)
             self.proc = None
 
     @staticmethod
@@ -218,8 +231,8 @@ def _katago_score(move_history, komi=7.5, size=19, rules="chinese"):
             try:
                 for raw_line in proc.stdout:
                     line_q.put(raw_line)
-            except Exception:
-                pass
+            except (OSError, ValueError):
+                logger.debug("_katago_score reader error", exc_info=True)
             line_q.put(None)  # sentinel
 
         reader_t = threading.Thread(target=_reader, daemon=True)
@@ -305,8 +318,8 @@ def _katago_winrate(move_history, komi=7.5, size=19, rules="chinese"):
             try:
                 for raw_line in proc.stdout:
                     line_q.put(raw_line)
-            except Exception:
-                pass
+            except (OSError, ValueError):
+                logger.debug("_katago_winrate reader error", exc_info=True)
             line_q.put(None)
 
         reader_t = threading.Thread(target=_reader, daemon=True)
@@ -374,8 +387,8 @@ def calculate_territory_chinese(board, komi=7.5, move_history=None, rules="chine
                 return ("黒", diff_str + "勝ち")
             else:
                 return ("白", diff_str + "勝ち")
-        except Exception:
-            pass  # Fall through to simple counting
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+            logger.warning("KataGo scoring failed, falling back to simple counting", exc_info=True)
 
     # Fallback: simple Chinese counting (no dead stone detection)
     size = len(board)
