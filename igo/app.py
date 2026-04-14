@@ -1183,15 +1183,17 @@ class App:
 
     def decline_offer(self, name: str) -> None:
         """指定オファーを辞退リストに追加する。
-        AIロボはリストに追加しない（次回の対局申請で再度出現させるため）。
+        ユーザーが明示的に拒否した場合に使う（ボット含むすべてのオファー）。
         """
-        if not name.startswith(self._BOT_NAME_PREFIX):
-            self._declined_offers.add(name)
+        self._declined_offers.add(name)
 
     def decline_all_offers(self, names) -> None:
-        """複数オファーを一括辞退する（AIロボは除外）。"""
+        """ダイアログ一括閉じ時に使う。AIロボは除外する
+        （次回の対局申請で再度出現させるため）。
+        """
         for name in names:
-            self.decline_offer(name)
+            if not name.startswith(self._BOT_NAME_PREFIX):
+                self._declined_offers.add(name)
 
     def is_offer_declined(self, name: str) -> bool:
         """指定オファーが辞退済みかどうかを返す。"""
