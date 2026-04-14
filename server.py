@@ -137,10 +137,19 @@ bot_accept_timers: Dict[str, asyncio.Task] = {}
 # handle -> pending offer info (タイムアウト時にボットが承諾するための情報)
 pending_offers: Dict[str, dict] = {}
 
-BOT_AUTO_DELAY = 60  # 秒 — ボットが挑戦状を送るまでの待機時間
+BOT_AUTO_DELAY = 60  # 秒 — ボットが挑戦状を送るまでのデフォルト待機時間
 # 重要: この値はクライアント側の _hosting_timeout（get_offer_timeout_ms）より
 # 十分短くなければならない。同じかそれ以上だとクライアントが先にキャンセルし、
 # ボットの挑戦状が届かなくなる。
+
+
+def _get_bot_delay() -> int:
+    """管理者画面の bot_offer_delay 設定を秒単位で返す（デフォルト: 60秒）。"""
+    try:
+        settings = _load_settings()
+        return int(settings.get("bot_offer_delay", BOT_AUTO_DELAY))
+    except Exception:
+        return BOT_AUTO_DELAY
 
 
 def _get_offer_timeout_sec() -> int:
@@ -491,7 +500,8 @@ def _load_settings() -> dict:
             return json.load(f)
     except Exception:
         return {"theme": "light", "offer_timeout_min": 3,
-                "fischer_main_time": 300, "fischer_increment": 10}
+                "fischer_main_time": 300, "fischer_increment": 10,
+                "bot_offer_delay": 60}
 
 
 def _save_settings(settings: dict):
@@ -504,6 +514,7 @@ class UpdateSettingsRequest(BaseModel):
     offer_timeout_min: Optional[int] = None
     fischer_main_time: Optional[int] = None
     fischer_increment: Optional[int] = None
+    bot_offer_delay: Optional[int] = None
 
 
 @app.get("/api/settings")
@@ -524,6 +535,8 @@ async def update_settings(req: UpdateSettingsRequest):
         settings["fischer_main_time"] = req.fischer_main_time
     if req.fischer_increment is not None:
         settings["fischer_increment"] = req.fischer_increment
+    if req.bot_offer_delay is not None:
+        settings["bot_offer_delay"] = req.bot_offer_delay
     _save_settings(settings)
     logger.info("Settings updated: %s", settings)
     return {"success": True, "settings": settings}
@@ -672,7 +685,8 @@ async def _bot_auto_offer(handle: str):
     より短くすること。同じ値だとクライアントが先にキャンセルしてしまう。
     """
     try:
-        await asyncio.sleep(BOT_AUTO_DELAY)
+        delay = _get_bot_delay()
+        await asyncio.sleep(delay)
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
             return
@@ -704,7 +718,7 @@ async def _bot_auto_offer(handle: str):
             "time_control": time_cfg["time_control"],
             "fischer_increment": time_cfg["fischer_increment"],
         })
-        logger.info("Bot auto-offer: %s -> %s", bot_name, handle)
+        logger.info("Bot auto-offer (delay=%ds): %s -> %s", delay, bot_name, handle)
     except asyncio.CancelledError:
         pass
     except Exception as e:
@@ -720,7 +734,8 @@ async def _bot_auto_accept(handle: str):
     より短くすること。同じ値だとクライアントが先にキャンセルしてしまう。
     """
     try:
-        await asyncio.sleep(BOT_AUTO_DELAY)
+        delay = _get_bot_delay()
+        await asyncio.sleep(delay)
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
             return
@@ -756,7 +771,7 @@ async def _bot_auto_accept(handle: str):
             "time_control": time_cfg["time_control"],
             "fischer_increment": time_cfg["fischer_increment"],
         })
-        logger.info("Bot auto-offer (after timeout): %s -> %s", bot_name, handle)
+        logger.info("Bot auto-offer (after timeout, delay=%ds): %s -> %s", delay, bot_name, handle)
     except asyncio.CancelledError:
         pass
     except Exception as e:
