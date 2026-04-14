@@ -231,8 +231,6 @@ class KifuDialog:
             self._ws.save_window(self.dlg, self.kifu_list, 5)
         except Exception:
             pass
-        self.app._current_kifu_dialog = None
-        if self.app._last_focused_dialog is self:
-            self.app._last_focused_dialog = None
+        self.app.on_kifu_dialog_closed(self)
         self.dlg.destroy()
 

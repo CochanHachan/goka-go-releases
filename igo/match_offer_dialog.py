@@ -316,7 +316,7 @@ class MatchOfferDialog:
                     if self.app.current_user:
                         my_name = self.app.current_user["handle_name"]
                     sender = msg.get("name", "")
-                    if sender != my_name and sender not in self.app._declined_offers:
+                    if sender != my_name and not self.app.is_offer_declined(sender):
                         msg["_addr"] = addr[0]
                         msg["_time"] = _time.time()
                         self._offers[sender] = msg
@@ -374,7 +374,7 @@ class MatchOfferDialog:
         if idx >= len(keys):
             return
         name = keys[idx]
-        self.app._declined_offers.add(name)
+        self.app.decline_offer(name)
         del self._offers[name]
         self._offer_highlighted_row = None
         self._refresh_list()
@@ -415,12 +415,7 @@ class MatchOfferDialog:
             user = self.app.current_user
             rank = elo_to_display_rank(user["elo_rating"]) if user else "?"
             elo = user["elo_rating"] if user else 0
-            self.app._cloud_main_time = offer.get("main_time", 600)
-            self.app._cloud_byo_time = offer.get("byo_time", 30)
-            self.app._cloud_byo_periods = offer.get("byo_periods", 5)
-            self.app._cloud_komi = offer.get("komi", 7.5)
-            self.app._cloud_time_control = offer.get("time_control", "byoyomi")
-            self.app._cloud_fischer_increment = offer.get("fischer_increment", 0)
+            self.app.set_cloud_game_params(offer)
             self.app.send_cloud_message({
                 "type": "match_accept",
                 "target": name,
@@ -437,11 +432,7 @@ class MatchOfferDialog:
 
     def _close_all(self):
         """Close button / X button: decline all offers and close."""
-        # Bot offers should NOT be added to declined list so they can
-        # send new offers on the next match request
-        for name in list(self._offers.keys()):
-            if not name.startswith("AIロボ"):
-                self.app._declined_offers.add(name)
+        self.app.decline_all_offers(self._offers.keys())
         self._close()
 
     def _save_col_widths(self):
@@ -463,11 +454,7 @@ class MatchOfferDialog:
             self.win.destroy()
         except Exception:
             pass
-        self.app._offer_dialog_open = False
-        self.app._current_offer_dialog = None
-        if self.app._last_focused_dialog is self:
-            self.app._last_focused_dialog = None
-        self.app._resume_match_listener()
+        self.app.on_offer_dialog_closed(self)
 
     def _cleanup(self):
         self._closed = True
