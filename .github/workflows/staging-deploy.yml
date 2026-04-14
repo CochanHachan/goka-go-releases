@@ -116,7 +116,7 @@ jobs:
           with open("igo_admin.py", "w", encoding="utf-8") as f:
               f.write(admin_content)
 
-          print("Switched to staging server URLs (port 8001)")
+          print("Switched to staging server URLs (136.110.101.14:8000)")
           print("App name updated to include [STAGING] label")
           print("Admin panel switched to staging server URL")
 
