@@ -313,6 +313,43 @@ class AdminApp:
                  font=("Yu Gothic UI", 10),
                  fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
 
+        # --- ロボ出現時間 ---
+        bot_delay_frame = tk.Frame(settings_bar, bg=T("root_bg"))
+        bot_delay_frame.pack(side="left", padx=(0, 16))
+
+        tk.Label(bot_delay_frame, text="ロボ出現",
+                 font=("Yu Gothic UI", 10),
+                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left", padx=(0, 4))
+
+        current_bot_delay = 60
+        try:
+            if server_settings:
+                current_bot_delay = int(server_settings.get("bot_offer_delay", 60))
+        except Exception:
+            pass
+
+        # 10秒刻み〜60秒 + 1分刻み〜10分 の選択肢
+        bot_delay_vals = []  # (display_text, seconds)
+        for s in range(10, 61, 10):
+            bot_delay_vals.append(("{}秒".format(s), s))
+        for m in range(2, 11):
+            bot_delay_vals.append(("{}分".format(m), m * 60))
+
+        self._bot_delay_display = [v[0] for v in bot_delay_vals]
+        self._bot_delay_seconds = [v[1] for v in bot_delay_vals]
+
+        # 現在値に対応する表示テキストを特定
+        current_display = "{}秒".format(current_bot_delay)
+        if current_bot_delay >= 120:
+            current_display = "{}分".format(current_bot_delay // 60)
+        elif current_bot_delay == 60:
+            current_display = "60秒"
+        self._bot_delay_var = tk.StringVar(value=current_display)
+        bot_delay_cb = ttk.Combobox(bot_delay_frame, textvariable=self._bot_delay_var,
+            values=self._bot_delay_display, state="readonly",
+            font=("Yu Gothic UI", 10), width=4)
+        bot_delay_cb.pack(side="left", padx=2)
+
         # --- テーマ設定 ---
         theme_frame = tk.LabelFrame(settings_bar, text="テーマ",
                                      font=("Yu Gothic UI", 9),
@@ -406,6 +443,7 @@ class AdminApp:
         self._apply_theme()
         self._apply_timeout()
         self._apply_fischer()
+        self._apply_bot_delay()
 
     def _apply_theme(self):
         new_theme = self._theme_var.get()
@@ -437,6 +475,15 @@ class AdminApp:
                 json.dump(cfg, f, ensure_ascii=False)
         except Exception:
             pass
+
+    def _apply_bot_delay(self):
+        display = self._bot_delay_var.get()
+        try:
+            idx = self._bot_delay_display.index(display)
+            seconds = self._bot_delay_seconds[idx]
+        except (ValueError, IndexError):
+            return
+        self._api_put("/api/settings", {"bot_offer_delay": seconds})
 
     def _apply_fischer(self):
         try:
