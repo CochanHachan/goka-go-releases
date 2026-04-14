@@ -14,7 +14,7 @@ from igo.glossy_button import GlossyButton
 from igo.window_settings import WindowSettings
 from igo.lang import L, set_language, get_language
 from igo.constants import (
-    APP_NAME, APP_VERSION, APP_BUILD, UPDATE_CHECK_URL,
+    APP_NAME, APP_VERSION, APP_BUILD, STAGING_LABEL, UPDATE_CHECK_URL,
     BOARD_SIZE, CELL_SIZE, MARGIN,
     EMPTY, BLACK, WHITE,
     TIME_LIMIT, NET_TCP_PORT, NET_UDP_PORT,
@@ -52,7 +52,7 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.withdraw()  # 初期化完了まで非表示（show_loginで表示）
-        self.root.title("\u7881\u83ef")
+        self.root.title(STAGING_LABEL + "\u7881\u83ef")
         self.root.configure(bg=T("root_bg"))
 
         _db_path = os.path.join(_get_app_data_dir(), "ui_settings.db")
@@ -232,7 +232,7 @@ class App:
 
     def _set_title(self, center_text=""):
         """タイトルバーを設定する。碁華は左、center_textを中央に配置。"""
-        prefix = "碁華"
+        prefix = STAGING_LABEL + "碁華"
         if not center_text:
             self.root.title(prefix)
             return
@@ -1065,7 +1065,7 @@ class App:
 
     def show_login(self):
         self.root.withdraw()
-        self.root.title("\u7881\u83ef")
+        self.root.title(STAGING_LABEL + "\u7881\u83ef")
         self.root.minsize(400, 400)
         self._save_geometry()
         self.root.config(menu="")

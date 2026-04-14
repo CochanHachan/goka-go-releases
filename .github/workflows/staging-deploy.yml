@@ -90,6 +90,11 @@ jobs:
               'APP_NAME        = "碁華 Goka GO"',
               'APP_NAME        = "碁華 Goka GO [STAGING]"'
           )
+          # タイトルバーにステージングラベルを表示
+          content = content.replace(
+              'STAGING_LABEL   = ""',
+              'STAGING_LABEL   = "[STAGING] "'
+          )
 
           with open("igo/constants.py", "w", encoding="utf-8") as f:
               f.write(content)
