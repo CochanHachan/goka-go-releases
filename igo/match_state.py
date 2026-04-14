@@ -71,7 +71,7 @@ class MatchSettings:
                 self.komi, self.time_control, self.fischer_increment)
 
 
-def broadcast_match_taken(host_name):
+def broadcast_match_taken(host_name, accepter_name=""):
     """match_taken を LAN にブロードキャストする。
 
     従来は match_dialog._cancel_hosting, _hosting_timeout, _on_close,
@@ -85,6 +85,7 @@ def broadcast_match_taken(host_name):
         msg = json.dumps({
             "type": "match_taken",
             "host_name": host_name,
+            "accepter_name": accepter_name,
         }).encode("utf-8")
         sock.sendto(msg, ("<broadcast>", NET_UDP_PORT + 1))
         sock.close()

@@ -1944,7 +1944,7 @@ class App:
                 katago = KataGoGTP(visits=bot_visits)
                 katago.start()
                 katago.set_boardsize(19)
-                katago.set_komi(komi)
+                katago.set_komi(ms.komi)
                 katago.clear_board()
                 self._ai_katago = katago
                 # If AI is black (plays first), make AI move
