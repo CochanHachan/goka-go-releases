@@ -45,6 +45,7 @@ a = Analysis(
         'igo_cloud_client',
         # igo package modules
         'igo',
+        'igo.constants_env',
         'igo.constants',
         'igo.config',
         'igo.elo',
