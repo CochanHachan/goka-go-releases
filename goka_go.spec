@@ -15,10 +15,23 @@ tksheet_datas, tksheet_binaries, tksheet_hiddenimports = collect_all('tksheet')
 # Windows 環境でビープ音が鳴る原因になる
 pygame_datas, pygame_binaries, pygame_hiddenimports = collect_all('pygame')
 
+# pygame の mp3 デコーダー (libmpg123-0.dll) を明示的に同梱する
+# collect_all('pygame') では取得されないため手動で追加が必要
+import glob as _glob
+_mp3_dlls = []
+for _pat in [
+    'C:/hostedtoolcache/windows/Python/*/x64/Lib/site-packages/pygame/libmpg123-0.dll',
+    'C:/hostedtoolcache/windows/Python/*/x64/Lib/site-packages/pygame/SDL2_mixer.dll',
+]:
+    _found = _glob.glob(_pat)
+    if _found:
+        _mp3_dlls.append((_found[0], '.'))
+print('mp3 dlls found:', _mp3_dlls)
+
 a = Analysis(
     ['igo_game.py'],
     pathex=['.'],
-    binaries=[] + tksheet_binaries + pygame_binaries,
+    binaries=[] + tksheet_binaries + pygame_binaries + _mp3_dlls,
     datas=[
         # 画像リソース
         ('board_texture.png',       '.'),
