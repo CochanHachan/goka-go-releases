@@ -127,7 +127,11 @@ jobs:
                       zf.extract(member, "katago")
 
           model_url = "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"
-          with urllib.request.urlopen(model_url) as resp, open("model.bin.gz", "wb") as out:
+          req = urllib.request.Request(
+              model_url,
+              headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+          )
+          with urllib.request.urlopen(req) as resp, open("model.bin.gz", "wb") as out:
               shutil.copyfileobj(resp, out)
           with gzip.open("model.bin.gz", "rb") as src, open(os.path.join("katago", "model.bin"), "wb") as dst:
               shutil.copyfileobj(src, dst)
