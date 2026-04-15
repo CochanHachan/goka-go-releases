@@ -1392,7 +1392,8 @@ class App:
                 black_name=opponent_name, black_rank=opponent_rank,
                 white_name=my_name, white_rank=my_rank)
         self.go_board.setup_network_game(my_color, main_time, byo_time, byo_periods, komi,
-                                             time_control=time_control, fischer_increment=fischer_increment)
+                                             time_control=time_control, fischer_increment=fischer_increment,
+                                             start_timer=not self._ai_mode)
         self.go_board.opponent_elo = opponent_elo
         # Update title bar: 黒名(棋力) VS 白名(棋力) コミX目半
         b_name = self.go_board.black_name
@@ -1955,12 +1956,9 @@ class App:
                                   time_control=ms.time_control,
                                   fischer_increment=ms.fischer_increment)
 
-        # AI対局中はタイマーを一時停止する（KataGo初期化に時間がかかるため）
-        # KataGo準備完了後に再開する
-        if self.go_board:
-            self.go_board._timer_running = False
-
         # Start KataGo in background thread (model loading takes time)
+        # タイマーは start_timer=False で開始していないので、
+        # KataGo準備完了後に _ai_on_katago_ready() で _start_timer() を呼ぶ。
         def _init_katago():
             try:
                 katago = KataGoGTP(visits=bot_visits, human_profile=bot_human_profile, human_lambda=bot_human_lambda, fallback_visits=bot_fallback_visits)
