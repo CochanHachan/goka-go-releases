@@ -213,8 +213,11 @@ def _play_music(path):
     """
     try:
         import pygame
+        _write_debug("_play_music: loading {}".format(path))
         with _music_lock:
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
-    except (ImportError, OSError, RuntimeError) as e:
+        _write_debug("_play_music: play() called OK")
+    except Exception as e:
+        _write_debug("_play_music ERROR: {} - {}".format(type(e).__name__, e))
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)
