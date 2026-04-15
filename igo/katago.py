@@ -18,8 +18,11 @@ logger = logging.getLogger(__name__)
 class KataGoGTP:
     """KataGo GTP process for AI games."""
 
-    def __init__(self, visits=50):
+    def __init__(self, visits=50, human_profile="", human_lambda=100000000, fallback_visits=None):
         self.visits = visits
+        self.human_profile = human_profile
+        self.human_lambda = human_lambda
+        self.fallback_visits = fallback_visits if fallback_visits is not None else visits
         self.proc = None
         self._lock = threading.Lock()
 
@@ -29,6 +32,7 @@ class KataGoGTP:
         _exe = "katago.exe" if platform.system() == "Windows" else "katago"
         katago_exe = os.path.join(katago_dir, _exe)
         model_file = os.path.join(katago_dir, "model.bin")
+        human_model_file = os.path.join(katago_dir, "human_model.bin")
         config_file = os.path.join(katago_dir, "default_gtp.cfg")
 
         if not os.path.exists(katago_exe):
@@ -36,12 +40,49 @@ class KataGoGTP:
         if not os.path.exists(model_file):
             raise RuntimeError("モデルファイルが見つかりません: " + model_file)
 
-        override = "maxVisits={},numSearchThreads=1,ponderingEnabled=false".format(
-            self.visits)
+        use_human = (self.human_profile
+                     and os.path.exists(human_model_file))
+        if self.human_profile and not os.path.exists(human_model_file):
+            logger.warning(
+                "human_model.bin not found at %s — falling back to standard mode "
+                "(visits: %d → %d)",
+                human_model_file, self.visits, self.fallback_visits,
+            )
+
+        if use_human:
+            override = (
+                "maxVisits={},numSearchThreads=1,ponderingEnabled=false,"
+                "humanSLProfile={},"
+                "humanSLChosenMoveProp=1.0,"
+                "humanSLChosenMoveIgnorePass=true,"
+                "humanSLChosenMovePiklLambda={},"
+                "allowResignation=true,"
+                "resignThreshold=-0.99,"
+                "resignConsecTurns=20,"
+                "resignMinScoreDifference=40"
+            ).format(self.visits, self.human_profile, self.human_lambda)
+            cmd = [
+                katago_exe, "gtp",
+                "-config", config_file,
+                "-model", model_file,
+                "-human-model", human_model_file,
+                "-override-config", override,
+            ]
+        else:
+            effective_visits = self.fallback_visits if self.human_profile else self.visits
+            override = "maxVisits={},numSearchThreads=1,ponderingEnabled=false".format(
+                effective_visits)
+            cmd = [
+                katago_exe, "gtp",
+                "-config", config_file,
+                "-model", model_file,
+                "-override-config", override,
+            ]
+        logger.info("KataGo start: human_profile=%s, visits=%d, use_human=%s",
+                    self.human_profile, self.visits, use_human)
 
         self.proc = subprocess.Popen(
-            [katago_exe, "gtp", "-config", config_file, "-model", model_file,
-             "-override-config", override],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

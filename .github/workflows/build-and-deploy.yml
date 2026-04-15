@@ -176,6 +176,17 @@ jobs:
                   shutil.copyfileobj(f_in, f_out)
           print(f"  Extracted: model.bin ({os.path.getsize(os.path.join('katago', 'model.bin')) / (1024*1024):.1f} MB)")
 
+          # Human SL モデル（humanSLProfile 用、人間らしい着手を再現）
+          human_url = "https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz"
+          human_gz = "human_model.bin.gz"
+          print(f"Downloading KataGo Human SL model from {human_url}...")
+          urllib.request.urlretrieve(human_url, human_gz)
+
+          with gzip.open(human_gz, "rb") as f_in:
+              with open(os.path.join("katago", "human_model.bin"), "wb") as f_out:
+                  shutil.copyfileobj(f_in, f_out)
+          print(f"  Extracted: human_model.bin ({os.path.getsize(os.path.join('katago', 'human_model.bin')) / (1024*1024):.1f} MB)")
+
           # KataGoData フォルダ作成（初回起動時に自動生成されるが、Inno Setupに必要）
           os.makedirs(os.path.join("katago", "KataGoData"), exist_ok=True)
           # プレースホルダーファイル
