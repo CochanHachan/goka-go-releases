@@ -108,7 +108,7 @@ class KataGoGTP:
 
         # KataGo GTPモードのstderrをバックグラウンドで読み捨てつつログに記録する。
         # stderr=DEVNULL だとKataGoが起動失敗しても原因が全くわからないため、
-        # パイプで受け取ゃてファイルに記録する。
+        # パイプで受け取ってファイルに記録する。
         self._stderr_lines = []
 
         def _drain_gtp_stderr():
@@ -117,7 +117,7 @@ class KataGoGTP:
                     self._stderr_lines.append(raw)
             except OSError:
                 pass
-            # プロセスき終了時にログに書き出す
+            # プロセス終了時にログに書き出す
             if self._stderr_lines:
                 try:
                     log_path = os.path.join(os.path.expanduser("~"), "goka_katago_gtp_log.txt")
@@ -155,3 +155,67 @@ class KataGoGTP:
             except (OSError, BrokenPipeError, ValueError):
                 logger.warning("GTP send_command failed: %s", cmd, exc_info=True)
                 return None
+
+    def set_boardsize(self, size=19):
+        self.send_command("boardsize {}".format(size))
+
+    def set_komi(self, komi=7.5):
+        self.send_command("komi {}".format(komi))
+
+    def clear_board(self):
+        self.send_command("clear_board")
+
+    def play(self, color, vertex):
+        """Tell KataGo about a move. color='B'/'W', vertex='D4'/'pass'."""
+        return self.send_command("play {} {}".format(color, vertex))
+
+    def time_left(self, color, seconds, stones=0):
+        """Send time_left GTP command so KataGo knows the remaining time.
+
+        color: 'B' or 'W'
+        seconds: remaining seconds (int)
+        stones: stones left in period (0 for Fischer/sudden death)
+        """
+        self.send_command("time_left {} {} {}".format(color, int(seconds), int(stones)))
+
+    def genmove(self, color):
+        """Ask KataGo to generate a move. Returns vertex like 'D4' or 'pass'."""
+        resp = self.send_command("genmove {}".format(color))
+        if resp and resp.startswith("="):
+            move = resp.split()[-1].strip()
+            return move
+        return None
+
+    def stop(self):
+        """Stop KataGo process."""
+        if self.proc:
+            try:
+                self.proc.stdin.write(b"quit\n")
+                self.proc.stdin.flush()
+                self.proc.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                logger.debug("KataGo quit/wait failed, killing", exc_info=True)
+                try:
+                    self.proc.kill()
+                except OSError:
+                    logger.debug("KataGo kill also failed", exc_info=True)
+            self.proc = None
+
+    @staticmethod
+    def gtp_vertex_to_coords(vertex):
+        """Convert GTP vertex (e.g. 'D4') to board coords (col, row)."""
+        if vertex.lower() == "pass" or vertex.lower() == "resign":
+            return vertex.lower(), -1, -1
+        col_letter = vertex[0].upper()
+        col = ord(col_letter) - ord('A')
+        if col >= 8:  # GTP skips 'I'
+            col -= 1
+        row = 19 - int(vertex[1:])
+        return "move", col, row
+
+    @staticmethod
+    def coords_to_gtp_vertex(x, y, size=19):
+        """Convert board coords (col, row) to GTP vertex (e.g. 'D4')."""
+        col_letter = chr(ord('A') + (x if x < 8 else x + 1))  # skip I
+        row_num = size - y
+        return "{}{}".format(col_letter, row_num)
