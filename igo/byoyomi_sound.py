@@ -177,6 +177,10 @@ def _play_music(path):
     ビープ音になることがある。mixer.music は SDL_mixer の
     Music API を使い、mp3 を正しくデコードできる。
 
+    新しい音声は現在再生中の音声を即座に中断して開始する。
+    これにより秒読みカウントダウンのような連続再生で
+    遅延が蓄積しない（旧 Sound.play() と同じ挙動）。
+
     この関数はデーモンスレッドから呼ばれる。
     pygame.mixer.music の再生はバックグラウンドで行われるため、
     スレッドが終了すると再生が中断される場合がある。
@@ -186,12 +190,15 @@ def _play_music(path):
         import pygame
         import time as _time
         with _music_lock:
+            # 再生中の音声があれば即停止（新しい音声で上書き）
+            pygame.mixer.music.stop()
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
-            # デーモンスレッドが終了すると再生が中断されるため、
-            # 再生完了まで待機する（最大30秒タイムアウト）。
-            deadline = _time.time() + 30
-            while pygame.mixer.music.get_busy() and _time.time() < deadline:
-                _time.sleep(0.1)
+        # ロック外で再生完了を待機する。
+        # ロック保持中に待機すると、秒読み等の連続再生が
+        # キュー詰まりを起こしてカウントダウンが遅延する。
+        deadline = _time.time() + 30
+        while pygame.mixer.music.get_busy() and _time.time() < deadline:
+            _time.sleep(0.1)
     except Exception as e:
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)
