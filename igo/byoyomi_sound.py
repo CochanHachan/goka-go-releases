@@ -12,6 +12,7 @@
 """
 import logging
 import os
+import sys
 import threading
 
 from igo.config import _get_install_dir
@@ -42,8 +43,14 @@ def _init_mixer():
         return False
 
     # sounds/ フォルダを探す
-    for d in [_get_install_dir(),
-              os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]:
+    # PyInstaller でビルドした exe では _internal/ 下に展開される (sys._MEIPASS)
+    _meipass = getattr(sys, '_MEIPASS', None)
+    _search_dirs = [d for d in [
+        _meipass,
+        _get_install_dir(),
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ] if d]
+    for d in _search_dirs:
         candidate = os.path.join(d, "sounds")
         if os.path.isdir(candidate):
             _sound_dir = candidate
