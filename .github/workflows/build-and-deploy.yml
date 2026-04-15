@@ -385,6 +385,12 @@ jobs:
           git add web/index.html
           git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git pull --rebase origin main && git push)
 
+      - name: Trigger GitHub Pages deploy
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-web.yml
+
       - name: Deploy server (git pull + restart)
         continue-on-error: true
         shell: bash
