@@ -104,8 +104,10 @@ def play_timeout_sound():
 
 
 def play_robot_appear():
-    """ロボ出現時の音声を再生する。"""
-    threading.Thread(target=_play, args=("robot_appear.mp3",), daemon=True).start()
+    """ロボ出現時の音声を再生する（言語別プレフィックス付き、フォールバック有）。"""
+    filename = "{}robot_appear.mp3".format(_prefix())
+    threading.Thread(target=_play_with_fallback,
+                     args=(filename, "Jrobot_appear.mp3"), daemon=True).start()
 
 
 def _seconds_to_filename(sec):
@@ -128,6 +130,20 @@ def _play(filename):
         if not _init_mixer():
             return
         snd = _get_sound(filename)
+        if snd:
+            snd.play()
+    except (ImportError, OSError, RuntimeError) as e:
+        _logger.warning("play error: %s %s", filename, e, exc_info=True)
+
+
+def _play_with_fallback(filename, fallback):
+    """再生処理（言語別ファイルが無い場合はフォールバック）。"""
+    try:
+        if not _init_mixer():
+            return
+        snd = _get_sound(filename)
+        if not snd and fallback != filename:
+            snd = _get_sound(fallback)
         if snd:
             snd.play()
     except (ImportError, OSError, RuntimeError) as e:
