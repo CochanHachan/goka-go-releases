@@ -124,6 +124,15 @@ class KataGoGTP:
         """Tell KataGo about a move. color='B'/'W', vertex='D4'/'pass'."""
         return self.send_command("play {} {}".format(color, vertex))
 
+    def time_left(self, color, seconds, stones=0):
+        """Send time_left GTP command so KataGo knows the remaining time.
+
+        color: 'B' or 'W'
+        seconds: remaining seconds (int)
+        stones: stones left in period (0 for Fischer/sudden death)
+        """
+        self.send_command("time_left {} {} {}".format(color, int(seconds), int(stones)))
+
     def genmove(self, color):
         """Ask KataGo to generate a move. Returns vertex like 'D4' or 'pass'."""
         resp = self.send_command("genmove {}".format(color))
