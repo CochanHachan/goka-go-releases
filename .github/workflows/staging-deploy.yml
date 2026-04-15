@@ -136,11 +136,86 @@ jobs:
 
           print("\nAll verifications passed.")
 
+      - name: Download KataGo
+        shell: python
+        run: |
+          import urllib.request, zipfile, gzip, shutil, os
+
+          # KataGo OpenCL Windows x64 バイナリ
+          katago_url = "https://github.com/lightvector/KataGo/releases/download/v1.16.4/katago-v1.16.4-opencl-windows-x64.zip"
+          katago_zip = "katago-opencl.zip"
+          print(f"Downloading KataGo binary from {katago_url}...")
+          urllib.request.urlretrieve(katago_url, katago_zip)
+
+          os.makedirs("katago", exist_ok=True)
+          with zipfile.ZipFile(katago_zip, "r") as zf:
+              for member in zf.infolist():
+                  name = member.filename
+                  if name.endswith((".exe", ".dll", ".cfg", ".pem")):
+                      member.filename = os.path.basename(name)
+                      zf.extract(member, "katago")
+                      print(f"  Extracted: {member.filename}")
+
+          # KataGo ニューラルネットモデル
+          model_url = "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"
+          model_gz = "model.bin.gz"
+          print(f"Downloading KataGo model from {model_url}...")
+          req = urllib.request.Request(model_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+          with urllib.request.urlopen(req) as resp, open(model_gz, "wb") as out:
+              shutil.copyfileobj(resp, out)
+
+          with gzip.open(model_gz, "rb") as f_in:
+              with open(os.path.join("katago", "model.bin"), "wb") as f_out:
+                  shutil.copyfileobj(f_in, f_out)
+          print(f"  Extracted: model.bin ({os.path.getsize(os.path.join('katago', 'model.bin')) / (1024*1024):.1f} MB)")
+
+          # Human SL モデル（humanSLProfile 用）
+          human_url = "https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz"
+          human_gz = "human_model.bin.gz"
+          print(f"Downloading KataGo Human SL model from {human_url}...")
+          urllib.request.urlretrieve(human_url, human_gz)
+
+          with gzip.open(human_gz, "rb") as f_in:
+              with open(os.path.join("katago", "human_model.bin"), "wb") as f_out:
+                  shutil.copyfileobj(f_in, f_out)
+          print(f"  Extracted: human_model.bin ({os.path.getsize(os.path.join('katago', 'human_model.bin')) / (1024*1024):.1f} MB)")
+
+          # KataGoData フォルダ作成
+          os.makedirs(os.path.join("katago", "KataGoData"), exist_ok=True)
+          with open(os.path.join("katago", "KataGoData", ".keep"), "w") as f:
+              f.write("")
+
+          print("KataGo setup complete.")
+          for fn in sorted(os.listdir("katago")):
+              fp = os.path.join("katago", fn)
+              if os.path.isfile(fp):
+                  print(f"  {fn}: {os.path.getsize(fp) / (1024*1024):.2f} MB")
+
       - name: Build client with PyInstaller
         run: pyinstaller goka_go.spec --noconfirm
 
       - name: Build admin panel with PyInstaller
         run: pyinstaller igo_admin.spec --noconfirm
+
+      - name: Copy KataGo into dist folder
+        shell: python
+        run: |
+          import shutil, os
+
+          # PyInstaller の出力フォルダに KataGo ファイルをコピー
+          # 本番ビルドでは Inno Setup が別途バンドルするが、
+          # ステージングでは PyInstaller + ZIP なので手動コピーが必要
+          src = "katago"
+          dst = os.path.join("dist", "goka_go", "katago")
+          if os.path.isdir(src):
+              shutil.copytree(src, dst, dirs_exist_ok=True)
+              print(f"Copied {src} -> {dst}")
+              for fn in sorted(os.listdir(dst)):
+                  fp = os.path.join(dst, fn)
+                  if os.path.isfile(fp):
+                      print(f"  {fn}: {os.path.getsize(fp) / (1024*1024):.2f} MB")
+          else:
+              print(f"WARNING: {src} not found, KataGo will not be available")
 
       - name: Create staging ZIPs
         shell: python

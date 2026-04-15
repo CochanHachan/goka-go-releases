@@ -132,7 +132,7 @@ def _play(filename):
         snd = _get_sound(filename)
         if snd:
             snd.play()
-    except (ImportError, OSError, RuntimeError) as e:
+    except Exception as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
 
 
@@ -155,7 +155,7 @@ def _play_with_fallback(filename, fallback):
             _play_music(path)
         else:
             _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
-    except (ImportError, OSError, RuntimeError) as e:
+    except Exception as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
 
 
@@ -196,5 +196,5 @@ def _play_music(path):
             deadline = _time.time() + 30
             while pygame.mixer.music.get_busy() and _time.time() < deadline:
                 _time.sleep(0.1)
-    except (ImportError, OSError, RuntimeError) as e:
+    except Exception as e:
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)
