@@ -35,6 +35,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 # 同時実行を防止（PRマージの自動実行と手動実行が競合するのを防ぐ）
 concurrency:
@@ -377,17 +378,6 @@ jobs:
 
           print(f"Updated download link to v{version}")
 
-      - name: Deploy to Netlify
-        continue-on-error: true
-        shell: bash
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: |
-          npx netlify-cli deploy --prod --dir=web \
-            --site="${NETLIFY_SITE_ID}" \
-            --auth="${NETLIFY_AUTH_TOKEN}"
-
       - name: Commit homepage update
         shell: bash
         env:
@@ -395,6 +385,12 @@ jobs:
         run: |
           git add web/index.html
           git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git pull --rebase origin main && git push)
+
+      - name: Trigger GitHub Pages deploy
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-web.yml
 
       - name: Deploy server (git pull + restart)
         continue-on-error: true
