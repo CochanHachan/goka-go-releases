@@ -1971,7 +1971,7 @@ class App:
                 self._ai_katago = katago
                 # KataGo準備完了 → タイマー再開してAI着手
                 self.root.after(0, self._ai_on_katago_ready)
-            except (OSError, RuntimeError, ValueError) as e:
+            except Exception as e:
                 logger.warning("KataGo init failed", exc_info=True)
                 self.root.after(0, lambda: self._ai_init_failed(str(e)))
 
