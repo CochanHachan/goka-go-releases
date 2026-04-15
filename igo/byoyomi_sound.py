@@ -127,10 +127,19 @@ def _seconds_to_filename(sec):
 def _play(filename):
     """実際の再生処理（スレッド内で実行）。
 
-    Windows環境で pygame.mixer.Sound(mp3) がビープ音化するケースがあるため、
-    ここでは常に pygame.mixer.music 経由で再生する。
+    pygame.mixer.Sound() は Windows で mp3 を正しくデコードできず
+    ビープ音になる問題があるため、mixer.music 経由で再生する。
     """
-    _play_with_fallback(filename, filename)
+    try:
+        if not _init_mixer():
+            return
+        path = _resolve_sound_path(filename)
+        if path:
+            _play_music(path)
+        else:
+            _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
+    except (ImportError, OSError, RuntimeError) as e:
+        _logger.warning("play error: %s %s", filename, e, exc_info=True)
 
 
 def _play_with_fallback(filename, fallback):
@@ -152,7 +161,7 @@ def _play_with_fallback(filename, fallback):
             _play_music(path)
         else:
             _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
 
 
@@ -176,29 +185,11 @@ def _play_music(path):
     pygame.mixer.Sound() は Windows で mp3 デコードに失敗し
     ビープ音になることがある。mixer.music は SDL_mixer の
     Music API を使い、mp3 を正しくデコードできる。
-
-    新しい音声は現在再生中の音声を即座に中断して開始する。
-    これにより秒読みカウントダウンのような連続再生で
-    遅延が蓄積しない（旧 Sound.play() と同じ挙動）。
-
-    この関数はデーモンスレッドから呼ばれる。
-    pygame.mixer.music の再生はバックグラウンドで行われるため、
-    スレッドが終了すると再生が中断される場合がある。
-    再生完了まで get_busy() でポーリングしてスレッドを維持する。
     """
     try:
         import pygame
-        import time as _time
         with _music_lock:
-            # 再生中の音声があれば即停止（新しい音声で上書き）
-            pygame.mixer.music.stop()
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
-        # ロック外で再生完了を待機する。
-        # ロック保持中に待機すると、秒読み等の連続再生が
-        # キュー詰まりを起こしてカウントダウンが遅延する。
-        deadline = _time.time() + 30
-        while pygame.mixer.music.get_busy() and _time.time() < deadline:
-            _time.sleep(0.1)
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)

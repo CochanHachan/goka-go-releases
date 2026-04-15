@@ -1372,7 +1372,7 @@ class App:
                     "\u30a8\u30e9\u30fc", "\u63a5\u7d9a\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: {}".format(e)))
         threading.Thread(target=_connect, daemon=True).start()
 
-    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=7.5, opponent_elo=0, time_control="byoyomi", fischer_increment=0):
+    def _start_network_game(self, my_color, opponent_name, opponent_rank, main_time, byo_time, byo_periods, komi=7.5, opponent_elo=0, time_control="byoyomi", fischer_increment=0, delay_timer=False):
         if not self.go_board:
             return
         user = self.current_user
@@ -1393,7 +1393,7 @@ class App:
                 white_name=my_name, white_rank=my_rank)
         self.go_board.setup_network_game(my_color, main_time, byo_time, byo_periods, komi,
                                              time_control=time_control, fischer_increment=fischer_increment,
-                                             start_timer=not self._ai_mode)
+                                             delay_timer=delay_timer)
         self.go_board.opponent_elo = opponent_elo
         # Update title bar: 黒名(棋力) VS 白名(棋力) コミX目半
         b_name = self.go_board.black_name
@@ -1950,15 +1950,17 @@ class App:
 
         # Use current match settings
         ms = self._cloud_match_settings
+        # delay_timer=True: KataGo 初期化完了まで _start_timer() を遅延させる。
+        # 従来の「_start_network_game() 後に _timer_running = False で止める」方式は
+        # _tick() の世代カウンターと競合してタイマーが再起動しないバグを引き起こすため廃止。
         self._start_network_game(my_color, opponent_name, opponent_rank,
                                   ms.main_time, ms.byo_time, ms.byo_periods,
                                   ms.komi, opponent_elo,
                                   time_control=ms.time_control,
-                                  fischer_increment=ms.fischer_increment)
+                                  fischer_increment=ms.fischer_increment,
+                                  delay_timer=True)
 
         # Start KataGo in background thread (model loading takes time)
-        # タイマーは start_timer=False で開始していないので、
-        # KataGo準備完了後に _ai_on_katago_ready() で _start_timer() を呼ぶ。
         def _init_katago():
             try:
                 katago = KataGoGTP(visits=bot_visits, human_profile=bot_human_profile, human_lambda=bot_human_lambda, fallback_visits=bot_fallback_visits)
@@ -1969,13 +1971,8 @@ class App:
                 self._ai_katago = katago
                 # KataGo準備完了 → タイマー再開してAI着手
                 self.root.after(0, self._ai_on_katago_ready)
-            except Exception as e:
-                # 全ての例外をキャッチする。
-                # 以前は (OSError, RuntimeError, ValueError) のみキャッチしていたが、
-                # subprocess.SubprocessError, TimeoutError, FileNotFoundError 等の
-                # 予期しない例外が発生した場合にスレッドが無言で終了し、
-                # タイマーが永久に停止する（4:59で止まる）バグがあった。
-                logger.warning("KataGo init failed: %s", e, exc_info=True)
+            except (OSError, RuntimeError, ValueError) as e:
+                logger.warning("KataGo init failed", exc_info=True)
                 self.root.after(0, lambda: self._ai_init_failed(str(e)))
 
         threading.Thread(target=_init_katago, daemon=True).start()

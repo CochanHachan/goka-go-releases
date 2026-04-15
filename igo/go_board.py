@@ -822,14 +822,11 @@ class GoBoard:
             callback=_after_resign_ok)
 
     def setup_network_game(self, my_color, main_time, byo_time, byo_periods, komi=7.5,
-                           time_control="byoyomi", fischer_increment=10,
-                           start_timer=True):
+                           time_control="byoyomi", fischer_increment=10, delay_timer=False):
         """Initialize board for network play.
 
-        Args:
-            start_timer: Trueならタイマーを即開始する（通常対局）。
-                         Falseならタイマーを開始しない（AI対局時は
-                         KataGo初期化完了後に _start_timer() を呼ぶ）。
+        delay_timer=True のときはタイマーを起動しない（AI対局でKataGo初期化完了後に
+        _start_timer() を呼ぶため）。False なら従来通り即時起動。
         """
         self.net_mode = True
         self.my_color = my_color
@@ -846,9 +843,8 @@ class GoBoard:
         self._full_redraw()
         self._update_time_display()
         self._update_komi_label()
-        # Start timer immediately for normal network games.
-        # AI games pass start_timer=False and start after KataGo is ready.
-        if start_timer:
+        # AI対局時は KataGo 初期化完了まで待ってから _start_timer() を呼ぶ
+        if not delay_timer:
             self._start_timer()
         # Enable buttons based on whose turn it is (black goes first)
         is_my_turn = (my_color == BLACK)
