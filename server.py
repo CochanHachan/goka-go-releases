@@ -66,43 +66,44 @@ _ENV_LABEL = os.environ.get("GOKA_ENV", "production")
 AI_BOTS = {
     # 級位者 (20級〜1級)  AIロボ1(弱)〜AIロボ30(最強)
     # human_profile: KataGo humanSLProfile（人間らしい着手を再現）
-    # visits: maxVisits（級位者は40=パス/投了判定用、段位者は強さに応じて増加）
+    # visits: maxVisits（Human SLモード用。級位者は40=パス/投了判定用、段位者は強さに応じて増加）
+    # fallback_visits: human_model.bin が無い場合のフォールバック用 maxVisits
     # human_lambda: humanSLChosenMovePiklLambda
     #   大きい値(100000000)=Human SLモデルに完全追従（級位者向け）
     #   小さい値→KataGoの最善手に近づく（高段者の悪手抑制に使用）
-    "AIロボ1":  {"elo": 430,  "rank": "20級", "visits": 40, "human_profile": "preaz_20k", "human_lambda": 100000000},
-    "AIロボ2":  {"elo": 490,  "rank": "19級", "visits": 40, "human_profile": "preaz_19k", "human_lambda": 100000000},
-    "AIロボ3":  {"elo": 550,  "rank": "18級", "visits": 40, "human_profile": "preaz_18k", "human_lambda": 100000000},
-    "AIロボ4":  {"elo": 610,  "rank": "17級", "visits": 40, "human_profile": "preaz_17k", "human_lambda": 100000000},
-    "AIロボ5":  {"elo": 670,  "rank": "16級", "visits": 40, "human_profile": "preaz_16k", "human_lambda": 100000000},
-    "AIロボ6":  {"elo": 730,  "rank": "15級", "visits": 40, "human_profile": "preaz_15k", "human_lambda": 100000000},
-    "AIロボ7":  {"elo": 790,  "rank": "14級", "visits": 40, "human_profile": "preaz_14k", "human_lambda": 100000000},
-    "AIロボ8":  {"elo": 850,  "rank": "13級", "visits": 40, "human_profile": "preaz_13k", "human_lambda": 100000000},
-    "AIロボ9":  {"elo": 910,  "rank": "12級", "visits": 40, "human_profile": "preaz_12k", "human_lambda": 100000000},
-    "AIロボ10": {"elo": 970,  "rank": "11級", "visits": 40, "human_profile": "preaz_11k", "human_lambda": 100000000},
-    "AIロボ11": {"elo": 1050, "rank": "10級", "visits": 40, "human_profile": "preaz_10k", "human_lambda": 100000000},
-    "AIロボ12": {"elo": 1150, "rank": "9級",  "visits": 40, "human_profile": "preaz_9k",  "human_lambda": 100000000},
-    "AIロボ13": {"elo": 1250, "rank": "8級",  "visits": 40, "human_profile": "preaz_8k",  "human_lambda": 100000000},
-    "AIロボ14": {"elo": 1350, "rank": "7級",  "visits": 40, "human_profile": "preaz_7k",  "human_lambda": 100000000},
-    "AIロボ15": {"elo": 1450, "rank": "6級",  "visits": 40, "human_profile": "preaz_6k",  "human_lambda": 100000000},
-    "AIロボ16": {"elo": 1550, "rank": "5級",  "visits": 40, "human_profile": "preaz_5k",  "human_lambda": 100000000},
-    "AIロボ17": {"elo": 1650, "rank": "4級",  "visits": 40, "human_profile": "preaz_4k",  "human_lambda": 100000000},
-    "AIロボ18": {"elo": 1750, "rank": "3級",  "visits": 40, "human_profile": "preaz_3k",  "human_lambda": 100000000},
-    "AIロボ19": {"elo": 1850, "rank": "2級",  "visits": 40, "human_profile": "preaz_2k",  "human_lambda": 100000000},
-    "AIロボ20": {"elo": 1975, "rank": "1級",  "visits": 40, "human_profile": "preaz_1k",  "human_lambda": 100000000},
+    "AIロボ1":  {"elo": 430,  "rank": "20級", "visits": 40, "fallback_visits": 1,    "human_profile": "preaz_20k", "human_lambda": 100000000},
+    "AIロボ2":  {"elo": 490,  "rank": "19級", "visits": 40, "fallback_visits": 1,    "human_profile": "preaz_19k", "human_lambda": 100000000},
+    "AIロボ3":  {"elo": 550,  "rank": "18級", "visits": 40, "fallback_visits": 2,    "human_profile": "preaz_18k", "human_lambda": 100000000},
+    "AIロボ4":  {"elo": 610,  "rank": "17級", "visits": 40, "fallback_visits": 2,    "human_profile": "preaz_17k", "human_lambda": 100000000},
+    "AIロボ5":  {"elo": 670,  "rank": "16級", "visits": 40, "fallback_visits": 3,    "human_profile": "preaz_16k", "human_lambda": 100000000},
+    "AIロボ6":  {"elo": 730,  "rank": "15級", "visits": 40, "fallback_visits": 3,    "human_profile": "preaz_15k", "human_lambda": 100000000},
+    "AIロボ7":  {"elo": 790,  "rank": "14級", "visits": 40, "fallback_visits": 4,    "human_profile": "preaz_14k", "human_lambda": 100000000},
+    "AIロボ8":  {"elo": 850,  "rank": "13級", "visits": 40, "fallback_visits": 5,    "human_profile": "preaz_13k", "human_lambda": 100000000},
+    "AIロボ9":  {"elo": 910,  "rank": "12級", "visits": 40, "fallback_visits": 6,    "human_profile": "preaz_12k", "human_lambda": 100000000},
+    "AIロボ10": {"elo": 970,  "rank": "11級", "visits": 40, "fallback_visits": 8,    "human_profile": "preaz_11k", "human_lambda": 100000000},
+    "AIロボ11": {"elo": 1050, "rank": "10級", "visits": 40, "fallback_visits": 10,   "human_profile": "preaz_10k", "human_lambda": 100000000},
+    "AIロボ12": {"elo": 1150, "rank": "9級",  "visits": 40, "fallback_visits": 14,   "human_profile": "preaz_9k",  "human_lambda": 100000000},
+    "AIロボ13": {"elo": 1250, "rank": "8級",  "visits": 40, "fallback_visits": 18,   "human_profile": "preaz_8k",  "human_lambda": 100000000},
+    "AIロボ14": {"elo": 1350, "rank": "7級",  "visits": 40, "fallback_visits": 24,   "human_profile": "preaz_7k",  "human_lambda": 100000000},
+    "AIロボ15": {"elo": 1450, "rank": "6級",  "visits": 40, "fallback_visits": 32,   "human_profile": "preaz_6k",  "human_lambda": 100000000},
+    "AIロボ16": {"elo": 1550, "rank": "5級",  "visits": 40, "fallback_visits": 42,   "human_profile": "preaz_5k",  "human_lambda": 100000000},
+    "AIロボ17": {"elo": 1650, "rank": "4級",  "visits": 40, "fallback_visits": 56,   "human_profile": "preaz_4k",  "human_lambda": 100000000},
+    "AIロボ18": {"elo": 1750, "rank": "3級",  "visits": 40, "fallback_visits": 75,   "human_profile": "preaz_3k",  "human_lambda": 100000000},
+    "AIロボ19": {"elo": 1850, "rank": "2級",  "visits": 40, "fallback_visits": 100,  "human_profile": "preaz_2k",  "human_lambda": 100000000},
+    "AIロボ20": {"elo": 1975, "rank": "1級",  "visits": 40, "fallback_visits": 130,  "human_profile": "preaz_1k",  "human_lambda": 100000000},
     # 段位者 (初段〜9段)
     # 高段者は humanSLProfile の生モデルだけでは棋力が足りないため visits を増やし、
     # humanSLChosenMovePiklLambda を段階的に下げて悪手を抑制する
-    "AIロボ21": {"elo": 2125, "rank": "1段",  "visits": 40,   "human_profile": "preaz_1d", "human_lambda": 100000000},
-    "AIロボ22": {"elo": 2275, "rank": "2段",  "visits": 40,   "human_profile": "preaz_2d", "human_lambda": 100000000},
-    "AIロボ23": {"elo": 2425, "rank": "3段",  "visits": 40,   "human_profile": "preaz_3d", "human_lambda": 100000000},
-    "AIロボ24": {"elo": 2575, "rank": "4段",  "visits": 100,  "human_profile": "preaz_4d", "human_lambda": 10000},
-    "AIロボ25": {"elo": 2725, "rank": "5段",  "visits": 200,  "human_profile": "preaz_5d", "human_lambda": 1000},
-    "AIロボ26": {"elo": 2850, "rank": "6段",  "visits": 400,  "human_profile": "preaz_6d", "human_lambda": 100},
-    "AIロボ27": {"elo": 2950, "rank": "7段",  "visits": 800,  "human_profile": "preaz_7d", "human_lambda": 50},
-    "AIロボ28": {"elo": 3050, "rank": "8段",  "visits": 1500, "human_profile": "preaz_8d", "human_lambda": 20},
-    "AIロボ29": {"elo": 3150, "rank": "9段",  "visits": 3000, "human_profile": "preaz_9d", "human_lambda": 10},
-    "AIロボ30": {"elo": 3250, "rank": "9段",  "visits": 5000, "human_profile": "preaz_9d", "human_lambda": 5},
+    "AIロボ21": {"elo": 2125, "rank": "1段",  "visits": 40,   "fallback_visits": 180,  "human_profile": "preaz_1d", "human_lambda": 100000000},
+    "AIロボ22": {"elo": 2275, "rank": "2段",  "visits": 40,   "fallback_visits": 250,  "human_profile": "preaz_2d", "human_lambda": 100000000},
+    "AIロボ23": {"elo": 2425, "rank": "3段",  "visits": 40,   "fallback_visits": 350,  "human_profile": "preaz_3d", "human_lambda": 100000000},
+    "AIロボ24": {"elo": 2575, "rank": "4段",  "visits": 100,  "fallback_visits": 500,  "human_profile": "preaz_4d", "human_lambda": 10000},
+    "AIロボ25": {"elo": 2725, "rank": "5段",  "visits": 200,  "fallback_visits": 700,  "human_profile": "preaz_5d", "human_lambda": 1000},
+    "AIロボ26": {"elo": 2850, "rank": "6段",  "visits": 400,  "fallback_visits": 1000, "human_profile": "preaz_6d", "human_lambda": 100},
+    "AIロボ27": {"elo": 2950, "rank": "7段",  "visits": 800,  "fallback_visits": 1500, "human_profile": "preaz_7d", "human_lambda": 50},
+    "AIロボ28": {"elo": 3050, "rank": "8段",  "visits": 1500, "fallback_visits": 2000, "human_profile": "preaz_8d", "human_lambda": 20},
+    "AIロボ29": {"elo": 3150, "rank": "9段",  "visits": 3000, "fallback_visits": 3000, "human_profile": "preaz_9d", "human_lambda": 10},
+    "AIロボ30": {"elo": 3250, "rank": "9段",  "visits": 5000, "fallback_visits": 5000, "human_profile": "preaz_9d", "human_lambda": 5},
 }
 
 # ---------------------------------------------------------------------------
@@ -824,6 +825,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "your_color": user_color,
                 "is_bot": True,
                 "bot_visits": bot_info["visits"],
+                "bot_fallback_visits": bot_info.get("fallback_visits", bot_info["visits"]),
                 "bot_human_profile": bot_info.get("human_profile", ""),
                 "bot_human_lambda": bot_info.get("human_lambda", 100000000),
             })
@@ -929,6 +931,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "your_color": accepter_color,
                 "is_bot": True,
                 "bot_visits": bot_info["visits"],
+                "bot_fallback_visits": bot_info.get("fallback_visits", bot_info["visits"]),
                 "bot_human_profile": bot_info.get("human_profile", ""),
                 "bot_human_lambda": bot_info.get("human_lambda", 100000000),
             })

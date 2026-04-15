@@ -1819,10 +1819,11 @@ class App:
             my_color = BLACK if msg.get("your_color") == "black" else WHITE
             is_bot = msg.get("is_bot", False)
             bot_visits = msg.get("bot_visits", 50)
+            bot_fallback_visits = msg.get("bot_fallback_visits", bot_visits)
             bot_human_profile = msg.get("bot_human_profile", "")
             bot_human_lambda = msg.get("bot_human_lambda", 100000000)
             if is_bot:
-                self._start_ai_game(my_color, opponent, opponent_rank, opponent_elo, bot_visits, bot_human_profile, bot_human_lambda)
+                self._start_ai_game(my_color, opponent, opponent_rank, opponent_elo, bot_visits, bot_human_profile, bot_human_lambda, bot_fallback_visits)
             else:
                 self._start_cloud_game(my_color, opponent, opponent_rank, opponent_elo)
 
@@ -1834,10 +1835,11 @@ class App:
             my_color = BLACK if msg.get("your_color") == "black" else WHITE
             is_bot = msg.get("is_bot", False)
             bot_visits = msg.get("bot_visits", 50)
+            bot_fallback_visits = msg.get("bot_fallback_visits", bot_visits)
             bot_human_profile = msg.get("bot_human_profile", "")
             bot_human_lambda = msg.get("bot_human_lambda", 100000000)
             if is_bot:
-                self._start_ai_game(my_color, opponent, opponent_rank, opponent_elo, bot_visits, bot_human_profile, bot_human_lambda)
+                self._start_ai_game(my_color, opponent, opponent_rank, opponent_elo, bot_visits, bot_human_profile, bot_human_lambda, bot_fallback_visits)
             else:
                 self._start_cloud_game(my_color, opponent, opponent_rank, opponent_elo)
 
@@ -1918,7 +1920,7 @@ class App:
                                   time_control=ms.time_control,
                                   fischer_increment=ms.fischer_increment)
 
-    def _start_ai_game(self, my_color, opponent_name, opponent_rank, opponent_elo, bot_visits, bot_human_profile="", bot_human_lambda=100000000):
+    def _start_ai_game(self, my_color, opponent_name, opponent_rank, opponent_elo, bot_visits, bot_human_profile="", bot_human_lambda=100000000, bot_fallback_visits=None):
         """Start a game against AI bot using KataGo GTP."""
         if not self.go_board:
             return
@@ -1956,7 +1958,7 @@ class App:
         # Start KataGo in background thread (model loading takes time)
         def _init_katago():
             try:
-                katago = KataGoGTP(visits=bot_visits, human_profile=bot_human_profile, human_lambda=bot_human_lambda)
+                katago = KataGoGTP(visits=bot_visits, human_profile=bot_human_profile, human_lambda=bot_human_lambda, fallback_visits=bot_fallback_visits)
                 katago.start()
                 katago.set_boardsize(19)
                 katago.set_komi(ms.komi)

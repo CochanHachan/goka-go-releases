@@ -18,10 +18,11 @@ logger = logging.getLogger(__name__)
 class KataGoGTP:
     """KataGo GTP process for AI games."""
 
-    def __init__(self, visits=50, human_profile="", human_lambda=100000000):
+    def __init__(self, visits=50, human_profile="", human_lambda=100000000, fallback_visits=None):
         self.visits = visits
         self.human_profile = human_profile
         self.human_lambda = human_lambda
+        self.fallback_visits = fallback_visits if fallback_visits is not None else visits
         self.proc = None
         self._lock = threading.Lock()
 
@@ -42,7 +43,11 @@ class KataGoGTP:
         use_human = (self.human_profile
                      and os.path.exists(human_model_file))
         if self.human_profile and not os.path.exists(human_model_file):
-            logger.warning("human_model.bin not found at %s — falling back to standard mode (bot may be overpowered)", human_model_file)
+            logger.warning(
+                "human_model.bin not found at %s — falling back to standard mode "
+                "(visits: %d → %d)",
+                human_model_file, self.visits, self.fallback_visits,
+            )
 
         if use_human:
             override = (
@@ -64,8 +69,9 @@ class KataGoGTP:
                 "-override-config", override,
             ]
         else:
+            effective_visits = self.fallback_visits if self.human_profile else self.visits
             override = "maxVisits={},numSearchThreads=1,ponderingEnabled=false".format(
-                self.visits)
+                effective_visits)
             cmd = [
                 katago_exe, "gtp",
                 "-config", config_file,
