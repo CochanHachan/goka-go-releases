@@ -140,11 +140,15 @@ def _play_with_fallback(filename, fallback):
     """再生処理（言語別ファイルが無い場合はフォールバック）。"""
     try:
         if not _init_mixer():
+            _logger.warning("mixer init failed — cannot play %s", filename)
             return
         snd = _get_sound(filename)
         if not snd and fallback != filename:
+            _logger.info("sound not found: %s, trying fallback: %s", filename, fallback)
             snd = _get_sound(fallback)
         if snd:
             snd.play()
+        else:
+            _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
     except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
