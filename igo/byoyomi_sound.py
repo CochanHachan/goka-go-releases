@@ -104,8 +104,9 @@ def play_timeout_sound():
 
 
 def play_robot_appear():
-    """ロボ出現時の音声を再生する。"""
-    threading.Thread(target=_play, args=("robot_appear.mp3",), daemon=True).start()
+    """ロボ出現時の音声を再生する（言語別プレフィックス付き）。"""
+    filename = "{}robot_appear.mp3".format(_prefix())
+    threading.Thread(target=_play, args=(filename,), daemon=True).start()
 
 
 def _seconds_to_filename(sec):
