@@ -15,6 +15,18 @@ import os
 import sys
 import threading
 
+def _write_debug(msg):
+    """デバッグログをホームフォルダに書き出す。"""
+    try:
+        import os as _os
+        log_path = _os.path.join(_os.path.expanduser("~"), "goka_sound_debug.txt")
+        with open(log_path, "a", encoding="utf-8") as f:
+            from datetime import datetime
+            f.write("[{}] {}\n".format(datetime.now().strftime("%H:%M:%S"), msg))
+    except Exception:
+        pass
+
+
 from igo.config import _get_install_dir
 from igo.lang import get_language
 
@@ -50,11 +62,14 @@ def _init_mixer():
         _get_install_dir(),
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ] if d]
+    _write_debug("_init_mixer: search_dirs={}".format(_search_dirs))
     for d in _search_dirs:
         candidate = os.path.join(d, "sounds")
+        _write_debug("  checking: {} -> exists={}".format(candidate, os.path.isdir(candidate)))
         if os.path.isdir(candidate):
             _sound_dir = candidate
             break
+    _write_debug("_init_mixer done: _sound_dir={}".format(_sound_dir))
     return True
 
 
@@ -161,12 +176,15 @@ def _play_with_fallback(filename, fallback):
             _logger.warning("mixer init failed — cannot play %s", filename)
             return
         path = _resolve_sound_path(filename)
+        _write_debug("play_with_fallback: filename={} path={} sound_dir={}".format(filename, path, _sound_dir))
         if not path and fallback != filename:
             _logger.info("sound not found: %s, trying fallback: %s", filename, fallback)
             path = _resolve_sound_path(fallback)
         if path:
+            _write_debug("  playing: {}".format(path))
             _play_music(path)
         else:
+            _write_debug("  NOT FOUND: {} sound_dir={}".format(filename, _sound_dir))
             _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
     except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
