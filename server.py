@@ -65,37 +65,41 @@ _ENV_LABEL = os.environ.get("GOKA_ENV", "production")
 # ---------------------------------------------------------------------------
 AI_BOTS = {
     # 級位者 (20級〜1級)  AIロボ1(弱)〜AIロボ30(最強)
-    "AIロボ1":  {"elo": 430,  "rank": "20級", "visits": 1},
-    "AIロボ2":  {"elo": 490,  "rank": "19級", "visits": 1},
-    "AIロボ3":  {"elo": 550,  "rank": "18級", "visits": 2},
-    "AIロボ4":  {"elo": 610,  "rank": "17級", "visits": 2},
-    "AIロボ5":  {"elo": 670,  "rank": "16級", "visits": 3},
-    "AIロボ6":  {"elo": 730,  "rank": "15級", "visits": 3},
-    "AIロボ7":  {"elo": 790,  "rank": "14級", "visits": 4},
-    "AIロボ8":  {"elo": 850,  "rank": "13級", "visits": 5},
-    "AIロボ9":  {"elo": 910,  "rank": "12級", "visits": 6},
-    "AIロボ10": {"elo": 970,  "rank": "11級", "visits": 8},
-    "AIロボ11": {"elo": 1050, "rank": "10級", "visits": 10},
-    "AIロボ12": {"elo": 1150, "rank": "9級",  "visits": 14},
-    "AIロボ13": {"elo": 1250, "rank": "8級",  "visits": 18},
-    "AIロボ14": {"elo": 1350, "rank": "7級",  "visits": 24},
-    "AIロボ15": {"elo": 1450, "rank": "6級",  "visits": 32},
-    "AIロボ16": {"elo": 1550, "rank": "5級",  "visits": 42},
-    "AIロボ17": {"elo": 1650, "rank": "4級",  "visits": 56},
-    "AIロボ18": {"elo": 1750, "rank": "3級",  "visits": 75},
-    "AIロボ19": {"elo": 1850, "rank": "2級",  "visits": 100},
-    "AIロボ20": {"elo": 1975, "rank": "1級",  "visits": 130},
+    # human_profile: KataGo humanSLProfile（人間らしい着手を再現）
+    # visits: maxVisits（級位者は40=パス/投了判定用、段位者は強さに応じて増加）
+    "AIロボ1":  {"elo": 430,  "rank": "20級", "visits": 40, "human_profile": "preaz_20k"},
+    "AIロボ2":  {"elo": 490,  "rank": "19級", "visits": 40, "human_profile": "preaz_19k"},
+    "AIロボ3":  {"elo": 550,  "rank": "18級", "visits": 40, "human_profile": "preaz_18k"},
+    "AIロボ4":  {"elo": 610,  "rank": "17級", "visits": 40, "human_profile": "preaz_17k"},
+    "AIロボ5":  {"elo": 670,  "rank": "16級", "visits": 40, "human_profile": "preaz_16k"},
+    "AIロボ6":  {"elo": 730,  "rank": "15級", "visits": 40, "human_profile": "preaz_15k"},
+    "AIロボ7":  {"elo": 790,  "rank": "14級", "visits": 40, "human_profile": "preaz_14k"},
+    "AIロボ8":  {"elo": 850,  "rank": "13級", "visits": 40, "human_profile": "preaz_13k"},
+    "AIロボ9":  {"elo": 910,  "rank": "12級", "visits": 40, "human_profile": "preaz_12k"},
+    "AIロボ10": {"elo": 970,  "rank": "11級", "visits": 40, "human_profile": "preaz_11k"},
+    "AIロボ11": {"elo": 1050, "rank": "10級", "visits": 40, "human_profile": "preaz_10k"},
+    "AIロボ12": {"elo": 1150, "rank": "9級",  "visits": 40, "human_profile": "preaz_9k"},
+    "AIロボ13": {"elo": 1250, "rank": "8級",  "visits": 40, "human_profile": "preaz_8k"},
+    "AIロボ14": {"elo": 1350, "rank": "7級",  "visits": 40, "human_profile": "preaz_7k"},
+    "AIロボ15": {"elo": 1450, "rank": "6級",  "visits": 40, "human_profile": "preaz_6k"},
+    "AIロボ16": {"elo": 1550, "rank": "5級",  "visits": 40, "human_profile": "preaz_5k"},
+    "AIロボ17": {"elo": 1650, "rank": "4級",  "visits": 40, "human_profile": "preaz_4k"},
+    "AIロボ18": {"elo": 1750, "rank": "3級",  "visits": 40, "human_profile": "preaz_3k"},
+    "AIロボ19": {"elo": 1850, "rank": "2級",  "visits": 40, "human_profile": "preaz_2k"},
+    "AIロボ20": {"elo": 1975, "rank": "1級",  "visits": 40, "human_profile": "preaz_1k"},
     # 段位者 (初段〜9段)
-    "AIロボ21": {"elo": 2125, "rank": "1段",  "visits": 180},
-    "AIロボ22": {"elo": 2275, "rank": "2段",  "visits": 250},
-    "AIロボ23": {"elo": 2425, "rank": "3段",  "visits": 350},
-    "AIロボ24": {"elo": 2575, "rank": "4段",  "visits": 500},
-    "AIロボ25": {"elo": 2725, "rank": "5段",  "visits": 700},
-    "AIロボ26": {"elo": 2850, "rank": "6段",  "visits": 1000},
-    "AIロボ27": {"elo": 2950, "rank": "7段",  "visits": 1500},
-    "AIロボ28": {"elo": 3050, "rank": "8段",  "visits": 2000},
-    "AIロボ29": {"elo": 3150, "rank": "9段",  "visits": 3000},
-    "AIロボ30": {"elo": 3250, "rank": "9段",  "visits": 5000},
+    # 高段者は humanSLProfile の生モデルだけでは棋力が足りないため visits を増やし、
+    # humanSLChosenMovePiklLambda を下げて悪手を抑制する
+    "AIロボ21": {"elo": 2125, "rank": "1段",  "visits": 40,   "human_profile": "preaz_1d"},
+    "AIロボ22": {"elo": 2275, "rank": "2段",  "visits": 40,   "human_profile": "preaz_2d"},
+    "AIロボ23": {"elo": 2425, "rank": "3段",  "visits": 40,   "human_profile": "preaz_3d"},
+    "AIロボ24": {"elo": 2575, "rank": "4段",  "visits": 100,  "human_profile": "preaz_4d"},
+    "AIロボ25": {"elo": 2725, "rank": "5段",  "visits": 200,  "human_profile": "preaz_5d"},
+    "AIロボ26": {"elo": 2850, "rank": "6段",  "visits": 400,  "human_profile": "preaz_6d"},
+    "AIロボ27": {"elo": 2950, "rank": "7段",  "visits": 800,  "human_profile": "preaz_7d"},
+    "AIロボ28": {"elo": 3050, "rank": "8段",  "visits": 1500, "human_profile": "preaz_8d"},
+    "AIロボ29": {"elo": 3150, "rank": "9段",  "visits": 3000, "human_profile": "preaz_9d"},
+    "AIロボ30": {"elo": 3250, "rank": "9段",  "visits": 5000, "human_profile": "preaz_9d"},
 }
 
 # ---------------------------------------------------------------------------
@@ -817,6 +821,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "your_color": user_color,
                 "is_bot": True,
                 "bot_visits": bot_info["visits"],
+                "bot_human_profile": bot_info.get("human_profile", ""),
             })
             logger.info("AI match auto-accepted: %s vs %s", handle, target)
             # ボット対局でも他ユーザーに通知して挑戦状リストから消す
@@ -920,6 +925,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "your_color": accepter_color,
                 "is_bot": True,
                 "bot_visits": bot_info["visits"],
+                "bot_human_profile": bot_info.get("human_profile", ""),
             })
             logger.info("User accepted bot offer: %s vs %s", handle, target)
             # ボット対局でも他ユーザーに通知して挑戦状リストから消す

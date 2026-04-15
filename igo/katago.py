@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 class KataGoGTP:
     """KataGo GTP process for AI games."""
 
-    def __init__(self, visits=50):
+    def __init__(self, visits=50, human_profile=""):
         self.visits = visits
+        self.human_profile = human_profile
         self.proc = None
         self._lock = threading.Lock()
 
@@ -29,6 +30,7 @@ class KataGoGTP:
         _exe = "katago.exe" if platform.system() == "Windows" else "katago"
         katago_exe = os.path.join(katago_dir, _exe)
         model_file = os.path.join(katago_dir, "model.bin")
+        human_model_file = os.path.join(katago_dir, "human_model.bin")
         config_file = os.path.join(katago_dir, "default_gtp.cfg")
 
         if not os.path.exists(katago_exe):
@@ -36,12 +38,42 @@ class KataGoGTP:
         if not os.path.exists(model_file):
             raise RuntimeError("モデルファイルが見つかりません: " + model_file)
 
-        override = "maxVisits={},numSearchThreads=1,ponderingEnabled=false".format(
-            self.visits)
+        use_human = (self.human_profile
+                     and os.path.exists(human_model_file))
+
+        if use_human:
+            override = (
+                "maxVisits={},numSearchThreads=1,ponderingEnabled=false,"
+                "humanSLProfile={},"
+                "humanSLChosenMoveProp=1.0,"
+                "humanSLChosenMoveIgnorePass=true,"
+                "humanSLChosenMovePiklLambda=100000000,"
+                "allowResignation=true,"
+                "resignThreshold=-0.99,"
+                "resignConsecTurns=20,"
+                "resignMinScoreDifference=40"
+            ).format(self.visits, self.human_profile)
+            cmd = [
+                katago_exe, "gtp",
+                "-config", config_file,
+                "-model", model_file,
+                "-human-model", human_model_file,
+                "-override-config", override,
+            ]
+        else:
+            override = "maxVisits={},numSearchThreads=1,ponderingEnabled=false".format(
+                self.visits)
+            cmd = [
+                katago_exe, "gtp",
+                "-config", config_file,
+                "-model", model_file,
+                "-override-config", override,
+            ]
+        logger.info("KataGo start: human_profile=%s, visits=%d, use_human=%s",
+                    self.human_profile, self.visits, use_human)
 
         self.proc = subprocess.Popen(
-            [katago_exe, "gtp", "-config", config_file, "-model", model_file,
-             "-override-config", override],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

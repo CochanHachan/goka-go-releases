@@ -80,6 +80,11 @@ Source: "..\katago\model.bin"; \
   DestDir: "{app}\katago"; \
   Flags: ignoreversion
 
+; ---- KataGo Human SL モデル（humanSLProfile 用）----
+Source: "..\katago\human_model.bin"; \
+  DestDir: "{app}\katago"; \
+  Flags: ignoreversion
+
 ; ---- KataGo チューニングデータ ----
 Source: "..\katago\KataGoData\*"; \
   DestDir: "{app}\katago\KataGoData"; \
