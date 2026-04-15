@@ -1971,8 +1971,13 @@ class App:
                 self._ai_katago = katago
                 # KataGo準備完了 → タイマー再開してAI着手
                 self.root.after(0, self._ai_on_katago_ready)
-            except (OSError, RuntimeError, ValueError) as e:
-                logger.warning("KataGo init failed", exc_info=True)
+            except Exception as e:
+                # 全ての例外をキャッチする。
+                # 以前は (OSError, RuntimeError, ValueError) のみキャッチしていたが、
+                # subprocess.SubprocessError, TimeoutError, FileNotFoundError 等の
+                # 予期しない例外が発生した場合にスレッドが無言で終了し、
+                # タイマーが永久に停止する（4:59で止まる）バグがあった。
+                logger.warning("KataGo init failed: %s", e, exc_info=True)
                 self.root.after(0, lambda: self._ai_init_failed(str(e)))
 
         threading.Thread(target=_init_katago, daemon=True).start()

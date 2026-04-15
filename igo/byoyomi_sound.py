@@ -132,7 +132,7 @@ def _play(filename):
         snd = _get_sound(filename)
         if snd:
             snd.play()
-    except (ImportError, OSError, RuntimeError) as e:
+    except Exception as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
 
 
@@ -155,7 +155,7 @@ def _play_with_fallback(filename, fallback):
             _play_music(path)
         else:
             _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
-    except (ImportError, OSError, RuntimeError) as e:
+    except Exception as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
 
 
@@ -179,11 +179,22 @@ def _play_music(path):
     pygame.mixer.Sound() は Windows で mp3 デコードに失敗し
     ビープ音になることがある。mixer.music は SDL_mixer の
     Music API を使い、mp3 を正しくデコードできる。
+
+    この関数はデーモンスレッドから呼ばれる。
+    pygame.mixer.music の再生はバックグラウンドで行われるため、
+    スレッドが終了すると再生が中断される場合がある。
+    再生完了まで get_busy() でポーリングしてスレッドを維持する。
     """
     try:
         import pygame
+        import time as _time
         with _music_lock:
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
-    except (ImportError, OSError, RuntimeError) as e:
+            # デーモンスレッドが終了すると再生が中断されるため、
+            # 再生完了まで待機する（最大30秒タイムアウト）。
+            deadline = _time.time() + 30
+            while pygame.mixer.music.get_busy() and _time.time() < deadline:
+                _time.sleep(0.1)
+    except Exception as e:
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)
