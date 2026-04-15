@@ -179,11 +179,22 @@ def _play_music(path):
     pygame.mixer.Sound() は Windows で mp3 デコードに失敗し
     ビープ音になることがある。mixer.music は SDL_mixer の
     Music API を使い、mp3 を正しくデコードできる。
+
+    この関数はデーモンスレッドから呼ばれる。
+    pygame.mixer.music の再生はバックグラウンドで行われるため、
+    スレッドが終了すると再生が中断される場合がある。
+    再生完了まで get_busy() でポーリングしてスレッドを維持する。
     """
     try:
         import pygame
+        import time as _time
         with _music_lock:
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
+            # デーモンスレッドが終了すると再生が中断されるため、
+            # 再生完了まで待機する（最大30秒タイムアウト）。
+            deadline = _time.time() + 30
+            while pygame.mixer.music.get_busy() and _time.time() < deadline:
+                _time.sleep(0.1)
     except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)
