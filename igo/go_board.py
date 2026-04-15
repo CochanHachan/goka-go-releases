@@ -300,9 +300,15 @@ class GoBoard:
     def _start_timer(self):
         if not self._timer_running:
             self._timer_running = True
-            self._tick()
+            self._timer_gen = getattr(self, '_timer_gen', 0) + 1
+            self._tick(self._timer_gen)
 
-    def _tick(self):
+    def _tick(self, gen=None):
+        # 世代カウンターで古いコールバックを無視する。
+        # _start_timer() が呼ばれるたびに _timer_gen がインクリメントされ、
+        # 旧世代の root.after コールバックは自動的に無効化される。
+        if gen is not None and gen != getattr(self, '_timer_gen', 0):
+            return
         if self.game.game_over or not self._timer_running:
             return
         if self.timer_black and self.timer_white:
@@ -348,7 +354,7 @@ class GoBoard:
                     self._show_time_out(WHITE)
                     return
         self._update_time_display()
-        self.root.after(1000, self._tick)
+        self.root.after(1000, self._tick, getattr(self, '_timer_gen', 0))
 
     def _format_time(self, seconds):
         m = seconds // 60
