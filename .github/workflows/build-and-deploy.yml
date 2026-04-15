@@ -35,6 +35,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 # 同時実行を防止（PRマージの自動実行と手動実行が競合するのを防ぐ）
 concurrency:
