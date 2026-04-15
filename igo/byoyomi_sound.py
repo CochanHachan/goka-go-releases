@@ -125,15 +125,12 @@ def _seconds_to_filename(sec):
 
 
 def _play(filename):
-    """実際の再生処理（スレッド内で実行）。"""
-    try:
-        if not _init_mixer():
-            return
-        snd = _get_sound(filename)
-        if snd:
-            snd.play()
-    except Exception as e:
-        _logger.warning("play error: %s %s", filename, e, exc_info=True)
+    """実際の再生処理（スレッド内で実行）。
+
+    Windows環境で pygame.mixer.Sound(mp3) がビープ音化するケースがあるため、
+    ここでは常に pygame.mixer.music 経由で再生する。
+    """
+    _play_with_fallback(filename, filename)
 
 
 def _play_with_fallback(filename, fallback):
