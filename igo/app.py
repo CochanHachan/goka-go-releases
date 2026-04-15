@@ -1968,6 +1968,11 @@ class App:
                 katago.set_boardsize(19)
                 katago.set_komi(ms.komi)
                 katago.clear_board()
+                # 起動直後にプロセス死が起きると「対局開始したのにAIが無言」になるため
+                # 最低限のGTP応答確認を行う。
+                ping = katago.send_command("name")
+                if not ping or not ping.startswith("="):
+                    raise RuntimeError("KataGo初期化確認に失敗しました（name応答なし）")
                 self._ai_katago = katago
                 # KataGo準備完了 → タイマー再開してAI着手
                 self.root.after(0, self._ai_on_katago_ready)
@@ -2046,8 +2051,11 @@ class App:
                 result = self._ai_katago.genmove(ai_color_str)
                 if result:
                     self.root.after(0, lambda: self._ai_apply_move(result))
+                else:
+                    self.root.after(0, lambda: self._ai_init_failed("KataGoが応答しませんでした（genmove失敗）"))
             except (OSError, RuntimeError, ValueError):
                 logger.debug("KataGo genmove failed", exc_info=True)
+                self.root.after(0, lambda: self._ai_init_failed("KataGoで手の生成に失敗しました"))
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
