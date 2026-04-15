@@ -1955,6 +1955,11 @@ class App:
                                   time_control=ms.time_control,
                                   fischer_increment=ms.fischer_increment)
 
+        # AI対局中はタイマーを一時停止する（KataGo初期化に時間がかかるため）
+        # KataGo準備完了後に再開する
+        if self.go_board:
+            self.go_board._timer_running = False
+
         # Start KataGo in background thread (model loading takes time)
         def _init_katago():
             try:
@@ -1964,14 +1969,23 @@ class App:
                 katago.set_komi(ms.komi)
                 katago.clear_board()
                 self._ai_katago = katago
-                # If AI is black (plays first), make AI move
-                if self._ai_color == BLACK:
-                    self.root.after(100, self._ai_make_move)
+                # KataGo準備完了 → タイマー再開してAI着手
+                self.root.after(0, self._ai_on_katago_ready)
             except (OSError, RuntimeError, ValueError) as e:
                 logger.warning("KataGo init failed", exc_info=True)
                 self.root.after(0, lambda: self._ai_init_failed(str(e)))
 
         threading.Thread(target=_init_katago, daemon=True).start()
+
+    def _ai_on_katago_ready(self):
+        """KataGo初期化完了後にタイマーを再開し、必要ならAIの初手を打つ。"""
+        if not self._ai_mode or not self.go_board:
+            return
+        # タイマー再開
+        self.go_board._start_timer()
+        # If AI is black (plays first), make AI move
+        if self._ai_color == BLACK:
+            self.root.after(100, self._ai_make_move)
 
     def _ai_init_failed(self, error_msg):
         """Handle KataGo initialization failure.
@@ -1984,6 +1998,37 @@ class App:
         if self.go_board:
             self.go_board.end_network_game()
 
+    def _ai_send_time_left(self):
+        """KataGoに両プレイヤーの残り時間をGTP time_leftコマンドで通知する。
+
+        Fischer/秒読みの残り時間をKataGoに伝えることで、
+        KataGoが時間を考慮した着手を行えるようになる。
+        time_leftを送らないとKataGoは無制限時間と想定して
+        思考し続け、Fischer対局でタイムアウト負けする。
+        """
+        if not self._ai_katago or not self.go_board:
+            return
+        board = self.go_board
+        for color_str, timer in [("B", board.timer_black), ("W", board.timer_white)]:
+            if timer is None:
+                continue
+            if hasattr(timer, 'in_byoyomi') and timer.in_byoyomi:
+                # 秒読み中: byo_remaining秒, 1石/期間 (Japanese byoyomi)
+                # GTP time_left の stones は「現在の期間で打てる石数」を意味する。
+                # 日本式秒読みでは1期間1手なので stones=1 が正しい。
+                # byo_periods_left を渡すとカナダ式と誤解され、
+                # KataGoが持ち時間を過小評価して弱くなる。
+                seconds = timer.byo_remaining
+                stones = 1
+            else:
+                # メイン時間 or Fischer: remaining秒
+                seconds = timer.remaining
+                stones = 0  # Fischer/メイン時間は stones=0
+            try:
+                self._ai_katago.time_left(color_str, max(seconds, 0), stones)
+            except (OSError, RuntimeError, ValueError):
+                logger.debug("time_left send failed for %s", color_str, exc_info=True)
+
     def _ai_make_move(self):
         """Ask KataGo to generate a move in a background thread."""
         if not self._ai_mode or not self._ai_katago or not self.go_board:
@@ -1992,6 +2037,9 @@ class App:
             return
 
         ai_color_str = "B" if self._ai_color == BLACK else "W"
+
+        # genmove前に残り時間をKataGoに通知（Fischer対局でのタイムアウト防止）
+        self._ai_send_time_left()
 
         def _run():
             try:

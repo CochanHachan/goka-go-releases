@@ -137,18 +137,53 @@ def _play(filename):
 
 
 def _play_with_fallback(filename, fallback):
-    """再生処理（言語別ファイルが無い場合はフォールバック）。"""
+    """再生処理（言語別ファイルが無い場合はフォールバック）。
+
+    mp3ファイルは pygame.mixer.music 経由で再生する。
+    pygame.mixer.Sound() は Windows で mp3 を正しくデコードできず
+    ビープ音になる問題があるため。
+    """
     try:
         if not _init_mixer():
             _logger.warning("mixer init failed — cannot play %s", filename)
             return
-        snd = _get_sound(filename)
-        if not snd and fallback != filename:
+        path = _resolve_sound_path(filename)
+        if not path and fallback != filename:
             _logger.info("sound not found: %s, trying fallback: %s", filename, fallback)
-            snd = _get_sound(fallback)
-        if snd:
-            snd.play()
+            path = _resolve_sound_path(fallback)
+        if path:
+            _play_music(path)
         else:
             _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
     except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
+
+
+def _resolve_sound_path(filename):
+    """ファイル名からフルパスを返す。存在しなければ None。"""
+    if not _sound_dir:
+        return None
+    path = os.path.join(_sound_dir, filename)
+    if os.path.exists(path):
+        return path
+    return None
+
+
+# mp3 再生用ロック（pygame.mixer.music はグローバルに1曲しか再生できない）
+_music_lock = threading.Lock()
+
+
+def _play_music(path):
+    """pygame.mixer.music で mp3 を再生する。
+
+    pygame.mixer.Sound() は Windows で mp3 デコードに失敗し
+    ビープ音になることがある。mixer.music は SDL_mixer の
+    Music API を使い、mp3 を正しくデコードできる。
+    """
+    try:
+        import pygame
+        with _music_lock:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.play()
+    except (ImportError, OSError, RuntimeError) as e:
+        _logger.warning("music play failed: %s %s", path, e, exc_info=True)
