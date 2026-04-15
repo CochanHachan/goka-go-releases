@@ -37,7 +37,6 @@ def _init_mixer():
         import pygame
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
         _mixer_ready = True
-        return True
     except (ImportError, OSError, RuntimeError) as e:
         _logger.warning("mixer init failed: %s", e, exc_info=True)
         return False
