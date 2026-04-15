@@ -2013,9 +2013,13 @@ class App:
             if timer is None:
                 continue
             if hasattr(timer, 'in_byoyomi') and timer.in_byoyomi:
-                # 秒読み中: byo_remaining秒, byo_periods_left回
+                # 秒読み中: byo_remaining秒, 1石/期間 (Japanese byoyomi)
+                # GTP time_left の stones は「現在の期間で打てる石数」を意味する。
+                # 日本式秒読みでは1期間1手なので stones=1 が正しい。
+                # byo_periods_left を渡すとカナダ式と誤解され、
+                # KataGoが持ち時間を過小評価して弱くなる。
                 seconds = timer.byo_remaining
-                stones = getattr(timer, 'byo_periods_left', 0)
+                stones = 1
             else:
                 # メイン時間 or Fischer: remaining秒
                 seconds = timer.remaining
