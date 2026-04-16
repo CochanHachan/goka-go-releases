@@ -111,7 +111,29 @@ def play_robot_appear_localized():
     """ロボ挑戦受信時に言語別の robot_appear 音声を再生する。"""
     lang = get_language()
     prefix = {"ja": "J", "en": "E", "zh": "C", "ko": "K"}.get(lang, "J")
-    threading.Thread(target=_play, args=(f"{prefix}robot_appear.wav",), daemon=True).start()
+    threading.Thread(
+        target=_play_robot_appear_localized_direct,
+        args=(prefix,),
+        daemon=True,
+    ).start()
+
+
+def _play_robot_appear_localized_direct(prefix):
+    """{prefix}robot_appear.wav を _play 経由なしで再生する。"""
+    try:
+        if not _init_mixer():
+            return
+        if not _sound_dir:
+            return
+        filename = "{}robot_appear.wav".format(prefix)
+        path = os.path.join(_sound_dir, filename)
+        if not os.path.exists(path):
+            _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
+            return
+        import pygame
+        pygame.mixer.Sound(path).play()
+    except Exception as e:
+        _logger.warning("robot appear sound failed: %s", e, exc_info=True)
 
 
 def _seconds_to_filename(sec):
