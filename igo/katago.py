@@ -8,6 +8,7 @@ import threading
 import json
 import math
 import time as _time
+import queue as _queue
 
 from igo.constants import BLACK, WHITE, EMPTY
 from igo.config import _get_install_dir
@@ -25,6 +26,7 @@ class KataGoGTP:
         self.fallback_visits = fallback_visits if fallback_visits is not None else visits
         self.proc = None
         self._lock = threading.Lock()
+        self._stdout_q = _queue.Queue()
 
     def start(self):
         """Start KataGo GTP process."""
@@ -106,6 +108,24 @@ class KataGoGTP:
             creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0,
         )
 
+        # stdout を別スレッドで読み取り、send_command 側はキューから取得する。
+        # readline() の無期限ブロックを避けるため。
+        def _drain_gtp_stdout():
+            try:
+                for raw in self.proc.stdout:
+                    try:
+                        line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                    except Exception:
+                        line = ""
+                    self._stdout_q.put(line)
+            except OSError:
+                pass
+            finally:
+                # 終端マーカー
+                self._stdout_q.put(None)
+
+        threading.Thread(target=_drain_gtp_stdout, daemon=True).start()
+
         # KataGo GTPã¢ã¼ãã®stderrãããã¯ã°ã©ã¦ã³ãã§èª­ã¿æ¨ã¦ã¤ã¤ã­ã°ã«è¨é²ããã
         # stderr=DEVNULL ã ã¨KataGoãèµ·åå¤±æãã¦ãåå ãå¨ãããããªãããã
         # ãã¤ãã§åãåã£ã¦ãã¡ã¤ã«ã«è¨é²ããã
@@ -132,8 +152,11 @@ class KataGoGTP:
 
         threading.Thread(target=_drain_gtp_stderr, daemon=True).start()
 
-    def send_command(self, cmd):
-        """Send a GTP command and return the response."""
+    def send_command(self, cmd, timeout_s=30):
+        """Send a GTP command and return the response.
+
+        timeout_s: 応答終端(= / ?)を待つ最大秒数。タイムアウト時は None。
+        """
         if not self.proc or self.proc.poll() is not None:
             # ãã­ã»ã¹ãæ­»ãã§ããå ´åã¯GTPã­ã°ã«è¨é²
             exit_code = self.proc.poll() if self.proc else None
@@ -143,18 +166,23 @@ class KataGoGTP:
             try:
                 self.proc.stdin.write((cmd + "\n").encode("utf-8"))
                 self.proc.stdin.flush()
-                # KataGo は起動直後などに stderr 相当の情報を stdout に出すことがある。
-                # そのため「空行で応答終了」とみなすと、先頭のログ行だけで誤終了し、
-                # 以降の読み取りが永久ブロックになることがある。
-                # GTP としては最終行が "= ..." になるので、それを手掛かりに読み取る。
                 buf_lines = []
+                deadline = _time.time() + float(timeout_s or 0)
                 while True:
-                    raw = self.proc.stdout.readline()
-                    if raw == b"":
-                        break
-                    line = raw.decode("utf-8").rstrip("\r\n")
+                    remaining = max(0.0, deadline - _time.time())
+                    if timeout_s is not None and remaining <= 0:
+                        logger.warning("GTP send_command timeout: %s", cmd)
+                        return None
+                    try:
+                        line = self._stdout_q.get(timeout=min(1.0, remaining) if timeout_s is not None else 1.0)
+                    except _queue.Empty:
+                        # proc が死んでいたら終了
+                        if self.proc.poll() is not None:
+                            return None
+                        continue
+                    if line is None:
+                        return None
                     if line == "":
-                        # 空行は区切りとして無視（ログが複数行続くケースがある）
                         continue
                     buf_lines.append(line)
                     # GTP の応答終端は成功 "=" または失敗 "?"。
@@ -191,7 +219,7 @@ class KataGoGTP:
 
     def genmove(self, color):
         """Ask KataGo to generate a move. Returns vertex like 'D4' or 'pass'."""
-        resp = self.send_command("genmove {}".format(color))
+        resp = self.send_command("genmove {}".format(color), timeout_s=120)
         if resp and resp.startswith("="):
             move = resp.split()[-1].strip()
             return move

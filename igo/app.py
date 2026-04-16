@@ -1969,7 +1969,7 @@ class App:
                 katago.clear_board()
                 # 起動直後にプロセス死が起きると「対局開始したのにAIが無言」になるため
                 # 最低限のGTP応答確認を行う。
-                ping = katago.send_command("name")
+                ping = katago.send_command("name", timeout_s=10)
                 if not ping or not ping.startswith("="):
                     raise RuntimeError("KataGo初期化確認に失敗しました（name応答なし）")
                 self._ai_katago = katago
