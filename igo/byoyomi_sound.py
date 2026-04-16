@@ -98,9 +98,9 @@ def play_robot_appear():
 
 
 def play_robot_appear_by_code(code):
-    """code が 1 のときだけ再生し、それ以外は意図的にエラーにする。"""
-    if code != 1:
-        raise ValueError("robot sound code must be 1")
+    """code が 1 のときだけ日本語ロボ出現音声を再生する。"""
+    if str(code).strip() != "1":
+        return
     threading.Thread(target=_play, args=("Jrobot_appear.wav",), daemon=True).start()
 
 
