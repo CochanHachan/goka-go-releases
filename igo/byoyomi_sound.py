@@ -14,6 +14,7 @@ import logging
 import os
 import sys
 import threading
+import time
 
 from igo.config import _get_install_dir
 from igo.lang import get_language
@@ -198,5 +199,14 @@ def _play_music(path):
         with _music_lock:
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
+            # Windows 環境では mp3 デコード失敗でも例外にならず、
+            # 代わりに「無音/ビープ」になることがある。短時間だけ再生状態を見る。
+            time.sleep(0.05)
+            if not pygame.mixer.music.get_busy():
+                snd = _get_sound(os.path.basename(path))
+                if snd:
+                    snd.play()
+                else:
+                    _logger.warning("music not busy after play; Sound fallback missing: %s", path)
     except Exception as e:
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)

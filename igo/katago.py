@@ -143,15 +143,23 @@ class KataGoGTP:
             try:
                 self.proc.stdin.write((cmd + "\n").encode("utf-8"))
                 self.proc.stdin.flush()
-                response_lines = []
+                # KataGo は起動直後などに stderr 相当の情報を stdout に出すことがある。
+                # そのため「空行で応答終了」とみなすと、先頭のログ行だけで誤終了し、
+                # 以降の読み取りが永久ブロックになることがある。
+                # GTP としては最終行が "= ..." になるので、それを手掛かりに読み取る。
+                buf_lines = []
                 while True:
-                    line = self.proc.stdout.readline().decode("utf-8")
-                    if line.strip() == "" and response_lines:
+                    raw = self.proc.stdout.readline()
+                    if raw == b"":
                         break
+                    line = raw.decode("utf-8").rstrip("\r\n")
                     if line == "":
+                        # 空行は区切りとして無視（ログが複数行続くケースがある）
+                        continue
+                    buf_lines.append(line)
+                    if line.lstrip().startswith("="):
                         break
-                    response_lines.append(line.strip())
-                return "\n".join(response_lines)
+                return "\n".join(buf_lines)
             except (OSError, BrokenPipeError, ValueError):
                 logger.warning("GTP send_command failed: %s", cmd, exc_info=True)
                 return None
