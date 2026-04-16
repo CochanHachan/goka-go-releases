@@ -3,6 +3,7 @@
 # Usage: pyinstaller goka_go.spec
 
 import os
+import sys
 from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
@@ -18,15 +19,47 @@ pygame_datas, pygame_binaries, pygame_hiddenimports = collect_all('pygame')
 # pygame の mp3 デコーダー (libmpg123-0.dll) を明示的に同梱する
 # collect_all('pygame') では取得されないため手動で追加が必要
 import glob as _glob
+
 _mp3_dlls = []
-for _pat in [
-    'C:/hostedtoolcache/windows/Python/*/x64/Lib/site-packages/pygame/libmpg123-0.dll',
-    'C:/hostedtoolcache/windows/Python/*/x64/Lib/site-packages/pygame/SDL2_mixer.dll',
-]:
-    _found = _glob.glob(_pat)
-    if _found:
-        _mp3_dlls.append((_found[0], '.'))
-print('mp3 dlls found:', _mp3_dlls)
+
+
+def _append_dll_if_exists(path):
+    if path and os.path.isfile(path):
+        _mp3_dlls.append((path, '.'))
+        return True
+    return False
+
+
+def _find_pygame_package_dir():
+    """Return installed pygame package directory, or empty string."""
+    try:
+        import importlib.util as _ilu
+
+        spec = _ilu.find_spec("pygame")
+        if spec and spec.origin:
+            return os.path.dirname(spec.origin)
+    except Exception:
+        pass
+    return ""
+
+
+# 1) まず「ビルド実行中のPython環境」から pygame 配下のDLLを拾う（ローカル/CI共通）
+_pg_dir = _find_pygame_package_dir()
+if _pg_dir:
+    for _name in ("libmpg123-0.dll", "SDL2_mixer.dll"):
+        _append_dll_if_exists(os.path.join(_pg_dir, _name))
+
+# 2) GitHub Actions runner の典型パス（後方互換）
+if sys.platform.startswith("win"):
+    for _pat in (
+        r"C:/hostedtoolcache/windows/Python/*/x64/Lib/site-packages/pygame/libmpg123-0.dll",
+        r"C:/hostedtoolcache/windows/Python/*/x64/Lib/site-packages/pygame/SDL2_mixer.dll",
+    ):
+        _found = sorted(_glob.glob(_pat))
+        if _found:
+            _append_dll_if_exists(_found[-1])
+
+print("mp3 dlls found:", _mp3_dlls)
 
 a = Analysis(
     ['igo_game.py'],
