@@ -27,6 +27,14 @@ class KataGoGTP:
         self.proc = None
         self._lock = threading.Lock()
         self._stdout_q = _queue.Queue()
+        self._gtp_log_path = os.path.join(os.path.expanduser("~"), "goka_katago_gtp_log.txt")
+
+    def _append_gtp_log(self, text):
+        try:
+            with open(self._gtp_log_path, "a", encoding="utf-8", errors="replace") as f:
+                f.write(text + "\n")
+        except OSError:
+            pass
 
     def start(self):
         """Start KataGo GTP process."""
@@ -108,6 +116,12 @@ class KataGoGTP:
             creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0,
         )
 
+        from datetime import datetime
+        self._append_gtp_log(
+            "--- KataGo session {} ---".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        )
+        self._append_gtp_log("cmd: {}".format(" ".join(cmd)))
+
         # stdout を別スレッドで読み取り、send_command 側はキューから取得する。
         # readline() の無期限ブロックを避けるため。
         def _drain_gtp_stdout():
@@ -135,6 +149,11 @@ class KataGoGTP:
             try:
                 for raw in self.proc.stderr:
                     self._stderr_lines.append(raw)
+                    try:
+                        line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                    except Exception:
+                        line = "<decode-error>"
+                    self._append_gtp_log("[stderr] {}".format(line))
             except OSError:
                 pass
             # ãã­ã»ã¹çµäºæã«ã­ã°ã«æ¸ãåºã
@@ -161,9 +180,11 @@ class KataGoGTP:
             # ãã­ã»ã¹ãæ­»ãã§ããå ´åã¯GTPã­ã°ã«è¨é²
             exit_code = self.proc.poll() if self.proc else None
             logger.warning("GTP send_command skipped (proc dead, exit=%s): %s", exit_code, cmd)
+            self._append_gtp_log("[send_command] proc dead exit={} cmd={}".format(exit_code, cmd))
             return None
         with self._lock:
             try:
+                self._append_gtp_log("[send_command] >> {}".format(cmd))
                 self.proc.stdin.write((cmd + "\n").encode("utf-8"))
                 self.proc.stdin.flush()
                 buf_lines = []
@@ -172,6 +193,7 @@ class KataGoGTP:
                     remaining = max(0.0, deadline - _time.time())
                     if timeout_s is not None and remaining <= 0:
                         logger.warning("GTP send_command timeout: %s", cmd)
+                        self._append_gtp_log("[send_command] timeout cmd={}".format(cmd))
                         return None
                     try:
                         line = self._stdout_q.get(timeout=min(1.0, remaining) if timeout_s is not None else 1.0)
@@ -181,10 +203,12 @@ class KataGoGTP:
                             return None
                         continue
                     if line is None:
+                        self._append_gtp_log("[send_command] stdout closed cmd={}".format(cmd))
                         return None
                     if line == "":
                         continue
                     buf_lines.append(line)
+                    self._append_gtp_log("[send_command] << {}".format(line))
                     # GTP の応答終端は成功 "=" または失敗 "?"。
                     # "=" だけを終端条件にすると、"?" 応答時に
                     # 次行待ちでブロックし AI 対局が停止しうる。
@@ -193,16 +217,17 @@ class KataGoGTP:
                 return "\n".join(buf_lines)
             except (OSError, BrokenPipeError, ValueError):
                 logger.warning("GTP send_command failed: %s", cmd, exc_info=True)
+                self._append_gtp_log("[send_command] exception cmd={}".format(cmd))
                 return None
 
     def set_boardsize(self, size=19):
-        self.send_command("boardsize {}".format(size))
+        return self.send_command("boardsize {}".format(size))
 
     def set_komi(self, komi=7.5):
-        self.send_command("komi {}".format(komi))
+        return self.send_command("komi {}".format(komi))
 
     def clear_board(self):
-        self.send_command("clear_board")
+        return self.send_command("clear_board")
 
     def play(self, color, vertex):
         """Tell KataGo about a move. color='B'/'W', vertex='D4'/'pass'."""
@@ -215,7 +240,7 @@ class KataGoGTP:
         seconds: remaining seconds (int)
         stones: stones left in period (0 for Fischer/sudden death)
         """
-        self.send_command("time_left {} {} {}".format(color, int(seconds), int(stones)))
+        return self.send_command("time_left {} {} {}".format(color, int(seconds), int(stones)))
 
     def genmove(self, color):
         """Ask KataGo to generate a move. Returns vertex like 'D4' or 'pass'."""

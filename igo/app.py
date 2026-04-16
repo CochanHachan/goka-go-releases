@@ -1964,9 +1964,12 @@ class App:
             try:
                 katago = KataGoGTP(visits=bot_visits, human_profile=bot_human_profile, human_lambda=bot_human_lambda, fallback_visits=bot_fallback_visits)
                 katago.start()
-                katago.set_boardsize(19)
-                katago.set_komi(ms.komi)
-                katago.clear_board()
+                if not (katago.set_boardsize(19) or "").startswith("="):
+                    raise RuntimeError("KataGo初期化失敗: boardsize 応答なし")
+                if not (katago.set_komi(ms.komi) or "").startswith("="):
+                    raise RuntimeError("KataGo初期化失敗: komi 応答なし")
+                if not (katago.clear_board() or "").startswith("="):
+                    raise RuntimeError("KataGo初期化失敗: clear_board 応答なし")
                 # 起動直後にプロセス死が起きると「対局開始したのにAIが無言」になるため
                 # 最低限のGTP応答確認を行う。
                 ping = katago.send_command("name", timeout_s=10)
@@ -2087,13 +2090,16 @@ class App:
         if action == "move" and col >= 0 and row >= 0:
             self.go_board.handle_network_move(col, row)
 
-    def _ai_handle_user_move(self, msg):
+    def _ai_handle_user_move(self, msg, retry_count=0):
         """Handle a user move/pass/resign during AI game."""
         if not self._ai_mode:
             return
         # KataGoがまだ初期化中なら少し待ってリトライ
         if not self._ai_katago:
-            self.root.after(500, lambda: self._ai_handle_user_move(msg))
+            if retry_count >= 40:
+                self._ai_init_failed("KataGoの初期化待機がタイムアウトしました")
+                return
+            self.root.after(500, lambda: self._ai_handle_user_move(msg, retry_count + 1))
             return
         msg_type = msg.get("type")
 
