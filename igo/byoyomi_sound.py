@@ -87,6 +87,11 @@ def play_timeout_sound():
     threading.Thread(target=_play, args=(filename,), daemon=True).start()
 
 
+def play_challenge_arrived():
+    """挑戦状受信時に通知音を再生する。"""
+    threading.Thread(target=_play, args=("J03sec.wav",), daemon=True).start()
+
+
 def play_robot_appear():
     """ロボ出現時の音声を再生する（言語別ファイルのみ）。
 

@@ -50,7 +50,7 @@ from igo.kifu_dialog import KifuDialog
 from igo.go_board import GoBoard
 from igo.match_state import MatchSettings, broadcast_match_taken
 import igo.rendering as _rendering_mod
-from igo.byoyomi_sound import play_robot_appear_by_code
+from igo.byoyomi_sound import play_challenge_arrived, play_robot_appear_by_code
 
 logger = logging.getLogger(__name__)
 
@@ -1781,6 +1781,8 @@ class App:
         elif msg_type == "match_offer":
             # Someone is offering a match
             sender = msg.get("from", "")
+            # だれからの挑戦状でも受信時に通知音を鳴らす
+            play_challenge_arrived()
             if not self.go_board or self.go_board.net_mode:
                 return
             if self.is_offer_declined(sender):
