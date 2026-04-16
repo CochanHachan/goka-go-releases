@@ -1976,6 +1976,8 @@ class App:
                     raise RuntimeError("KataGo初期化失敗: komi 応答なし")
                 if not (katago.clear_board() or "").startswith("="):
                     raise RuntimeError("KataGo初期化失敗: clear_board 応答なし")
+                # 起動待ち中に進んだ手をKataGoへ確実に反映
+                self._ai_replay_move_history_to_katago(katago)
                 # 起動直後にプロセス死が起きると「対局開始したのにAIが無言」になるため
                 # 最低限のGTP応答確認を行う。
                 ping = katago.send_command("name", timeout_s=10)
@@ -1989,6 +1991,29 @@ class App:
                 self.root.after(0, lambda: self._ai_init_failed(str(e)))
 
         threading.Thread(target=_init_katago, daemon=True).start()
+
+    def _ai_replay_move_history_to_katago(self, katago):
+        """KataGo内部盤面を、碁華側の move_history と一致させる。
+
+        KataGo 起動（GPUチューニング等）が完了するまで `_ai_katago` が None の間に
+        着手が進むと、`play` がKataGoに届かず genmove だけが空局面に対して走る、
+        という不整合が起こり得る。初期化完了時点で必ず同期する。
+        """
+        if not katago or not self.go_board:
+            return
+        hist = getattr(self.go_board.game, "move_history", None) or []
+        for action, player, x, y in hist:
+            color = "B" if player == BLACK else "W"
+            if action == "pass":
+                resp = katago.play(color, "pass")
+            elif action == "move":
+                vertex = KataGoGTP.coords_to_gtp_vertex(x, y)
+                resp = katago.play(color, vertex)
+            else:
+                # resign などはここでは打ち込まない（対局状態が壊れるため）
+                continue
+            if not resp or not (resp.lstrip().startswith("=") or resp.lstrip().startswith("?")):
+                raise RuntimeError("KataGo同期失敗: play応答不正 action={} resp={!r}".format(action, resp))
 
     def _ai_on_katago_ready(self):
         """KataGo初期化完了後にタイマーを再開し、必要ならAIの初手を打つ。"""
