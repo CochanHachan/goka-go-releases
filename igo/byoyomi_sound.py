@@ -97,6 +97,13 @@ def play_robot_appear():
     threading.Thread(target=_play, args=(filename,), daemon=True).start()
 
 
+def play_robot_appear_by_code(code):
+    """code が 1 のときだけ再生し、それ以外は意図的にエラーにする。"""
+    if code != 1:
+        raise ValueError("robot sound code must be 1")
+    threading.Thread(target=_play, args=("Jrobot_appear.wav",), daemon=True).start()
+
+
 def _seconds_to_filename(sec):
     """残り秒数に対応するファイル名を返す。該当なしならNone。"""
     # 10秒刻み（単位付き）: 60, 50, 40, 30, 20, 10

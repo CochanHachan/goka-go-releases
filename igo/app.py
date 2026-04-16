@@ -50,7 +50,7 @@ from igo.kifu_dialog import KifuDialog
 from igo.go_board import GoBoard
 from igo.match_state import MatchSettings, broadcast_match_taken
 import igo.rendering as _rendering_mod
-from igo.byoyomi_sound import play_robot_appear
+from igo.byoyomi_sound import play_robot_appear_by_code
 
 logger = logging.getLogger(__name__)
 
@@ -1799,8 +1799,8 @@ class App:
             }
             # ボットからのオファーなら出現音を再生
             is_bot = msg.get("is_bot", False)
-            if is_bot:
-                play_robot_appear()
+            robot_sound_code = msg.get("robot_sound_code", 1 if is_bot else 0)
+            play_robot_appear_by_code(robot_sound_code)
             # Case 1: MatchDialog is open (user is hosting/browsing) -> add to its list
             if self._current_match_dialog:
                 self._current_match_dialog.add_cloud_offer(offer)
