@@ -157,7 +157,10 @@ class KataGoGTP:
                         # 空行は区切りとして無視（ログが複数行続くケースがある）
                         continue
                     buf_lines.append(line)
-                    if line.lstrip().startswith("="):
+                    # GTP の応答終端は成功 "=" または失敗 "?"。
+                    # "=" だけを終端条件にすると、"?" 応答時に
+                    # 次行待ちでブロックし AI 対局が停止しうる。
+                    if line.lstrip().startswith("=") or line.lstrip().startswith("?"):
                         break
                 return "\n".join(buf_lines)
             except (OSError, BrokenPipeError, ValueError):
