@@ -2097,8 +2097,10 @@ class App:
             return
         # KataGoがまだ初期化中なら少し待ってリトライ
         if not self._ai_katago:
-            if retry_count >= 40:
-                self._ai_init_failed("KataGoの初期化待機がタイムアウトしました")
+            # 初回起動時はOpenCLの自動チューニングで数分かかる場合があるため、
+            # 初期化待機タイムアウトを長めに取る（500ms * 1800 = 約15分）
+            if retry_count >= 1800:
+                self._ai_init_failed("KataGoの初期化待機がタイムアウトしました（GPUチューニングに時間がかかっています）")
                 return
             self.root.after(500, lambda: self._ai_handle_user_move(msg, retry_count + 1))
             return
