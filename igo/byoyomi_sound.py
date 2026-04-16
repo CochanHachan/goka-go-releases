@@ -5,10 +5,10 @@
   ja → J / JP    en → E / EP    zh → C / CP    ko → K / KP
 
 再生ルール（秒読みフェーズのみ）:
-  秒読み開始時     → {prefix}ByoyomiStart.mp3
-  60〜10秒(10秒刻み) → {prefix}{sec}sec.mp3
-  9〜1秒           → {prefix}P{sec:02d}c.mp3
-  0秒 (時間切れ)   → {prefix}TimeOut.mp3
+  秒読み開始時     → {prefix}ByoyomiStart.wav
+  60〜10秒(10秒刻み) → {prefix}{sec}sec.wav
+  9〜1秒           → {prefix}P{sec:02d}c.wav
+  0秒 (時間切れ)   → {prefix}TimeOut.wav
 """
 import logging
 import os
@@ -69,7 +69,7 @@ def _prefix_p():
 
 def play_byoyomi_start():
     """秒読み開始音声を再生する。"""
-    filename = "{}ByoyomiStart.mp3".format(_prefix())
+    filename = "{}ByoyomiStart.wav".format(_prefix())
     threading.Thread(target=_play, args=(filename,), daemon=True).start()
 
 
@@ -83,7 +83,7 @@ def play_byoyomi_sound(remaining_seconds):
 
 def play_timeout_sound():
     """時間切れ音声を再生する。"""
-    filename = "{}TimeOut.mp3".format(_prefix())
+    filename = "{}TimeOut.wav".format(_prefix())
     threading.Thread(target=_play, args=(filename,), daemon=True).start()
 
 
@@ -93,7 +93,7 @@ def play_robot_appear():
     フォールバックは行わない（秒読みと同じ `_play` 経路に統一するため）。
     ファイルが無い場合は再生しない（ログのみ）。
     """
-    filename = "{}robot_appear.mp3".format(_prefix())
+    filename = "{}robot_appear.wav".format(_prefix())
     threading.Thread(target=_play, args=(filename,), daemon=True).start()
 
 
@@ -101,28 +101,28 @@ def _seconds_to_filename(sec):
     """残り秒数に対応するファイル名を返す。該当なしならNone。"""
     # 10秒刻み（単位付き）: 60, 50, 40, 30, 20, 10
     if sec in (60, 50, 40, 30, 20, 10):
-        return "{}{:02d}sec.mp3".format(_prefix(), sec)
+        return "{}{:02d}sec.wav".format(_prefix(), sec)
     # 9〜1秒（数字のみ）
     if 1 <= sec <= 9:
-        return "{}{:02d}c.mp3".format(_prefix_p(), sec)
+        return "{}{:02d}c.wav".format(_prefix_p(), sec)
     # 時間切れ
     if sec <= 0:
-        return "{}TimeOut.mp3".format(_prefix())
+        return "{}TimeOut.wav".format(_prefix())
     return None
 
 
 def _play(filename):
     """実際の再生処理（スレッド内で実行）。
 
-    pygame.mixer.Sound() は Windows で mp3 を正しくデコードできず
-    ビープ音になる問題があるため、mixer.music 経由で再生する。
+    秒読み・SE は短いクリップが多いため、グローバルに1曲しか再生できない
+    `mixer.music` ではなく `mixer.Sound` を使う（WAV 前提）。
     """
     try:
         if not _init_mixer():
             return
         path = _resolve_sound_path(filename)
         if path:
-            _play_music(path)
+            _play_sound(path)
         else:
             _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
     except Exception as e:
@@ -139,15 +139,10 @@ def _resolve_sound_path(filename):
     return None
 
 
-# mp3 再生用ロック（pygame.mixer.music はグローバルに1曲しか再生できない）
-_music_lock = threading.Lock()
-
-
-def _play_music(path):
+def _play_sound(path):
     try:
         import pygame
-        with _music_lock:
-            pygame.mixer.music.load(path)
-            pygame.mixer.music.play()
+        sound = pygame.mixer.Sound(path)
+        sound.play()
     except Exception as e:
-        _logger.warning("music play failed: %s %s", path, e, exc_info=True)
+        _logger.warning("sound play failed: %s %s", path, e, exc_info=True)
