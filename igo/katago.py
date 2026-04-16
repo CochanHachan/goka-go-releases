@@ -171,7 +171,7 @@ class KataGoGTP:
 
         threading.Thread(target=_drain_gtp_stderr, daemon=True).start()
 
-    def send_command(self, cmd, timeout_s=30):
+    def send_command(self, cmd, timeout_s=None):
         """Send a GTP command and return the response.
 
         timeout_s: 応答終端(= / ?)を待つ最大秒数。タイムアウト時は None。
@@ -188,13 +188,14 @@ class KataGoGTP:
                 self.proc.stdin.write((cmd + "\n").encode("utf-8"))
                 self.proc.stdin.flush()
                 buf_lines = []
-                deadline = _time.time() + float(timeout_s or 0)
+                deadline = _time.time() + float(timeout_s or 0) if timeout_s is not None else None
                 while True:
-                    remaining = max(0.0, deadline - _time.time())
-                    if timeout_s is not None and remaining <= 0:
-                        logger.warning("GTP send_command timeout: %s", cmd)
-                        self._append_gtp_log("[send_command] timeout cmd={}".format(cmd))
-                        return None
+                    if timeout_s is not None:
+                        remaining = max(0.0, deadline - _time.time())
+                        if remaining <= 0:
+                            logger.warning("GTP send_command timeout: %s", cmd)
+                            self._append_gtp_log("[send_command] timeout cmd={}".format(cmd))
+                            return None
                     try:
                         line = self._stdout_q.get(timeout=min(1.0, remaining) if timeout_s is not None else 1.0)
                     except _queue.Empty:

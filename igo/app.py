@@ -1964,6 +1964,7 @@ class App:
             try:
                 katago = KataGoGTP(visits=bot_visits, human_profile=bot_human_profile, human_lambda=bot_human_lambda, fallback_visits=bot_fallback_visits)
                 katago.start()
+                # 初期化フェーズはGPUチューニングで数分かかることがあるためタイムアウトなしで待つ
                 if not (katago.set_boardsize(19) or "").startswith("="):
                     raise RuntimeError("KataGo初期化失敗: boardsize 応答なし")
                 if not (katago.set_komi(ms.komi) or "").startswith("="):
