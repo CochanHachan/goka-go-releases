@@ -113,9 +113,22 @@ def play_timeout_sound():
 
 def play_robot_appear():
     """ロボ出現時の音声を再生する（言語別プレフィックス付き、フォールバック有）。"""
-    filename = "{}robot_appear.mp3".format(_prefix())
-    threading.Thread(target=_play_with_fallback,
-                     args=(filename, "Jrobot_appear.mp3"), daemon=True).start()
+    def _run():
+        primary = "{}robot_appear.mp3".format(_prefix())
+        fallback = "Jrobot_appear.mp3"
+        # 秒読みと同じ再生経路（_play）を使う。
+        # 言語別ファイルが無い場合のみ日本語へフォールバックする。
+        if _init_mixer():
+            if _resolve_sound_path(primary):
+                _play(primary)
+                return
+            if fallback != primary and _resolve_sound_path(fallback):
+                _play(fallback)
+                return
+        # どちらも無い場合は従来どおりログのみ（ビープ対策とは別）
+        _logger.warning("sound file not found: %s / %s (sound_dir=%s)", primary, fallback, _sound_dir)
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _seconds_to_filename(sec):
