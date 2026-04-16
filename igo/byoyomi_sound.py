@@ -107,23 +107,6 @@ def _play_challenge_arrived_direct():
         _logger.warning("challenge sound play failed: %s", e, exc_info=True)
 
 
-def play_robot_appear():
-    """ロボ出現時の音声を再生する（言語別ファイルのみ）。
-
-    フォールバックは行わない（秒読みと同じ `_play` 経路に統一するため）。
-    ファイルが無い場合は再生しない（ログのみ）。
-    """
-    filename = "{}robot_appear.wav".format(_prefix())
-    threading.Thread(target=_play, args=(filename,), daemon=True).start()
-
-
-def play_robot_appear_by_code(code):
-    """code が 1 のときだけ Jrobot_appear.wav を再生する。"""
-    if code != 1:
-        return
-    threading.Thread(target=_play, args=("Jrobot_appear.wav",), daemon=True).start()
-
-
 def _seconds_to_filename(sec):
     """残り秒数に対応するファイル名を返す。該当なしならNone。"""
     # 10秒刻み（単位付き）: 60, 50, 40, 30, 20, 10
