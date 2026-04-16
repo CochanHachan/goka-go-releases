@@ -1799,8 +1799,9 @@ class App:
             }
             # ボットからのオファーなら出現音を再生
             is_bot = msg.get("is_bot", False)
-            robot_sound_code = msg.get("robot_sound_code", 1 if is_bot else 0)
-            play_robot_appear_by_code(robot_sound_code)
+            if is_bot:
+                robot_sound_code = msg.get("robot_sound_code", 1)
+                play_robot_appear_by_code(robot_sound_code)
             # Case 1: MatchDialog is open (user is hosting/browsing) -> add to its list
             if self._current_match_dialog:
                 self._current_match_dialog.add_cloud_offer(offer)
