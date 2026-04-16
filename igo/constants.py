@@ -31,7 +31,7 @@ if _cfg is None:
     raise RuntimeError("Unknown _ENV={!r}. Must be 'production' or 'staging'.".format(_ENV))
 
 APP_NAME         = _cfg["app_name"]
-APP_VERSION      = "1.2.145"
+APP_VERSION      = "1.2.146"
 APP_BUILD        = "20260416"
 STAGING_LABEL    = _cfg["staging_label"]
 CLOUD_SERVER_URL = _cfg["cloud_server_url"]
