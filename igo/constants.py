@@ -37,7 +37,12 @@ STAGING_LABEL    = _cfg["staging_label"]
 CLOUD_SERVER_URL = _cfg["cloud_server_url"]
 API_BASE_URL     = _cfg["api_base_url"]
 
-UPDATE_CHECK_URL = "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/version.json"
+_UPDATE_URL_CONFIG = {
+    "production": "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/version.json",
+    # staging は本番version.jsonを参照しない（本番更新ダイアログ誤表示を防ぐ）
+    "staging": "",
+}
+UPDATE_CHECK_URL = _UPDATE_URL_CONFIG.get(_ENV, "")
 
 # ---------------------------------------------------------------------------
 # 起動時自己診断: STAGING_LABEL と URL の整合性チェック

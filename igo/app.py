@@ -608,6 +608,11 @@ class App:
             self._delete_marker()
             self.show_login()
             return
+        # staging では更新チェックURLを空にしているため、更新確認をスキップ
+        if not UPDATE_CHECK_URL:
+            _write_log("Update check disabled for this environment")
+            self.show_login()
+            return
 
         def _fetch_version_json():
             """version.json を取得。SSL検証 → 失敗時はSSL検証なしでリトライ。"""
