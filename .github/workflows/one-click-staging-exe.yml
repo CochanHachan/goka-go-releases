@@ -1,6 +1,9 @@
 name: One Click Staging EXE
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       source_branch:
