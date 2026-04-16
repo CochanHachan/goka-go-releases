@@ -16,6 +16,28 @@ from igo.config import _get_install_dir
 logger = logging.getLogger(__name__)
 
 
+def _katago_home_data_dir():
+    """Return a writable directory for KataGo cached data (OpenCL tuning, etc.).
+
+    KataGo defaults to writing under DIR/KataGoData next to katago.exe, but that
+    can be problematic on Windows (install dir permissions, OneDrive paths).
+    KataGo supports overriding via config key `homeDataDir` (also via
+    `-override-config homeDataDir=...`).
+    """
+    if platform.system() == "Windows":
+        base = os.environ.get("LOCALAPPDATA", "") or os.path.expanduser("~")
+        data_dir = os.path.join(base, "GokaGo", "katago")
+    else:
+        data_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "GokaGo", "katago")
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+    except OSError:
+        # Fall back to install dir behavior if we cannot create the directory.
+        return ""
+    # KataGo accepts forward slashes on Windows too; avoids escaping issues.
+    return data_dir.replace("\\", "/")
+
+
 class KataGoGTP:
     """KataGo GTP process for AI games."""
 
@@ -75,6 +97,9 @@ class KataGoGTP:
                 human_model_file, self.visits, self.fallback_visits,
             )
 
+        home_data = _katago_home_data_dir()
+        home_cfg = ("homeDataDir={}".format(home_data) if home_data else "")
+
         if use_human:
             override = (
                 "maxVisits={},numSearchThreads=1,ponderingEnabled=false,"
@@ -87,6 +112,8 @@ class KataGoGTP:
                 "resignConsecTurns=20,"
                 "resignMinScoreDifference=40"
             ).format(self.visits, self.human_profile, self.human_lambda)
+            if home_cfg:
+                override = home_cfg + "," + override
             cmd = [
                 katago_exe, "gtp",
                 "-config", config_file,
@@ -98,6 +125,8 @@ class KataGoGTP:
             effective_visits = self.fallback_visits if self.human_profile else self.visits
             override = "maxVisits={},numSearchThreads=1,ponderingEnabled=false".format(
                 effective_visits)
+            if home_cfg:
+                override = home_cfg + "," + override
             cmd = [
                 katago_exe, "gtp",
                 "-config", config_file,
