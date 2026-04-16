@@ -1781,8 +1781,9 @@ class App:
         elif msg_type == "match_offer":
             # Someone is offering a match
             sender = msg.get("from", "")
-            # だれからの挑戦状でも受信時に通知音を鳴らす
-            play_challenge_arrived()
+            # ロボからの挑戦状のみ通知音を鳴らす
+            if msg.get("is_bot", False):
+                play_challenge_arrived()
             if not self.go_board or self.go_board.net_mode:
                 return
             if self.is_offer_declined(sender):
