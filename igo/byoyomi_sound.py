@@ -14,7 +14,6 @@ import logging
 import os
 import sys
 import threading
-import time
 
 from igo.config import _get_install_dir
 from igo.lang import get_language
@@ -25,10 +24,6 @@ _logger = logging.getLogger(__name__)
 # pygame.mixer を遅延初期化
 _mixer_ready = False
 _sound_dir = None
-
-# 再生ファイルのキャッシュ
-_cache = {}
-
 
 def _init_mixer():
     """pygame.mixer を初期化する（初回のみ）。"""
@@ -57,25 +52,6 @@ def _init_mixer():
             _sound_dir = candidate
             break
     return True
-
-
-def _get_sound(filename):
-    """ファイル名からpygame.mixer.Soundを取得（キャッシュ付き）。"""
-    if filename in _cache:
-        return _cache[filename]
-    if not _sound_dir:
-        return None
-    path = os.path.join(_sound_dir, filename)
-    if not os.path.exists(path):
-        return None
-    try:
-        import pygame
-        snd = pygame.mixer.Sound(path)
-        _cache[filename] = snd
-        return snd
-    except Exception as e:
-        _logger.warning("sound load failed: %s %s", filename, e, exc_info=True)
-        return None
 
 
 # 言語コード → 音声ファイルプレフィックス
@@ -153,29 +129,6 @@ def _play(filename):
         _logger.warning("play error: %s %s", filename, e, exc_info=True)
 
 
-def _play_with_fallback(filename, fallback):
-    """再生処理（言語別ファイルが無い場合はフォールバック）。
-
-    mp3ファイルは pygame.mixer.music 経由で再生する。
-    pygame.mixer.Sound() は Windows で mp3 を正しくデコードできず
-    ビープ音になる問題があるため。
-    """
-    try:
-        if not _init_mixer():
-            _logger.warning("mixer init failed — cannot play %s", filename)
-            return
-        path = _resolve_sound_path(filename)
-        if not path and fallback != filename:
-            _logger.info("sound not found: %s, trying fallback: %s", filename, fallback)
-            path = _resolve_sound_path(fallback)
-        if path:
-            _play_music(path)
-        else:
-            _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
-    except Exception as e:
-        _logger.warning("play error: %s %s", filename, e, exc_info=True)
-
-
 def _resolve_sound_path(filename):
     """ファイル名からフルパスを返す。存在しなければ None。"""
     if not _sound_dir:
@@ -191,25 +144,10 @@ _music_lock = threading.Lock()
 
 
 def _play_music(path):
-    """pygame.mixer.music で mp3 を再生する。
-
-    pygame.mixer.Sound() は Windows で mp3 デコードに失敗し
-    ビープ音になることがある。mixer.music は SDL_mixer の
-    Music API を使い、mp3 を正しくデコードできる。
-    """
     try:
         import pygame
         with _music_lock:
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
-            # Windows 環境では mp3 デコード失敗でも例外にならず、
-            # 代わりに「無音/ビープ」になることがある。短時間だけ再生状態を見る。
-            time.sleep(0.05)
-            if not pygame.mixer.music.get_busy():
-                snd = _get_sound(os.path.basename(path))
-                if snd:
-                    snd.play()
-                else:
-                    _logger.warning("music not busy after play; Sound fallback missing: %s", path)
     except Exception as e:
         _logger.warning("music play failed: %s %s", path, e, exc_info=True)
