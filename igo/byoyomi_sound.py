@@ -89,7 +89,22 @@ def play_timeout_sound():
 
 def play_challenge_arrived():
     """挑戦状受信時に通知音を再生する。"""
-    threading.Thread(target=_play, args=("J03sec.wav",), daemon=True).start()
+    threading.Thread(target=_play_challenge_arrived_direct, daemon=True).start()
+
+
+def _play_challenge_arrived_direct():
+    """J03sec.wav を pygame 公開APIで直接再生する。"""
+    try:
+        if not _init_mixer():
+            return
+        path = _resolve_sound_path("J03sec.wav")
+        if path:
+            import pygame
+            pygame.mixer.Sound(path).play()
+        else:
+            _logger.warning("sound file not found: %s (sound_dir=%s)", "J03sec.wav", _sound_dir)
+    except Exception as e:
+        _logger.warning("challenge sound play failed: %s", e, exc_info=True)
 
 
 def play_robot_appear():
