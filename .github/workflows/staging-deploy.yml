@@ -220,20 +220,21 @@ jobs:
       - name: Create staging ZIPs
         shell: python
         run: |
-          import zipfile, os
+          import os
+          import shutil
 
-          def create_zip(src, dst):
-              with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
-                  for root, dirs, files in os.walk(src):
-                      for f in files:
-                          fp = os.path.join(root, f)
-                          arcname = os.path.relpath(fp, src)
-                          try:
-                              zf.write(fp, arcname)
-                          except PermissionError as e:
-                              print(f"WARNING: Could not add {fp}: {e}")
-              size_mb = os.path.getsize(dst) / (1024 * 1024)
-              print(f"Created {dst} ({size_mb:.1f} MB)")
+          def create_zip(src_dir, dst_zip):
+              # NOTE:
+              # PyInstaller の onedir 出力には `_tk_data/` のような「空ディレクトリ」が含まれる。
+              # zipfile で手組みすると dirs が無視され、展開後に Tcl/Tk ランタイムが欠落して起動失敗する。
+              # shutil.make_archive は空ディレクトリも含めてアーカイブできる。
+              base_dir = os.path.dirname(os.path.abspath(src_dir))
+              base_name = os.path.join(os.path.dirname(os.path.abspath(dst_zip)), "_tmp_archive")
+              shutil.make_archive(base_name, "zip", root_dir=base_dir, base_dir=os.path.basename(src_dir))
+              tmp_zip = base_name + ".zip"
+              os.replace(tmp_zip, dst_zip)
+              size_mb = os.path.getsize(dst_zip) / (1024 * 1024)
+              print(f"Created {dst_zip} ({size_mb:.1f} MB)")
 
           # クライアント
           create_zip("dist/goka_go", "dist/goka_go_staging.zip")

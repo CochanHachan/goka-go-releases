@@ -164,15 +164,18 @@ jobs:
         shell: python
         run: |
           import os
-          import zipfile
+          import shutil
 
-          def create_zip(src, dst):
-              with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
-                  for root, _, files in os.walk(src):
-                      for f in files:
-                          fp = os.path.join(root, f)
-                          arcname = os.path.relpath(fp, src)
-                          zf.write(fp, arcname)
+          def create_zip(src_dir, dst_zip):
+              # NOTE:
+              # PyInstaller の onedir 出力には `_tk_data/` のような「空ディレクトリ」が含まれる。
+              # zipfile で手組みすると dirs が無視され、展開後に Tcl/Tk ランタイムが欠落して起動失敗する。
+              # shutil.make_archive は空ディレクトリも含めてアーカイブできる。
+              base_dir = os.path.dirname(os.path.abspath(src_dir))
+              base_name = os.path.join(os.path.dirname(os.path.abspath(dst_zip)), "_tmp_archive")
+              shutil.make_archive(base_name, "zip", root_dir=base_dir, base_dir=os.path.basename(src_dir))
+              tmp_zip = base_name + ".zip"
+              os.replace(tmp_zip, dst_zip)
 
           create_zip("dist/goka_go", "dist/goka_go_staging.zip")
           create_zip("dist/igo_admin", "dist/igo_admin_staging.zip")
