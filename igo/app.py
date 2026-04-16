@@ -1800,11 +1800,7 @@ class App:
             # ボットからのオファーなら出現音を再生
             is_bot = msg.get("is_bot", False)
             if is_bot:
-                robot_sound_code = msg.get("robot_sound_code", 1)
-                try:
-                    play_robot_appear_by_code(robot_sound_code)
-                except Exception as e:
-                    logger.warning("robot appear sound failed: %s", e, exc_info=True)
+                play_robot_appear_by_code(1)
             # Case 1: MatchDialog is open (user is hosting/browsing) -> add to its list
             if self._current_match_dialog:
                 self._current_match_dialog.add_cloud_offer(offer)
