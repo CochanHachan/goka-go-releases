@@ -107,6 +107,13 @@ def _play_challenge_arrived_direct():
         _logger.warning("challenge sound play failed: %s", e, exc_info=True)
 
 
+def play_robot_appear_localized():
+    """ロボ挑戦受信時に言語別の robot_appear 音声を再生する。"""
+    lang = get_language()
+    prefix = {"ja": "J", "en": "E", "zh": "C", "ko": "K"}.get(lang, "J")
+    threading.Thread(target=_play, args=(f"{prefix}robot_appear.wav",), daemon=True).start()
+
+
 def _seconds_to_filename(sec):
     """残り秒数に対応するファイル名を返す。該当なしならNone。"""
     # 10秒刻み（単位付き）: 60, 50, 40, 30, 20, 10
