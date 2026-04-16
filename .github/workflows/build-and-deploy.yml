@@ -345,10 +345,10 @@ jobs:
           $version = $env:RELEASE_VERSION
           $notes = $env:RELEASE_NOTES
           $zipFile = "releases/goka_go_${version}.zip"
-          $exeFile = "dist/installer/GokaGo_Setup_${version}.exe"
-          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" "${exeFile}" 2>$null
+          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release upload "v${version}" "${zipFile}" "${exeFile}" --clobber 2>$null
+            # ZIP配布のみを公開（インストーラーEXEは添付しない）
+            gh release upload "v${version}" "${zipFile}" --clobber 2>$null
           }
         shell: pwsh
 
@@ -365,8 +365,8 @@ jobs:
           with open(index_path, "r", encoding="utf-8") as f:
               content = f.read()
 
-          # ダウンロードリンクをインストーラー（.exe）に更新
-          new_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/GokaGo_Setup_{version}.exe"
+          # ダウンロードリンクをZIPに更新
+          new_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/goka_go_{version}.zip"
           content = re.sub(
               r'(<a\s+href=")[^"]*("\s+data-key="navDownload")',
               rf'\g<1>{new_link}\2',
