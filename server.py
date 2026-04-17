@@ -554,6 +554,11 @@ class AdminResetTestPasswordsRequest(BaseModel):
     password: str = "2052"
     dry_run: bool = False
 
+
+class AdminSetUserPasswordRequest(BaseModel):
+    handle_name: str
+    password: str
+
 @app.put("/api/user/password_enc")
 async def update_password_enc(req: UpdatePasswordEncRequest):
     """管理者が暗号化パスワードを更新する（base64→Fernet移行用）。"""
@@ -1630,6 +1635,57 @@ async def admin_reset_test_passwords(
             "updated_handles": targets,
             "db_backup": backup_path
         }
+    except (OSError, sqlite3.Error) as e:
+        return JSONResponse(
+            content={"status": "error", "detail": str(e)},
+            status_code=500
+        )
+
+
+@app.post("/admin/set-user-password")
+async def admin_set_user_password(request: Request, body: AdminSetUserPasswordRequest):
+    """指定ユーザー1件のパスワードを管理者トークンで更新する。"""
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    handle = (body.handle_name or "").strip()
+    password = (body.password or "").strip()
+    if not handle:
+        return JSONResponse(
+            content={"status": "error", "detail": "handle_name is required"},
+            status_code=400
+        )
+    if len(password) < 4:
+        return JSONResponse(
+            content={"status": "error", "detail": "password must be at least 4 characters"},
+            status_code=400
+        )
+
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            "SELECT id FROM users WHERE handle_name = ?",
+            (handle,)
+        ).fetchone()
+        if row is None:
+            conn.close()
+            return JSONResponse(
+                content={"status": "error", "detail": "user not found"},
+                status_code=404
+            )
+
+        backup_path = await asyncio.to_thread(_backup_db, f"pre-set-password-{handle}")
+        salt = secrets.token_hex(16)
+        pw_hash = hash_password(password, salt)
+        pw_enc = _b64_encode_password(password)
+        conn.execute(
+            "UPDATE users SET salt = ?, password_hash = ?, password_enc = ? WHERE handle_name = ?",
+            (salt, pw_hash, pw_enc, handle)
+        )
+        conn.commit()
+        conn.close()
+        logger.warning("Admin set user password: %s", handle)
+        return {"status": "ok", "handle_name": handle, "db_backup": backup_path}
     except (OSError, sqlite3.Error) as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
