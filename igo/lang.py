@@ -148,9 +148,6 @@ STRINGS = {
         "ai_resigned":      "AIが投了しました。\nあなたの勝ちです。",
         "ai_pass":          "AIがパスしました。",
         "ai_not_found":     "KataGoが見つかりません。\nkatagoフォルダを確認してください。",
-        # 盤下オーバーレイ（AI対局・KataGo）。表示文言は必要に応じて差し替え
-        "ai_board_overlay_preparing":       "KataGoを準備しています…",
-        "ai_board_overlay_opencl_tuning": "GPUを調整しています（初回のみ時間がかかることがあります）",
 
         # --- Game results / resign / timeout ---
         "resign_title":         "投了",
@@ -347,9 +344,6 @@ STRINGS = {
         "ai_resigned":      "AI resigned.\nYou win!",
         "ai_pass":          "AI passed.",
         "ai_not_found":     "KataGo not found.\nPlease check the katago folder.",
-        # Board overlay (AI / KataGo). Copy can be revised as needed
-        "ai_board_overlay_preparing":       "Preparing KataGo…",
-        "ai_board_overlay_opencl_tuning": "Adjusting GPU (first run may take a while)",
 
         # --- Game results / resign / timeout ---
         "resign_title":         "Resign",
@@ -546,8 +540,6 @@ STRINGS = {
         "ai_resigned":      "AI认输了。\n你赢了！",
         "ai_pass":          "AI跳过了。",
         "ai_not_found":     "未找到KataGo。\n请检查katago文件夹。",
-        "ai_board_overlay_preparing":       "正在准备 KataGo…",
-        "ai_board_overlay_opencl_tuning": "正在调整 GPU（首次运行可能较久）",
 
         # --- Game results / resign / timeout ---
         "resign_title":         "投降",
@@ -771,8 +763,6 @@ STRINGS = {
         "ai_bot_save":             "저장",
         "ai_bot_cancel":           "취소",
         "ai_bot_saved":            "AI 대국 조건이 저장되었습니다.",
-        "ai_board_overlay_preparing":       "KataGo 준비 중…",
-        "ai_board_overlay_opencl_tuning": "GPU 조정 중(첫 실행은 시간이 걸릴 수 있습니다)",
 
         # --- Login screen ---
         "login_empty":          "핸들 이름과 비밀번호를 입력하세요.",

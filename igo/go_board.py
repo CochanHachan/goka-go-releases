@@ -48,6 +48,7 @@ class GoBoard:
         self.offset_y = 0
         self._timer_running = False
         self._katago_tune_timer_hold = False  # OpenCL autotuning 中のみ True（秒読みカウント停止）
+        self._robot_katago_init_block = False  # AI対局で KataGo 初期化完了まで着手等を禁止
         self.net_mode = False
         self.my_color = None
         self.timer_black = None  # ByoyomiTimer
@@ -598,6 +599,8 @@ class GoBoard:
             if current and "resign_overlay_button" in self.canvas.gettags(current[0]):
                 self._hide_overlay()
             return
+        if self._robot_katago_init_blocked():
+            return
         # Only allow clicks during: network game (own turn) or review mode
         review_mode = getattr(self, '_review_mode', False)
         if review_mode:
@@ -746,14 +749,24 @@ class GoBoard:
         """True の間は _tick が持ち時間を減らさない（KataGo OpenCL autotuning 専用）。"""
         self._katago_tune_timer_hold = bool(hold)
 
-    def set_katago_init_overlay(self, message):
-        """盤面下端の KataGo 初期化メッセージ。文言は igo/lang.py のキー経由で渡すこと。None/空で消去。"""
-        tag = "katago_init_overlay"
+    def _robot_katago_init_blocked(self):
+        return bool(getattr(self, "_robot_katago_init_block", False))
+
+    def set_robot_katago_init_blocking(self, block, message=None):
+        """AIロボ対局で KataGo 初期化（チューニング含む）が終わるまで着手・パス・投了を禁止。中央に半透明メッセージ。"""
+        self._robot_katago_init_block = bool(block)
+        tag = "robot_katago_init_overlay"
         try:
             self.canvas.delete(tag)
         except tk.TclError:
+            pass
+        if not block:
+            self._sync_turn_buttons()
             return
         if not message:
+            if hasattr(self, "pass_btn"):
+                self.pass_btn.config(state="disabled")
+                self.resign_btn.config(state="disabled")
             return
 
         def _paint(attempt=0):
@@ -761,28 +774,28 @@ class GoBoard:
             w = self.canvas.winfo_width()
             h = self.canvas.winfo_height()
             if w < 40 or h < 40:
-                # 対局開始直後は canvas の winfo がまだ 1x1 等のことがあり、無言で return していた
                 if attempt < 60:
                     self.root.after(50, lambda: _paint(attempt + 1))
                 return
-            pad_x = 16
-            y1 = h - 52
-            y2 = h - 12
             self.canvas.create_rectangle(
-                pad_x, y1, w - pad_x, y2,
-                fill="#1a1a1a", outline="", stipple="",
+                0, 0, w, h,
+                fill="gray12", stipple="gray50", outline="",
                 tags=tag)
             self.canvas.create_text(
-                w // 2, (y1 + y2) // 2,
+                w // 2, h // 2,
                 text=message,
-                fill="#f5f5f5",
-                font=("Meiryo", 11, "bold"),
+                fill="#fafafa",
+                font=("Meiryo", 17, "bold"),
+                justify="center",
+                width=min(w - 48, 520),
                 tags=tag,
-                width=w - pad_x * 2 - 8,
             )
             self.canvas.tag_raise(tag)
 
         self.root.after(0, lambda: _paint(0))
+        if hasattr(self, "pass_btn"):
+            self.pass_btn.config(state="disabled")
+            self.resign_btn.config(state="disabled")
 
     def handle_network_pass(self):
         """Handle pass from network opponent."""
@@ -872,9 +885,14 @@ class GoBoard:
                            time_control="byoyomi", fischer_increment=10, delay_timer=False):
         """Initialize board for network play.
 
-        delay_timer=True のときはタイマーを起動しない（レガシー互換用。通常は承諾直後に起動）。
+        delay_timer=True のときはタイマーを起動しない（AIロボ対局で KataGo 準備完了まで遅延）。
         """
         self._katago_tune_timer_hold = False
+        self._robot_katago_init_block = False
+        try:
+            self.canvas.delete("robot_katago_init_overlay")
+        except tk.TclError:
+            pass
         self.net_mode = True
         self.my_color = my_color
         self._komi = komi
@@ -915,6 +933,13 @@ class GoBoard:
         """Enable resign/pass buttons only on my turn during network game."""
         if not self.net_mode or self.game.game_over:
             return
+        if self._robot_katago_init_blocked():
+            if hasattr(self, "pass_btn"):
+                self.pass_btn.config(state="disabled")
+                self.resign_btn.config(state="disabled")
+            if self.app:
+                self.app._sync_game_menu_state()
+            return
         is_my_turn = self.my_color is not None and self.game.current_player == self.my_color
         state = "normal" if is_my_turn else "disabled"
         if hasattr(self, "pass_btn"):
@@ -934,6 +959,11 @@ class GoBoard:
         self.net_mode = False
         self.my_color = None
         self._timer_running = False
+        self._robot_katago_init_block = False
+        try:
+            self.canvas.delete("robot_katago_init_overlay")
+        except tk.TclError:
+            pass
         if hasattr(self, "pass_btn"):
             self.pass_btn.config(state="disabled")
             self.resign_btn.config(state="disabled")
@@ -1093,6 +1123,8 @@ class GoBoard:
     def _pass_turn(self):
         if not self.net_mode or self.game.game_over:
             return
+        if self._robot_katago_init_blocked():
+            return
         if self.game.current_player != self.my_color:
             return
         # Grant Fischer increment (or reset byoyomi) before pass_turn switches the player
@@ -1116,6 +1148,8 @@ class GoBoard:
 
     def _resign(self):
         if not self.net_mode or self.game.game_over:
+            return
+        if self._robot_katago_init_blocked():
             return
         self._show_resign_confirm()
 
