@@ -13,6 +13,7 @@ REST API (FastAPI) + WebSocket 中継サーバー
 
 import asyncio
 import base64
+import copy
 import hashlib
 import json
 import logging
@@ -106,6 +107,44 @@ AI_BOTS = {
     "AIロボ30": {"elo": 3250, "rank": "9段",  "visits": 5000, "fallback_visits": 5000, "human_profile": "preaz_9d", "human_lambda": 5},
 }
 
+# 言語別ELO対応表に合わせるためのオフセット（igo/elo.py の定義に準拠）
+_BOT_ELO_OFFSET_BY_LANG = {
+    "ja": 0,      # 日本基準
+    "en": 50,     # EGF/AGA基準
+    "zh": 100,    # 中国基準
+    "ko": -300,   # 韓国オンライン基準
+}
+
+
+def _normalize_lang(lang: Optional[str]) -> str:
+    if lang in _BOT_ELO_OFFSET_BY_LANG:
+        return lang
+    return "ja"
+
+
+def _build_ai_bots_by_lang():
+    """言語別にELOを平行移動したAIボット辞書を作る。"""
+    out = {}
+    for lang, offset in _BOT_ELO_OFFSET_BY_LANG.items():
+        bots = copy.deepcopy(AI_BOTS)
+        if offset:
+            for _name, info in bots.items():
+                info["elo"] = int(info["elo"] + offset)
+        out[lang] = bots
+    return out
+
+
+AI_BOTS_BY_LANG = _build_ai_bots_by_lang()
+
+
+def _bots_for_lang(lang: Optional[str]):
+    return AI_BOTS_BY_LANG.get(_normalize_lang(lang), AI_BOTS_BY_LANG["ja"])
+
+
+def _bot_info_for_user(bot_name: str, lang: Optional[str]):
+    bots = _bots_for_lang(lang)
+    return bots.get(bot_name)
+
 # ---------------------------------------------------------------------------
 # メモリ上のトークン管理  {token: handle_name}
 # ---------------------------------------------------------------------------
@@ -170,11 +209,12 @@ def _get_offer_timeout_sec() -> int:
         return 180
 
 
-def _find_closest_bot(elo: float) -> Optional[str]:
+def _find_closest_bot(elo: float, lang: str = "ja") -> Optional[str]:
     """ELOが最も近いAIボットを返す。"""
-    if not AI_BOTS:
+    bots = _bots_for_lang(lang)
+    if not bots:
         return None
-    return min(AI_BOTS.keys(), key=lambda name: abs(AI_BOTS[name]["elo"] - elo))
+    return min(bots.keys(), key=lambda name: abs(bots[name]["elo"] - elo))
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +259,34 @@ def init_db():
     except sqlite3.OperationalError:
         pass  # 既にカラムが存在する場合
     conn.commit()
+
+    # 既存データ移行: password_enc(B64) を正として password_hash/salt の不整合を自動修復
+    # （正しいパスワード入力でもログイン不可になる状態をサーバー側で回収）
+    try:
+        rows = conn.execute(
+            "SELECT handle_name, password_hash, salt, password_enc FROM users"
+        ).fetchall()
+        repaired = 0
+        for row in rows:
+            plain = _b64_decode_password(row["password_enc"])
+            if not plain:
+                continue
+            expected = hash_password(plain, row["salt"])
+            if expected == row["password_hash"]:
+                continue
+            new_salt = secrets.token_hex(16)
+            new_hash = hash_password(plain, new_salt)
+            conn.execute(
+                "UPDATE users SET salt = ?, password_hash = ? WHERE handle_name = ?",
+                (new_salt, new_hash, row["handle_name"])
+            )
+            repaired += 1
+        if repaired:
+            conn.commit()
+            logger.warning("Repaired password hash mismatch users: %d", repaired)
+    except Exception as e:
+        logger.warning("Password hash auto-repair skipped: %s", e)
+
     conn.close()
     logger.info("Database initialized: %s", DB_PATH)
 
@@ -232,6 +300,16 @@ def init_db():
 def _b64_encode_password(password: str) -> str:
     """パスワードをbase64で仮保管形式にする。"""
     return "B64:" + base64.b64encode(password.encode("utf-8")).decode("ascii")
+
+
+def _b64_decode_password(password_enc: str) -> str:
+    """B64: 形式の password_enc を復号。復号不可時は空文字を返す。"""
+    if not isinstance(password_enc, str) or not password_enc.startswith("B64:"):
+        return ""
+    try:
+        return base64.b64decode(password_enc[4:]).decode("utf-8")
+    except Exception:
+        return ""
 
 def hash_password(password: str, salt: str) -> str:
     return hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
@@ -335,7 +413,27 @@ async def login(req: LoginRequest):
 
     expected = hash_password(req.password, row["salt"])
     if expected != row["password_hash"]:
-        return {"success": False, "token": "", "user": None, "message": "パスワードが正しくありません"}
+        # サーバー側回収: password_enc(B64) と一致する場合はその場で hash/salt を修復
+        plain = _b64_decode_password(row["password_enc"] if row["password_enc"] else "")
+        if not plain or plain != req.password:
+            return {"success": False, "token": "", "user": None, "message": "パスワードが正しくありません"}
+        try:
+            new_salt = secrets.token_hex(16)
+            new_hash = hash_password(req.password, new_salt)
+            conn_fix = get_db_connection()
+            conn_fix.execute(
+                "UPDATE users SET salt = ?, password_hash = ? WHERE handle_name = ?",
+                (new_salt, new_hash, req.handle_name)
+            )
+            conn_fix.commit()
+            conn_fix.close()
+            logger.warning("Recovered login hash mismatch: %s", req.handle_name)
+            row = dict(row)
+            row["salt"] = new_salt
+            row["password_hash"] = new_hash
+        except Exception as e:
+            logger.warning("Failed to recover login hash mismatch: %s (%s)", req.handle_name, e)
+            return {"success": False, "token": "", "user": None, "message": "パスワードが正しくありません"}
 
     # 既存ユーザーの暗号化パスワードが未設定なら追記（移行用）
     if not (row["password_enc"] if row["password_enc"] else ""):
@@ -566,7 +664,8 @@ async def ws_broadcast_online_list():
         if h in connected_users
     ]
     # AIボットを常にオンラインに追加
-    for bot_name, bot_info in AI_BOTS.items():
+    # オンライン一覧は共通表示のため ja 基準の一覧を配信
+    for bot_name, bot_info in _bots_for_lang("ja").items():
         online.append({
             "handle": bot_name,
             "rank": bot_info["rank"],
@@ -703,10 +802,13 @@ async def _bot_auto_offer(handle: str):
             return
         info = ws_user_info.get(handle, {})
         elo = info.get("elo", 0)
-        bot_name = _find_closest_bot(elo)
+        lang = _normalize_lang(info.get("language"))
+        bot_name = _find_closest_bot(elo, lang)
         if not bot_name:
             return
-        bot_info = AI_BOTS[bot_name]
+        bot_info = _bot_info_for_user(bot_name, lang)
+        if not bot_info:
+            return
         _cur = user_status.get(handle, "ログイン")
         if _cur == "対局申請中":
             user_status[handle] = "申請・受付"
@@ -755,10 +857,13 @@ async def _bot_auto_accept(handle: str):
             return
         info = ws_user_info.get(handle, {})
         elo = info.get("elo", 0)
-        bot_name = _find_closest_bot(elo)
+        lang = _normalize_lang(info.get("language"))
+        bot_name = _find_closest_bot(elo, lang)
         if not bot_name:
             return
-        bot_info = AI_BOTS[bot_name]
+        bot_info = _bot_info_for_user(bot_name, lang)
+        if not bot_info:
+            return
         # ボットからの挑戦状として送信（ユーザーが承諾してから対局開始）
         _cur = user_status.get(handle, "ログイン")
         if _cur == "対局申請中":
