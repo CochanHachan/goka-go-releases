@@ -1333,11 +1333,50 @@ ADMIN_TOKEN = os.environ.get("GOKA_ADMIN_TOKEN", "goka-deploy-2026")
 REPO_DIR = os.environ.get("GOKA_REPO_DIR",
                           os.path.dirname(os.path.abspath(__file__)))
 _GIT_BRANCH = os.environ.get("GOKA_GIT_BRANCH", "main")
+DB_BACKUP_DIR = os.environ.get(
+    "GOKA_DB_BACKUP_DIR", os.path.join(REPO_DIR, "backups", "db")
+)
+DB_BACKUP_KEEP = int(os.environ.get("GOKA_DB_BACKUP_KEEP", "30"))
 
 
 def _check_admin_token(request: Request) -> bool:
     token = request.headers.get("X-Token", "")
     return token == ADMIN_TOKEN
+
+
+def _backup_db(tag: str = "manual") -> str:
+    """SQLite DB を時刻付きファイルへバックアップし、古い世代を削除する。"""
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    os.makedirs(DB_BACKUP_DIR, exist_ok=True)
+    dst = os.path.join(DB_BACKUP_DIR, f"igo_users-{ts}-{tag}.db")
+
+    src_conn = sqlite3.connect(str(DB_PATH))
+    dst_conn = sqlite3.connect(dst)
+    try:
+        src_conn.backup(dst_conn)
+    finally:
+        dst_conn.close()
+        src_conn.close()
+
+    try:
+        backups = sorted(
+            [
+                os.path.join(DB_BACKUP_DIR, f)
+                for f in os.listdir(DB_BACKUP_DIR)
+                if f.startswith("igo_users-") and f.endswith(".db")
+            ],
+            key=os.path.getmtime
+        )
+        keep = max(3, DB_BACKUP_KEEP)
+        for old in backups[:-keep]:
+            try:
+                os.unlink(old)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+    return dst
 
 
 def _cleanup_old_releases(keep: int = 3) -> str:
@@ -1437,6 +1476,7 @@ async def admin_update(request: Request):
 
         # ディスク容量不足時は自動クリーンアップ（デッドロック防止）
         cleanup_msg = await asyncio.to_thread(_ensure_disk_space)
+        backup_path = await asyncio.to_thread(_backup_db, "pre-update")
 
         # 現在のコミットハッシュを記録（ブランチ切り替え検出用）
         old_hash = subprocess.run(
@@ -1454,7 +1494,8 @@ async def admin_update(request: Request):
             return JSONResponse(
                 content={"status": "error",
                          "git": fetch_result.stdout + fetch_result.stderr,
-                         "cleanup": cleanup_msg},
+                         "cleanup": cleanup_msg,
+                         "db_backup": backup_path},
                 status_code=500)
         checkout = subprocess.run(
             ["git", "checkout", branch],
@@ -1463,7 +1504,8 @@ async def admin_update(request: Request):
         if checkout.returncode != 0:
             return JSONResponse(
                 content={"status": "error",
-                         "git": checkout.stdout + checkout.stderr},
+                         "git": checkout.stdout + checkout.stderr,
+                         "db_backup": backup_path},
                 status_code=500)
 
         # git pull
@@ -1474,7 +1516,10 @@ async def admin_update(request: Request):
         git_output = result.stdout + result.stderr
 
         if result.returncode != 0:
-            return JSONResponse(content={"status": "error", "git": git_output}, status_code=500)
+            return JSONResponse(
+                content={"status": "error", "git": git_output, "db_backup": backup_path},
+                status_code=500
+            )
 
         # コミットハッシュを比較してコード変更を検出
         # （ブランチ切り替え時は git pull が "Already up to date" でもコードは変わっている）
@@ -1484,7 +1529,12 @@ async def admin_update(request: Request):
         ).stdout.strip()
 
         if old_hash == new_hash:
-            return {"status": "no_change", "git": git_output, "cleanup": cleanup_msg}
+            return {
+                "status": "no_change",
+                "git": git_output,
+                "cleanup": cleanup_msg,
+                "db_backup": backup_path
+            }
 
         # サーバー再起動（環境変数を引き継いで新しいプロセスを起動してから自分を終了）
         subprocess.Popen(
@@ -1495,10 +1545,30 @@ async def admin_update(request: Request):
         )
         # 少し待ってから自分を終了
         asyncio.get_event_loop().call_later(1.0, lambda: os.kill(os.getpid(), 9))
-        return {"status": "updating", "git": git_output, "cleanup": cleanup_msg}
+        return {
+            "status": "updating",
+            "git": git_output,
+            "cleanup": cleanup_msg,
+            "db_backup": backup_path
+        }
     except Exception as e:
         logger.error("Deploy error: %s", e)
         return JSONResponse(content={"status": "error", "detail": str(e)}, status_code=500)
+
+
+@app.post("/admin/backup")
+async def admin_backup(request: Request):
+    """DBバックアップを手動実行する。"""
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
+    try:
+        backup_path = await asyncio.to_thread(_backup_db, "manual")
+        return {"status": "ok", "db_backup": backup_path}
+    except (OSError, sqlite3.Error) as e:
+        return JSONResponse(
+            content={"status": "error", "detail": str(e)},
+            status_code=500
+        )
 
 
 @app.post("/admin/hotpatch")
