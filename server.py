@@ -541,6 +541,9 @@ async def update_user_language(req: UpdateLanguageRequest):
         conn.commit()
     finally:
         conn.close()
+    # WebSocket接続中ユーザーのメモリ情報も即時反映
+    if req.handle_name in ws_user_info:
+        ws_user_info[req.handle_name]["language"] = req.language
     logger.info("Language updated: %s -> %s", req.handle_name, req.language)
     return {"success": True}
 
@@ -923,8 +926,13 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
         _cancel_bot_timers(handle)
         target = msg.get("target")
         # AIボットへの申込は自動承諾
-        if target and target in AI_BOTS:
-            bot_info = AI_BOTS[target]
+        if target:
+            my_lang = _normalize_lang(ws_user_info.get(handle, {}).get("language"))
+            my_bots = _bots_for_lang(my_lang)
+        else:
+            my_bots = {}
+        if target and target in my_bots:
+            bot_info = my_bots[target]
             import random
             user_color = random.choice(["black", "white"])
             bot_color = "white" if user_color == "black" else "black"
@@ -1030,8 +1038,13 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             _cancel_bot_timers(target)
         _cancel_bot_timers(handle)
         # AIボットの申込を承諾 → 即対局開始
-        if target and target in AI_BOTS:
-            bot_info = AI_BOTS[target]
+        if target:
+            my_lang = _normalize_lang(ws_user_info.get(handle, {}).get("language"))
+            my_bots = _bots_for_lang(my_lang)
+        else:
+            my_bots = {}
+        if target and target in my_bots:
+            bot_info = my_bots[target]
             import random
             accepter_color = random.choice(["black", "white"])
             game_pairs[handle] = target
@@ -1249,10 +1262,12 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
     conn = get_db_connection()
     try:
         row = conn.execute(
-            "SELECT elo, rank FROM users WHERE handle_name = ?", (handle_name,)
+            "SELECT elo, rank, language FROM users WHERE handle_name = ?",
+            (handle_name,)
         ).fetchone()
         elo = row["elo"] if row else 0
         rank = row["rank"] if row else ""
+        language = _normalize_lang(row["language"] if row and row["language"] else "ja")
     finally:
         conn.close()
 
@@ -1261,7 +1276,12 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
     # online_list 等を送ってもクライアントは既に login_ok 受信済みとなる。
     old_ws = connected_users.get(handle_name)
     connected_users[handle_name] = websocket  # 先に登録 → old_ws の finally がスキップされる
-    ws_user_info[handle_name] = {"handle": handle_name, "rank": rank, "elo": elo}
+    ws_user_info[handle_name] = {
+        "handle": handle_name,
+        "rank": rank,
+        "elo": elo,
+        "language": language,
+    }
     user_status[handle_name] = "ログイン"
     logger.info("WS connected: %s (elo=%.0f)", handle_name, elo)
 
