@@ -1954,20 +1954,25 @@ class App:
 
         # Use current match settings
         ms = self._cloud_match_settings
-        # delay_timer=True: KataGo 初期化完了まで _start_timer() を遅延させる。
-        # 従来の「_start_network_game() 後に _timer_running = False で止める」方式は
-        # _tick() の世代カウンターと競合してタイマーが再起動しないバグを引き起こすため廃止。
+        # 人間同士・ロボ対局とも承諾直後から秒読みタイマーを起動（従来仕様）。
+        # OpenCL 初回チューニング中のみ GoBoard でカウントを一時停止する。
         self._start_network_game(my_color, opponent_name, opponent_rank,
                                   ms.main_time, ms.byo_time, ms.byo_periods,
                                   ms.komi, opponent_elo,
                                   time_control=ms.time_control,
-                                  fischer_increment=ms.fischer_increment,
-                                  delay_timer=True)
+                                  fischer_increment=ms.fischer_increment)
+        if self.go_board:
+            self.go_board.set_katago_init_overlay(L("ai_board_overlay_preparing"))
 
         # Start KataGo in background thread (model loading takes time)
         def _init_katago():
             try:
                 katago = KataGoGTP(visits=bot_visits, human_profile=bot_human_profile, human_lambda=bot_human_lambda, fallback_visits=bot_fallback_visits)
+
+                def _on_stderr(ev):
+                    self.root.after(0, lambda e=ev: self._ai_on_katago_stderr_event(e))
+
+                katago.set_stderr_status_callback(_on_stderr)
                 katago.start()
                 # 初期化フェーズはGPUチューニングで数分かかることがあるためタイムアウトなしで待つ
                 if not (katago.set_boardsize(19) or "").startswith("="):
@@ -1991,6 +1996,24 @@ class App:
                 self.root.after(0, lambda: self._ai_init_failed(str(e)))
 
         threading.Thread(target=_init_katago, daemon=True).start()
+
+    def _ai_on_katago_stderr_event(self, ev):
+        """KataGo stderr からの通知（メインスレッド）。OpenCL チューニング中のタイマー保留と盤面表示。"""
+        if not self._ai_mode or not self.go_board:
+            return
+        if ev == "opencl_autotune_start":
+            self.go_board.set_katago_tune_timer_hold(True)
+            self.go_board.set_katago_init_overlay(L("ai_board_overlay_opencl_tuning"))
+        elif ev == "opencl_autotune_done":
+            self.go_board.set_katago_tune_timer_hold(False)
+            self.go_board.set_katago_init_overlay(L("ai_board_overlay_preparing"))
+
+    def _ai_clear_katago_init_overlay(self):
+        if self.go_board:
+            try:
+                self.go_board.set_katago_init_overlay(None)
+            except tk.TclError:
+                pass
 
     def _ai_replay_move_history_to_katago(self, katago):
         """KataGo内部盤面を、碁華側の move_history と一致させる。
@@ -2016,11 +2039,11 @@ class App:
                 raise RuntimeError("KataGo同期失敗: play応答不正 action={} resp={!r}".format(action, resp))
 
     def _ai_on_katago_ready(self):
-        """KataGo初期化完了後にタイマーを再開し、必要ならAIの初手を打つ。"""
+        """KataGo初期化完了後、必要ならAIの初手を打つ（タイマーは承諾時から稼働）。"""
         if not self._ai_mode or not self.go_board:
             return
-        # タイマー再開
-        self.go_board._start_timer()
+        self.go_board.set_katago_tune_timer_hold(False)
+        self._ai_clear_katago_init_overlay()
         # If AI is black (plays first), make AI move
         if self._ai_color == BLACK:
             self.root.after(100, self._ai_make_move)
@@ -2031,6 +2054,9 @@ class App:
         _ai_mode は _ai_cleanup() 内でクリアされるため、ここでは変更しない。
         end_network_game() → _ai_cleanup() の呼び出しで game_end 送信も行われる。
         """
+        if self.go_board:
+            self.go_board.set_katago_tune_timer_hold(False)
+        self._ai_clear_katago_init_overlay()
         from tkinter import messagebox as _mb
         _mb.showerror("AI エラー", "KataGoの起動に失敗しました:\n{}".format(error_msg))
         if self.go_board:
@@ -2166,6 +2192,9 @@ class App:
         判断し、ボットの自動挑戦状が送られなくなる。
         """
         was_ai = self._ai_mode
+        if self.go_board:
+            self.go_board.set_katago_tune_timer_hold(False)
+        self._ai_clear_katago_init_overlay()
         if self._ai_katago:
             try:
                 self._ai_katago.stop()

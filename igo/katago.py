@@ -50,6 +50,11 @@ class KataGoGTP:
         self._lock = threading.Lock()
         self._stdout_q = _queue.Queue()
         self._gtp_log_path = os.path.join(os.path.expanduser("~"), "goka_katago_gtp_log.txt")
+        # OpenCL autotuning detection (stderr) — KataGo prints e.g. "Performing autotuning..."
+        self._opencl_autotune_in_progress = False
+        self._opencl_tuning_lock = threading.Lock()
+        # Optional: invoked from stderr reader thread with event name (use root.after in UI).
+        self._stderr_status_callback = None
 
     def _append_gtp_log(self, text):
         try:
@@ -183,6 +188,21 @@ class KataGoGTP:
                     except Exception:
                         line = "<decode-error>"
                     self._append_gtp_log("[stderr] {}".format(line))
+                    low = line.lower()
+                    ev = None
+                    with self._opencl_tuning_lock:
+                        if "performing autotuning" in low:
+                            self._opencl_autotune_in_progress = True
+                            ev = "opencl_autotune_start"
+                        if "done tuning" in low:
+                            self._opencl_autotune_in_progress = False
+                            ev = "opencl_autotune_done"
+                    cb = self._stderr_status_callback
+                    if ev and cb:
+                        try:
+                            cb(ev)
+                        except Exception:
+                            pass
             except OSError:
                 pass
             # ãã­ã»ã¹çµäºæã«ã­ã°ã«æ¸ãåºã
@@ -199,6 +219,17 @@ class KataGoGTP:
                     pass
 
         threading.Thread(target=_drain_gtp_stderr, daemon=True).start()
+
+    def set_stderr_status_callback(self, callback):
+        """stderr 解析用コールバック。別スレッドから呼ばれるため UI 更新は root.after 等で委譲すること。
+
+        callback(event: str) — event は "opencl_autotune_start" / "opencl_autotune_done"
+        """
+        self._stderr_status_callback = callback
+
+    def is_opencl_autotuning(self):
+        with self._opencl_tuning_lock:
+            return bool(self._opencl_autotune_in_progress)
 
     def send_command(self, cmd, timeout_s=None):
         """Send a GTP command and return the response.

@@ -47,6 +47,7 @@ class GoBoard:
         self.offset_x = 0
         self.offset_y = 0
         self._timer_running = False
+        self._katago_tune_timer_hold = False  # OpenCL autotuning 中のみ True（秒読みカウント停止）
         self.net_mode = False
         self.my_color = None
         self.timer_black = None  # ByoyomiTimer
@@ -310,6 +311,10 @@ class GoBoard:
         if gen is not None and gen != getattr(self, '_timer_gen', 0):
             return
         if self.game.game_over or not self._timer_running:
+            return
+        # KataGo OpenCL 初回チューニング中は持ち時間を進めない（承諾直後から読み始める仕様の例外）
+        if getattr(self, "_katago_tune_timer_hold", False):
+            self.root.after(1000, self._tick, getattr(self, '_timer_gen', 0))
             return
         if self.timer_black and self.timer_white:
             # ByoyomiTimer mode
@@ -737,6 +742,48 @@ class GoBoard:
                 pass  # canvas or tag already gone
         self.root.after(duration, _remove)
 
+    def set_katago_tune_timer_hold(self, hold):
+        """True の間は _tick が持ち時間を減らさない（KataGo OpenCL autotuning 専用）。"""
+        self._katago_tune_timer_hold = bool(hold)
+
+    def set_katago_init_overlay(self, message):
+        """盤面下端の KataGo 初期化メッセージ。文言は igo/lang.py のキー経由で渡すこと。None/空で消去。"""
+        tag = "katago_init_overlay"
+        try:
+            self.canvas.delete(tag)
+        except tk.TclError:
+            return
+        if not message:
+            return
+
+        def _paint(attempt=0):
+            self.canvas.update_idletasks()
+            w = self.canvas.winfo_width()
+            h = self.canvas.winfo_height()
+            if w < 40 or h < 40:
+                # 対局開始直後は canvas の winfo がまだ 1x1 等のことがあり、無言で return していた
+                if attempt < 60:
+                    self.root.after(50, lambda: _paint(attempt + 1))
+                return
+            pad_x = 16
+            y1 = h - 52
+            y2 = h - 12
+            self.canvas.create_rectangle(
+                pad_x, y1, w - pad_x, y2,
+                fill="#1a1a1a", outline="", stipple="",
+                tags=tag)
+            self.canvas.create_text(
+                w // 2, (y1 + y2) // 2,
+                text=message,
+                fill="#f5f5f5",
+                font=("Meiryo", 11, "bold"),
+                tags=tag,
+                width=w - pad_x * 2 - 8,
+            )
+            self.canvas.tag_raise(tag)
+
+        self.root.after(0, lambda: _paint(0))
+
     def handle_network_pass(self):
         """Handle pass from network opponent."""
         # Show pass notification
@@ -825,9 +872,9 @@ class GoBoard:
                            time_control="byoyomi", fischer_increment=10, delay_timer=False):
         """Initialize board for network play.
 
-        delay_timer=True のときはタイマーを起動しない（AI対局でKataGo初期化完了後に
-        _start_timer() を呼ぶため）。False なら従来通り即時起動。
+        delay_timer=True のときはタイマーを起動しない（レガシー互換用。通常は承諾直後に起動）。
         """
+        self._katago_tune_timer_hold = False
         self.net_mode = True
         self.my_color = my_color
         self._komi = komi
