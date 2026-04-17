@@ -549,6 +549,11 @@ class UpdatePasswordEncRequest(BaseModel):
     handle_name: str
     password_enc: str
 
+
+class AdminResetTestPasswordsRequest(BaseModel):
+    password: str = "2052"
+    dry_run: bool = False
+
 @app.put("/api/user/password_enc")
 async def update_password_enc(req: UpdatePasswordEncRequest):
     """管理者が暗号化パスワードを更新する（base64→Fernet移行用）。"""
@@ -1564,6 +1569,67 @@ async def admin_backup(request: Request):
     try:
         backup_path = await asyncio.to_thread(_backup_db, "manual")
         return {"status": "ok", "db_backup": backup_path}
+    except (OSError, sqlite3.Error) as e:
+        return JSONResponse(
+            content={"status": "error", "detail": str(e)},
+            status_code=500
+        )
+
+
+@app.post("/admin/reset-test-passwords")
+async def admin_reset_test_passwords(
+    request: Request, body: AdminResetTestPasswordsRequest
+):
+    """emailが空のテスト用アカウントのパスワードを一括リセットする。"""
+    if not _check_admin_token(request):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    new_password = (body.password or "").strip()
+    if len(new_password) < 4:
+        return JSONResponse(
+            content={"status": "error", "detail": "password must be at least 4 characters"},
+            status_code=400
+        )
+
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            """
+            SELECT handle_name
+            FROM users
+            WHERE email IS NULL OR TRIM(email) = ''
+            ORDER BY id
+            """
+        ).fetchall()
+        targets = [r["handle_name"] for r in rows]
+
+        if body.dry_run:
+            conn.close()
+            return {"status": "dry_run", "target_count": len(targets), "targets": targets}
+
+        backup_path = await asyncio.to_thread(_backup_db, "pre-reset-test-passwords")
+        pw_enc = _b64_encode_password(new_password)
+        updated = 0
+        for handle in targets:
+            salt = secrets.token_hex(16)
+            pw_hash = hash_password(new_password, salt)
+            conn.execute(
+                "UPDATE users SET salt = ?, password_hash = ?, password_enc = ? WHERE handle_name = ?",
+                (salt, pw_hash, pw_enc, handle)
+            )
+            updated += 1
+        conn.commit()
+        conn.close()
+        logger.warning(
+            "Admin reset test passwords executed: count=%d, backup=%s",
+            updated, backup_path
+        )
+        return {
+            "status": "ok",
+            "updated_count": updated,
+            "updated_handles": targets,
+            "db_backup": backup_path
+        }
     except (OSError, sqlite3.Error) as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
