@@ -237,10 +237,21 @@ class AdminApp:
             pass
 
         # ============================================================
-        # 設定バー: タイムアウト | Fischer | テーマ
+        # タブ（シートとボタン欄の間）
+        # ・「時間」: 対局申込タイムアウト / Fischer / ロボ出現
+        # ・「サイズ・位置」: テーマ（ほかは後から）
         # ============================================================
-        settings_bar = tk.Frame(self.root, bg=T("root_bg"))
-        settings_bar.pack(fill="x", padx=12, pady=(4, 0))
+        tab_outer = tk.Frame(self.root, bg=T("root_bg"))
+        tab_outer.pack(fill="x", padx=12, pady=(4, 0))
+        self._admin_tabs = ttk.Notebook(tab_outer)
+        self._admin_tabs.pack(fill="x", expand=False)
+
+        self._admin_tab_size_pos = tk.Frame(self._admin_tabs, bg="white")
+        self._admin_tab_time = tk.Frame(self._admin_tabs, bg="white")
+        self._admin_tabs.add(self._admin_tab_size_pos, text="サイズ・位置")
+        self._admin_tabs.add(self._admin_tab_time, text="時間")
+
+        _tab_bg = "white"
 
         # ============================================================
         # ボタンバー: 削除 | 新規登録 | OK | 閉じる
@@ -268,13 +279,16 @@ class AdminApp:
         )
         self._delete_btn.pack(side="left", padx=(0, 16))
 
+        time_row = tk.Frame(self._admin_tab_time, bg=_tab_bg)
+        time_row.pack(fill="x", padx=8, pady=8)
+
         # --- 対局申込タイムアウト ---
-        timeout_frame = tk.Frame(settings_bar, bg=T("root_bg"))
+        timeout_frame = tk.Frame(time_row, bg=_tab_bg)
         timeout_frame.pack(side="left", padx=(0, 16))
 
         tk.Label(timeout_frame, text="対局申込タイムアウト",
                  font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left", padx=(0, 4))
+                 fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
 
         current_timeout = 3
         server_settings = None
@@ -294,15 +308,15 @@ class AdminApp:
 
         tk.Label(timeout_frame, text="分",
                  font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
+                 fg=T("text_primary"), bg=_tab_bg).pack(side="left")
 
         # --- フィッシャー時間設定 ---
-        fischer_frame = tk.Frame(settings_bar, bg=T("root_bg"))
+        fischer_frame = tk.Frame(time_row, bg=_tab_bg)
         fischer_frame.pack(side="left", padx=(0, 16))
 
         tk.Label(fischer_frame, text="Fischer",
                  font=("Yu Gothic UI", 10, "bold"),
-                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left", padx=(0, 4))
+                 fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
 
         current_fischer_main = 5
         current_fischer_inc = 10
@@ -322,7 +336,7 @@ class AdminApp:
 
         tk.Label(fischer_frame, text="分+",
                  font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
+                 fg=T("text_primary"), bg=_tab_bg).pack(side="left")
 
         self._fischer_inc_var = tk.StringVar(value=str(current_fischer_inc))
         fischer_inc_vals = [str(i) for i in [5, 10, 15, 20, 25, 30]]
@@ -333,15 +347,15 @@ class AdminApp:
 
         tk.Label(fischer_frame, text="秒",
                  font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left")
+                 fg=T("text_primary"), bg=_tab_bg).pack(side="left")
 
         # --- ロボ出現時間 ---
-        bot_delay_frame = tk.Frame(settings_bar, bg=T("root_bg"))
+        bot_delay_frame = tk.Frame(time_row, bg=_tab_bg)
         bot_delay_frame.pack(side="left", padx=(0, 16))
 
         tk.Label(bot_delay_frame, text="ロボ出現",
                  font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left", padx=(0, 4))
+                 fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
 
         current_bot_delay = 60
         try:
@@ -372,28 +386,28 @@ class AdminApp:
             font=("Yu Gothic UI", 10), width=4)
         bot_delay_cb.pack(side="left", padx=2)
 
-        # --- テーマ設定 ---
-        theme_frame = tk.LabelFrame(settings_bar, text="テーマ",
+        # --- テーマ設定（サイズ・位置タブ）---
+        theme_frame = tk.LabelFrame(self._admin_tab_size_pos, text="テーマ",
                                      font=("Yu Gothic UI", 9),
-                                     fg=T("text_primary"), bg=T("root_bg"),
+                                     fg=T("text_primary"), bg=_tab_bg,
                                      bd=1, relief="groove", padx=6, pady=2)
-        theme_frame.pack(side="left", padx=(0, 16))
+        theme_frame.pack(anchor="w", padx=8, pady=8)
 
         self._theme_var = tk.StringVar(value=get_current_theme_name())
         tk.Radiobutton(theme_frame, text="ダーク",
                        variable=self._theme_var, value="dark",
                        font=("Yu Gothic UI", 10),
-                       fg=T("text_primary"), bg=T("root_bg"),
+                       fg=T("text_primary"), bg=_tab_bg,
                        selectcolor=T("input_bg"),
-                       activebackground=T("root_bg"),
+                       activebackground=_tab_bg,
                        activeforeground=T("text_primary")
                        ).pack(side="left", padx=(0, 4))
         tk.Radiobutton(theme_frame, text="ライト",
                        variable=self._theme_var, value="light",
                        font=("Yu Gothic UI", 10),
-                       fg=T("text_primary"), bg=T("root_bg"),
+                       fg=T("text_primary"), bg=_tab_bg,
                        selectcolor=T("input_bg"),
-                       activebackground=T("root_bg"),
+                       activebackground=_tab_bg,
                        activeforeground=T("text_primary")
                        ).pack(side="left")
 

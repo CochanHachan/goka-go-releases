@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 REPO = "CochanHachan/goka-go-releases"
 API_BASE = "https://api.github.com/repos/{}".format(REPO)
 WORKFLOW_NAME = "Build and Deploy"
-HP_URL = "https://goka-go.com"
+HP_URL = "https://goka-igo.com"
 
 
 def get_token():

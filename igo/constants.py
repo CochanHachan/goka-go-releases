@@ -32,7 +32,7 @@ if _cfg is None:
 
 APP_NAME         = _cfg["app_name"]
 APP_VERSION      = "1.2.158"
-APP_BUILD        = "20260417"
+APP_BUILD        = "20260418"
 STAGING_LABEL    = _cfg["staging_label"]
 CLOUD_SERVER_URL = _cfg["cloud_server_url"]
 API_BASE_URL     = _cfg["api_base_url"]

@@ -32,6 +32,8 @@ on:
       - '*.wav'
       - 'server.py'
       - 'igo_ws_server.py'
+      - 'igo_admin.py'
+      - 'igo_admin.spec'
 
 permissions:
   contents: write
@@ -296,6 +298,29 @@ jobs:
           size_mb = os.path.getsize(dst) / (1024 * 1024)
           print(f"Created {dst} ({size_mb:.1f} MB)")
 
+      - name: Build admin (PyInstaller)
+        run: pyinstaller igo_admin.spec --noconfirm
+
+      - name: Create admin update ZIP
+        shell: python
+        run: |
+          import zipfile, os
+
+          src = "dist/igo_admin"
+          dst = "dist/goka_admin.zip"
+          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
+              for root, dirs, files in os.walk(src):
+                  for f in files:
+                      fp = os.path.join(root, f)
+                      arcname = os.path.relpath(fp, src)
+                      try:
+                          zf.write(fp, arcname)
+                      except PermissionError as e:
+                          print(f"WARNING: Could not add {fp}: {e}")
+
+          size_mb = os.path.getsize(dst) / (1024 * 1024)
+          print(f"Created {dst} ({size_mb:.1f} MB)")
+
       - name: Deploy update ZIP and version.json
         shell: python
         env:
@@ -314,10 +339,16 @@ jobs:
           shutil.copy2(src_zip, dst_zip)
           print(f"Copied {src_zip} -> {dst_zip}")
 
+          admin_src = "dist/goka_admin.zip"
+          admin_dst = f"releases/goka_admin_{version}.zip"
+          shutil.copy2(admin_src, admin_dst)
+          print(f"Copied {admin_src} -> {admin_dst}")
+
           # version.json更新
           vj = {
               "version": version,
               "download_url": f"https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/releases/goka_go_{version}.zip",
+              "admin_download_url": f"https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/releases/goka_admin_{version}.zip",
               "release_notes": notes
           }
           with open("version.json", "w", encoding="utf-8") as f:
@@ -333,7 +364,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json "releases/goka_go_${RELEASE_VERSION}.zip" igo/constants.py installer/GokaGo_Setup.iss
+          git add version.json "releases/goka_go_${RELEASE_VERSION}.zip" "releases/goka_admin_${RELEASE_VERSION}.zip" igo/constants.py installer/GokaGo_Setup.iss
           git diff --cached --quiet || (git commit -m "Release v${RELEASE_VERSION}: ${RELEASE_NOTES}" && git pull --rebase origin main && git push)
 
       - name: Create GitHub Release
@@ -345,10 +376,11 @@ jobs:
           $version = $env:RELEASE_VERSION
           $notes = $env:RELEASE_NOTES
           $zipFile = "releases/goka_go_${version}.zip"
-          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" 2>$null
+          $adminZip = "releases/goka_admin_${version}.zip"
+          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" "${adminZip}" 2>$null
           if ($LASTEXITCODE -ne 0) {
             # ZIP配布のみを公開（インストーラーEXEは添付しない）
-            gh release upload "v${version}" "${zipFile}" --clobber 2>$null
+            gh release upload "v${version}" "${zipFile}" "${adminZip}" --clobber 2>$null
           }
         shell: pwsh
 
@@ -376,6 +408,18 @@ jobs:
           with open(index_path, "w", encoding="utf-8") as f:
               f.write(content)
 
+          admin_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/goka_admin_{version}.zip"
+          admin_path = "web/admin-test.html"
+          with open(admin_path, "r", encoding="utf-8") as f:
+              admin_html = f.read()
+          admin_html = re.sub(
+              r'(<a\s+class="btn"\s+data-admin-dl\s+href=")[^"]*(")',
+              r"\1" + admin_link + r"\2",
+              admin_html,
+          )
+          with open(admin_path, "w", encoding="utf-8") as f:
+              f.write(admin_html)
+
           print(f"Updated download link to v{version}")
 
       - name: Commit homepage update
@@ -383,7 +427,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git add web/index.html
+          git add web/index.html web/admin-test.html
           git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git pull --rebase origin main && git push)
 
       - name: Trigger GitHub Pages deploy
