@@ -20,7 +20,7 @@ from igo.register_screen import RegisterScreen
 from glossy_pill_button import GlossyButton
 
 # Notebook 行の高さ（pack だとタブが最小高さに潰れやすいため grid + 固定高さで確保）
-_ADMIN_TAB_AREA_HEIGHT = 504
+_ADMIN_TAB_AREA_HEIGHT = 252
 
 # ---------------------------------------------------------------------------
 # パスワード暗号化キー（管理者PCのみに保存）
@@ -251,7 +251,8 @@ class AdminApp:
         tab_outer = tk.Frame(
             self.root, bg=T("root_bg"), height=_ADMIN_TAB_AREA_HEIGHT)
         tab_outer.grid_propagate(False)
-        tab_outer.grid(row=2, column=0, sticky="nsew", padx=12, pady=(4, 0))
+        # 縦は nsew にしない（セルが余るとタブ枠まで伸び、中身が無い空白が巨大に見える）
+        tab_outer.grid(row=2, column=0, sticky="ew", padx=12, pady=(4, 0))
         tab_outer.grid_columnconfigure(0, weight=1)
         tab_outer.grid_rowconfigure(0, weight=1)
         self._admin_tabs = ttk.Notebook(tab_outer)
