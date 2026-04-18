@@ -13,6 +13,37 @@ import random
 
 logger = logging.getLogger(__name__)
 
+
+def _primary_work_area_pixels():
+    """Windows の主モニタ作業領域（タスクバー等を除く）の幅・高さ。取得できなければ None。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class RECT(ctypes.Structure):
+            _fields_ = (
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            )
+
+        rect = RECT()
+        SPI_GETWORKAREA = 48
+        if not ctypes.windll.user32.SystemParametersInfoW(
+                SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+            return None
+        w = int(rect.right - rect.left)
+        h = int(rect.bottom - rect.top)
+        if w >= 320 and h >= 240:
+            return w, h
+    except Exception:
+        pass
+    return None
+
+
 from igo.glossy_button import GlossyButton
 from igo.window_settings import WindowSettings
 from igo.lang import L, set_language, get_language
@@ -1057,9 +1088,13 @@ class App:
         ws.save_window(self.root)
 
     def _compute_game_initial_geometry(self):
-        """ゲーム画面の保存が無い新規ユーザー向け既定ジオメトリ（PC画面ピクセル×割合）。"""
-        sw = max(1, self.root.winfo_screenwidth())
-        sh = max(1, self.root.winfo_screenheight())
+        """ゲーム画面の保存が無い新規ユーザー向け既定ジオメトリ（有効領域×割合）。"""
+        work = _primary_work_area_pixels()
+        if work:
+            sw, sh = work
+        else:
+            sw = max(1, self.root.winfo_screenwidth())
+            sh = max(1, self.root.winfo_screenheight())
         fw = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_WIDTH_FRACTION)))
         fh = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION)))
         w = int(sw * fw)

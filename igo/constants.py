@@ -79,7 +79,8 @@ STONE_RADIUS = 18
 STAR_RADIUS = 4
 
 # 新規インストール後、ui_settings にゲーム画面の保存が無いときの初期ウィンドウサイズ。
-# winfo_screenwidth/height に対する割合（0.0〜1.0）。運用で変える場合はここだけ編集。
+# Windows は作業領域（タスクバー等を除く）のピクセル幅・高さに対する割合（0.0〜1.0）。
+# それ以外の OS は画面全体。運用で変える場合はここだけ編集。
 GAME_WINDOW_INITIAL_WIDTH_FRACTION = 0.60
 GAME_WINDOW_INITIAL_HEIGHT_FRACTION = 0.78
 
