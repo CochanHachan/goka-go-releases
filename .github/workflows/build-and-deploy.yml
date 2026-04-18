@@ -412,10 +412,12 @@ jobs:
           admin_path = "web/admin-test.html"
           with open(admin_path, "r", encoding="utf-8") as f:
               admin_html = f.read()
+          # admin-test.html は <a href="..." data-admin-dl class="admin-dl">表示URL</a> 形式（href と表示を同じにする）
           admin_html = re.sub(
-              r'(<a\s+class="btn"\s+data-admin-dl\s+href=")[^"]*(")',
-              r"\1" + admin_link + r"\2",
+              r'<a\s+href="[^"]*"\s+data-admin-dl\s+class="admin-dl">[^<]*</a>',
+              f'<a href="{admin_link}" data-admin-dl class="admin-dl">{admin_link}</a>',
               admin_html,
+              count=1,
           )
           with open(admin_path, "w", encoding="utf-8") as f:
               f.write(admin_html)
