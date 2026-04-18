@@ -17,14 +17,16 @@
   }
   .btn:hover { background: #3a7232; color: #fff; }
   code { background: #111; padding: 2px 6px; border-radius: 4px; font-size: 0.88em; }
+  .muted { color: #999; font-size: 0.9rem; }
   .back { margin-bottom: 20px; }
 </style>
 </head>
 <body>
   <p class="back"><a href="index.html">← トップに戻る</a></p>
   <h1>管理者画面のダウンロード</h1>
-  <p>修正版の管理者ZIPは、<strong>このページの次のリンク1本だけ</strong>から取得してください。展開後は <code>igo_admin\igo_admin.exe</code> を実行します。</p>
-  <!-- 管理者ZIPの直リンクは data-admin-dl のこの1本のみ載せる。build-and-deploy がリリース時に href だけ差し替え（文言・リンク本数は増やさない）。 -->
-  <p><a class="btn" data-admin-dl href="https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip">修正版をダウンロード</a></p>
+  <p>対局クライアントの「ダウンロード」と同様、<strong>GitHub Releases の ZIP</strong> から取得します。展開後は <code>igo_admin.exe</code> を実行してください。</p>
+  <!-- ADMIN_CLIENT_ZIP: build-and-deploy が次回リリース時に href を書き換えます -->
+  <p><a class="btn" data-admin-dl href="https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip">管理者画面をダウンロード</a></p>
+  <p class="muted">現時点で取得できる最新の管理者ZIPです。</p>
 </body>
 </html>

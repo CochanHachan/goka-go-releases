@@ -408,7 +408,6 @@ jobs:
           with open(index_path, "w", encoding="utf-8") as f:
               f.write(content)
 
-          # admin-test.html: 管理者ZIPのダウンロードは data-admin-dl の1本のみ（href だけ更新、リンクを増やさない）
           admin_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/goka_admin_{version}.zip"
           admin_path = "web/admin-test.html"
           with open(admin_path, "r", encoding="utf-8") as f:
