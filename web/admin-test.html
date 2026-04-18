@@ -13,21 +13,26 @@
   code { background: #111; padding: 2px 6px; border-radius: 4px; font-size: 0.88em; }
   .muted { color: #999; font-size: 0.9rem; }
   .back { margin-bottom: 20px; }
-  ul.downloads { max-width: 720px; margin: 0 0 14px 1.2em; padding: 0; }
-  ul.downloads li { margin: 0 0 10px; }
-  a.admin-dl { text-decoration: underline; word-break: break-all; }
+  .dl-box {
+    max-width: 720px; margin: 8px 0 28px; padding: 18px 20px;
+    border: 2px solid #3a7232; border-radius: 10px; background: #141414;
+  }
+  a.admin-dl-bundle {
+    display: block; color: #c8f5c4; text-decoration: none; line-height: 1.55;
+  }
+  a.admin-dl-bundle:hover { color: #fff; }
+  .dl-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 6px; }
+  .dl-url { font-size: 0.82rem; word-break: break-all; text-decoration: underline; opacity: 0.95; }
 </style>
 </head>
 <body>
   <p class="back"><a href="index.html">← トップに戻る</a></p>
+  <div class="dl-box">
+    <!-- ADMIN_CLIENT_ZIP: build-and-deploy が次の <a> 全体をリリース時に差し替え -->
+    <a href="https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip" data-admin-dl class="admin-dl-bundle"><span class="dl-title">管理者の修正版ZIP — ここをクリックしてダウンロード</span><br><span class="dl-url">https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip</span></a>
+  </div>
   <h1>管理者画面のダウンロード</h1>
   <p>対局クライアントの「ダウンロード」と同様、<strong>GitHub Releases の ZIP</strong> から取得します。展開後は <code>igo_admin.exe</code> を実行してください。</p>
-  <!-- ADMIN_CLIENT_ZIP: build-and-deploy が次の <a> の href とリンク文字をリリース時に更新します -->
-  <ul class="downloads">
-    <li>管理者画面 ZIP（動作確認済み）<br>
-      <a href="https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip" data-admin-dl class="admin-dl">https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip</a>
-    </li>
-  </ul>
-  <p class="muted">現時点で取得できる最新の管理者ZIPです。</p>
+  <p class="muted">上の枠内をクリックすると ZIP のダウンロードが始まります。</p>
 </body>
 </html>

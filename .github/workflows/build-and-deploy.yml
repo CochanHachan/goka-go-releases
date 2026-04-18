@@ -412,12 +412,18 @@ jobs:
           admin_path = "web/admin-test.html"
           with open(admin_path, "r", encoding="utf-8") as f:
               admin_html = f.read()
-          # admin-test.html は <a href="..." data-admin-dl class="admin-dl">表示URL</a> 形式（href と表示を同じにする）
+          # admin-test.html: <a ... class="admin-dl-bundle">…</a> を丸ごと差し替え（複数行可）
+          admin_bundle = (
+              f'<a href="{admin_link}" data-admin-dl class="admin-dl-bundle">'
+              f'<span class="dl-title">管理者の修正版ZIP — ここをクリックしてダウンロード</span><br>'
+              f'<span class="dl-url">{admin_link}</span></a>'
+          )
           admin_html = re.sub(
-              r'<a\s+href="[^"]*"\s+data-admin-dl\s+class="admin-dl">[^<]*</a>',
-              f'<a href="{admin_link}" data-admin-dl class="admin-dl">{admin_link}</a>',
+              r'<a\s+href="[^"]*"\s+data-admin-dl\s+class="admin-dl-bundle">.*?</a>',
+              admin_bundle,
               admin_html,
               count=1,
+              flags=re.DOTALL,
           )
           with open(admin_path, "w", encoding="utf-8") as f:
               f.write(admin_html)
