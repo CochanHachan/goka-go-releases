@@ -19,6 +19,9 @@ from igo_game import T, get_current_theme_name, THEMES, elo_to_display_rank
 from igo.register_screen import RegisterScreen
 from glossy_pill_button import GlossyButton
 
+# Notebook 行の高さ（pack だとタブが最小高さに潰れやすいため grid + 固定高さで確保）
+_ADMIN_TAB_AREA_HEIGHT = 504
+
 # ---------------------------------------------------------------------------
 # パスワード暗号化キー（管理者PCのみに保存）
 # ---------------------------------------------------------------------------
@@ -85,8 +88,8 @@ class AdminApp:
         self.root = tk.Tk()
         self.root.title(_ADMIN_TITLE)
         self.root.configure(bg=T("root_bg"))
-        self.root.geometry("1000x600")
-        self.root.minsize(800, 500)
+        self.root.geometry("1000x900")
+        self.root.minsize(800, 780)
 
         # Enter key: invoke button or move to next widget
         def _on_enter(event):
@@ -109,7 +112,7 @@ class AdminApp:
         self._online_lock = threading.Lock()
         self._refresh_gen = 0  # 世代カウンター: 手動リフレッシュ時にインクリメントし、古い自動リフレッシュ結果を破棄する
         self._build_main()
-        self._ws.restore_window(self.root, default_geometry="1000x600")
+        self._ws.restore_window(self.root, default_geometry="1000x900")
         self._start_heartbeat_listener()
         self._refresh()
         self._auto_refresh()
@@ -160,11 +163,15 @@ class AdminApp:
             return (_time.time() - last_seen) < 15
 
     def _build_main(self):
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_rowconfigure(2, minsize=_ADMIN_TAB_AREA_HEIGHT, weight=0)
+
         # ============================================================
         # ヘッダー: タイトル + 登録ユーザー数 + オンライン人数
         # ============================================================
         header = tk.Frame(self.root, bg=T("root_bg"))
-        header.pack(fill="x", padx=12, pady=(10, 4))
+        header.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 4))
 
         tk.Label(header, text="管理者画面",
                  font=("Yu Gothic UI", 18, "bold"),
@@ -188,7 +195,7 @@ class AdminApp:
         # メインテーブル
         # ============================================================
         tree_border = tk.Frame(self.root, bd=1, relief="solid", bg="#bfbfbf")
-        tree_border.pack(fill="both", expand=True, padx=12, pady=4)
+        tree_border.grid(row=1, column=0, sticky="nsew", padx=12, pady=4)
         tree_frame = tk.Frame(tree_border, bg=T("root_bg"))
         tree_frame.pack(fill="both", expand=True, padx=1, pady=1)
 
@@ -241,10 +248,14 @@ class AdminApp:
         # ・「時間」: 対局申込タイムアウト / Fischer / ロボ出現
         # ・「サイズ・位置」: テーマ（ほかは後から）
         # ============================================================
-        tab_outer = tk.Frame(self.root, bg=T("root_bg"))
-        tab_outer.pack(fill="x", padx=12, pady=(4, 0))
+        tab_outer = tk.Frame(
+            self.root, bg=T("root_bg"), height=_ADMIN_TAB_AREA_HEIGHT)
+        tab_outer.grid_propagate(False)
+        tab_outer.grid(row=2, column=0, sticky="nsew", padx=12, pady=(4, 0))
+        tab_outer.grid_columnconfigure(0, weight=1)
+        tab_outer.grid_rowconfigure(0, weight=1)
         self._admin_tabs = ttk.Notebook(tab_outer)
-        self._admin_tabs.pack(fill="x", expand=False)
+        self._admin_tabs.grid(row=0, column=0, sticky="nsew")
 
         self._admin_tab_size_pos = tk.Frame(self._admin_tabs, bg="white")
         self._admin_tab_time = tk.Frame(self._admin_tabs, bg="white")
@@ -252,32 +263,6 @@ class AdminApp:
         self._admin_tabs.add(self._admin_tab_time, text="時間")
 
         _tab_bg = "white"
-
-        # ============================================================
-        # ボタンバー: 削除 | 新規登録 | OK | 閉じる
-        # ============================================================
-        bottom = tk.Frame(self.root, bg=T("root_bg"))
-        bottom.pack(fill="x", padx=12, pady=(4, 8))
-
-        # --- 削除ボタン（赤） ---
-        self._delete_btn = GlossyButton(
-            bottom,
-            text="削除",
-            base_color=(180, 50, 50),
-            gradient=1.0, gloss=1.0, depth=0.2,
-            corner_radius=None,
-            text_color=(255, 255, 255),
-            text_size=12,
-            text_stroke=True,
-            text_stroke_width=2,
-            text_stroke_color=None,
-            width=100, height=30,
-            command=self._delete_user,
-            focus_border_color=(162, 32, 65),
-            focus_border_width=2,
-            bg=T("root_bg"),
-        )
-        self._delete_btn.pack(side="left", padx=(0, 16))
 
         time_row = tk.Frame(self._admin_tab_time, bg=_tab_bg)
         time_row.pack(fill="x", padx=8, pady=8)
@@ -410,6 +395,32 @@ class AdminApp:
                        activebackground=_tab_bg,
                        activeforeground=T("text_primary")
                        ).pack(side="left")
+
+        # ============================================================
+        # ボタンバー: 削除 | 新規登録 | OK | 閉じる
+        # ============================================================
+        bottom = tk.Frame(self.root, bg=T("root_bg"))
+        bottom.grid(row=3, column=0, sticky="ew", padx=12, pady=(4, 8))
+
+        # --- 削除ボタン（赤） ---
+        self._delete_btn = GlossyButton(
+            bottom,
+            text="削除",
+            base_color=(180, 50, 50),
+            gradient=1.0, gloss=1.0, depth=0.2,
+            corner_radius=None,
+            text_color=(255, 255, 255),
+            text_size=12,
+            text_stroke=True,
+            text_stroke_width=2,
+            text_stroke_color=None,
+            width=100, height=30,
+            command=self._delete_user,
+            focus_border_color=(162, 32, 65),
+            focus_border_width=2,
+            bg=T("root_bg"),
+        )
+        self._delete_btn.pack(side="left", padx=(0, 16))
 
         # --- 閉じるボタン（グレー）--- 右端
         self._close_btn = GlossyButton(
