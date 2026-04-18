@@ -19,6 +19,8 @@ from igo.lang import L, set_language, get_language
 from igo.constants import (
     APP_NAME, APP_VERSION, APP_BUILD, STAGING_LABEL, UPDATE_CHECK_URL,
     BOARD_SIZE, CELL_SIZE, MARGIN,
+    GAME_WINDOW_INITIAL_WIDTH_FRACTION,
+    GAME_WINDOW_INITIAL_HEIGHT_FRACTION,
     EMPTY, BLACK, WHITE,
     TIME_LIMIT, NET_TCP_PORT, NET_UDP_PORT,
     HAS_CLOUD, CLOUD_SERVER_URL, API_BASE_URL,
@@ -65,7 +67,6 @@ class App:
         _db_path = os.path.join(_get_app_data_dir(), "ui_settings.db")
         self._ws = WindowSettings(_db_path, "game")
         self._current_screen = "login"
-        init_size = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
 
         # Enter key: invoke button or move to next widget (like Tab)
         def _on_enter(event):
@@ -1055,12 +1056,25 @@ class App:
         ws = WindowSettings(self._ws._db_path, self._user_screen_name(screen_name))
         ws.save_window(self.root)
 
+    def _compute_game_initial_geometry(self):
+        """ゲーム画面の保存が無い新規ユーザー向け既定ジオメトリ（PC画面ピクセル×割合）。"""
+        sw = max(1, self.root.winfo_screenwidth())
+        sh = max(1, self.root.winfo_screenheight())
+        fw = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_WIDTH_FRACTION)))
+        fh = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION)))
+        w = int(sw * fw)
+        h = int(sh * fh)
+        min_w = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
+        min_h = min_w + 120
+        w = max(w, min_w)
+        h = max(h, min_h)
+        return "{}x{}".format(w, h)
+
     def _apply_geometry(self, screen_name):
-        init_size = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
         defaults = {
             "login": "500x400",
             "register": "{}x{}".format(*RegisterScreen.DEFAULT_SIZE),
-            "game": "{}x{}".format(init_size, init_size + 120),
+            "game": self._compute_game_initial_geometry(),
         }
         user_key = self._user_screen_name(screen_name)
         ws = WindowSettings(self._ws._db_path, user_key)

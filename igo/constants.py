@@ -78,6 +78,11 @@ MARGIN = 40
 STONE_RADIUS = 18
 STAR_RADIUS = 4
 
+# 新規インストール後、ui_settings にゲーム画面の保存が無いときの初期ウィンドウサイズ。
+# winfo_screenwidth/height に対する割合（0.0〜1.0）。運用で変える場合はここだけ編集。
+GAME_WINDOW_INITIAL_WIDTH_FRACTION = 0.60
+GAME_WINDOW_INITIAL_HEIGHT_FRACTION = 0.78
+
 TIME_LIMIT = 10 * 60  # 10 minutes per player
 
 NET_TCP_PORT = 19937
