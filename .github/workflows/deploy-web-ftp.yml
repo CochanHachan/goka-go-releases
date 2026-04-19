@@ -44,9 +44,15 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./web/
-          # エックスサーバー標準: FTP ログイン先から見た public_html
-          # SamKirkland/FTP-Deploy-Action は server-dir に末尾スラッシュが必須
-          server-dir: public_html/
+          # このワークフローはエックスサーバー上の「アクセス先ディレクトリ = public_html」
+          # で作られたサブFTPアカウント（例: web-deploy@goka-igo.com）を前提とする。
+          # この種のアカウントは chroot されていて、FTP ログイン直後の「/」が
+          # すでに該当ドメインの public_html を指す。よってここは「/」固定で正しい。
+          #
+          # もしメイン FTP アカウント（xs548778 のような chroot されていないアカウント）
+          # を使うケースに切り替える場合は、ここを "goka-igo.com/public_html/" のように
+          # 明示的に書き換えること。
+          server-dir: /
           # リモートにあってローカルに無いファイルは削除しない（安全側）
           dangerous-clean-slate: false
 
