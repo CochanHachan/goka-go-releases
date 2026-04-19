@@ -45,7 +45,8 @@ jobs:
           protocol: ftps
           local-dir: ./web/
           # エックスサーバー標準: FTP ログイン先から見た public_html
-          server-dir: public_html
+          # SamKirkland/FTP-Deploy-Action は server-dir に末尾スラッシュが必須
+          server-dir: public_html/
           # リモートにあってローカルに無いファイルは削除しない（安全側）
           dangerous-clean-slate: false
 
