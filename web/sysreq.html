@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>動作環境 — 碁華 Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Yu Mincho", "游明朝", "Hiragino Mincho Pro", serif;
+    background: #0e0e0e;
+    color: #e8e8e8;
+    min-height: 100vh;
+  }
+
+  /* ===== Header ===== */
+  header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 64px;
+    background: rgba(10,10,10,0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 40px;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.5rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-decoration: none;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.45);
+    margin-left: 10px;
+    letter-spacing: 0.1em;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .back-btn {
+    color: rgba(255,255,255,0.6);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.2s;
+  }
+  .back-btn:hover { color: #f0c860; }
+
+  /* ===== Language Switcher ===== */
+  .lang-switcher { display: flex; gap: 6px; }
+  .lang-btn {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .lang-btn:hover { background: rgba(255,255,255,0.25); }
+  .lang-btn.active { background: rgba(255,255,255,0.3); border-color: #fff; font-weight: bold; }
+
+  /* ===== Main ===== */
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 100px 40px 80px;
+  }
+  .page-title {
+    font-size: 2.2rem;
+    letter-spacing: 0.3em;
+    color: #f0c860;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .page-sub {
+    text-align: center;
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+
+  /* ===== OS Section ===== */
+  .os-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 48px;
+  }
+  .os-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+  }
+  .os-icon {
+    font-size: 2.8rem;
+    margin-bottom: 16px;
+  }
+  .os-name {
+    font-size: 1.2rem;
+    letter-spacing: 0.1em;
+    color: #f0c860;
+    margin-bottom: 12px;
+  }
+  .os-detail {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.65);
+    line-height: 1.8;
+  }
+
+  /* ===== Spec Table ===== */
+  .section-title {
+    font-size: 1.1rem;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .spec-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 48px;
+  }
+  .spec-table tr {
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .spec-table tr:last-child { border-bottom: none; }
+  .spec-table td {
+    padding: 16px 12px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  .spec-table td:first-child {
+    width: 180px;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .spec-table td:last-child {
+    color: #e8e8e8;
+  }
+  .spec-rec {
+    font-size: 0.82rem;
+    color: #f0c860;
+    margin-left: 8px;
+  }
+
+  /* ===== Note ===== */
+  .note-box {
+    background: rgba(240,200,96,0.06);
+    border: 1px solid rgba(240,200,96,0.2);
+    border-radius: 8px;
+    padding: 20px 24px;
+    font-size: 0.88rem;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.8;
+    letter-spacing: 0.05em;
+  }
+  .note-box strong {
+    color: #f0c860;
+    margin-right: 6px;
+  }
+
+  @media (max-width: 768px) {
+    .os-grid { grid-template-columns: 1fr; }
+    main { padding: 90px 20px 60px; }
+    header { padding: 0 20px; }
+    .spec-table td:first-child { width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="header-logo" href="index.html">碁華 <span>GOKA GO</span></a>
+  <div class="header-right">
+    <a class="back-btn" href="index.html" data-key="backBtn">&#8592; 戻る</a>
+    <div class="lang-switcher">
+      <button class="lang-btn" data-lang="ja">JP</button>
+      <button class="lang-btn" data-lang="en">EN</button>
+      <button class="lang-btn" data-lang="zh">中</button>
+      <button class="lang-btn" data-lang="ko">한</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <h1 class="page-title" data-key="pageTitle">動作環境</h1>
+  <p class="page-sub" data-key="pageSub">System Requirements</p>
+
+  <!-- OS -->
+  <p class="section-title" data-key="secOS">対応OS</p>
+  <div class="os-grid">
+    <div class="os-card">
+      <div class="os-icon">🪟</div>
+      <div class="os-name">Windows</div>
+      <div class="os-detail" data-key="winDetail">
+        Windows 10 / 11<br>64ビット版
+      </div>
+    </div>
+    <div class="os-card">
+      <div class="os-icon">🍎</div>
+      <div class="os-name">macOS</div>
+      <div class="os-detail" data-key="macDetail">
+        macOS 10.15 Catalina 以降<br>Intel / Apple Silicon 対応
+      </div>
+    </div>
+  </div>
+
+  <!-- Spec -->
+  <p class="section-title" data-key="secSpec">必要スペック</p>
+  <table class="spec-table">
+    <tr>
+      <td data-key="specCPU">CPU</td>
+      <td>1 GHz 以上 <span class="spec-rec" data-key="specCPURec">（AI機能使用時：2 GHz 以上推奨）</span></td>
+    </tr>
+    <tr>
+      <td data-key="specRAM">メモリ</td>
+      <td>4 GB 以上 <span class="spec-rec" data-key="specRAMRec">（8 GB 推奨）</span></td>
+    </tr>
+    <tr>
+      <td data-key="specStorage">ストレージ</td>
+      <td>1 GB 以上の空き容量</td>
+    </tr>
+    <tr>
+      <td data-key="specDisplay">ディスプレイ</td>
+      <td>1280 × 720 以上</td>
+    </tr>
+    <tr>
+      <td data-key="specNet">ネットワーク</td>
+      <td data-key="specNetVal">インターネット接続必須（ネット対局時）</td>
+    </tr>
+  </table>
+
+  <!-- Note -->
+  <div class="note-box">
+    <strong data-key="noteLabel">※</strong><span data-key="noteText">AI機能（形勢判断・勝率計算）はKataGoエンジンを使用します。AI機能を使用する場合、より高いスペックを推奨します。</span>
+  </div>
+</main>
+
+<script>
+const TRANSLATIONS = {
+  ja: {
+    pageTitle:   "動作環境",
+    pageSub:     "System Requirements",
+    backBtn:     "← 戻る",
+    secOS:       "対応OS",
+    secSpec:     "必要スペック",
+    winDetail:   "Windows 10 / 11\n64ビット版",
+    macDetail:   "macOS 10.15 Catalina 以降\nIntel / Apple Silicon 対応",
+    specCPU:     "CPU",
+    specCPURec:  "（AI機能使用時：2 GHz 以上推奨）",
+    specRAM:     "メモリ",
+    specRAMRec:  "（8 GB 推奨）",
+    specStorage: "ストレージ",
+    specDisplay: "ディスプレイ",
+    specNet:     "ネットワーク",
+    specNetVal:  "インターネット接続必須（ネット対局時）",
+    noteLabel:   "※",
+    noteText:    "AI機能（形勢判断・勝率計算）はKataGoエンジンを使用します。AI機能を使用する場合、より高いスペックを推奨します。",
+  },
+  en: {
+    pageTitle:   "System Requirements",
+    pageSub:     "動作環境",
+    backBtn:     "← Back",
+    secOS:       "Supported OS",
+    secSpec:     "Minimum Specifications",
+    winDetail:   "Windows 10 / 11\n64-bit",
+    macDetail:   "macOS 10.15 Catalina or later\nIntel / Apple Silicon supported",
+    specCPU:     "CPU",
+    specCPURec:  "(2 GHz or higher recommended for AI features)",
+    specRAM:     "Memory",
+    specRAMRec:  "(8 GB recommended)",
+    specStorage: "Storage",
+    specDisplay: "Display",
+    specNet:     "Network",
+    specNetVal:  "Internet connection required (for online matches)",
+    noteLabel:   "Note:",
+    noteText:    "AI features (game analysis, win rate calculation) use the KataGo engine. Higher specs are recommended when using AI features.",
+  },
+  zh: {
+    pageTitle:   "运行环境",
+    pageSub:     "System Requirements",
+    backBtn:     "← 返回",
+    secOS:       "支持的操作系统",
+    secSpec:     "最低配置要求",
+    winDetail:   "Windows 10 / 11\n64位",
+    macDetail:   "macOS 10.15 Catalina 或更高\n支持 Intel / Apple Silicon",
+    specCPU:     "处理器",
+    specCPURec:  "（使用AI功能时推荐2 GHz以上）",
+    specRAM:     "内存",
+    specRAMRec:  "（推荐8 GB）",
+    specStorage: "存储空间",
+    specDisplay: "显示器",
+    specNet:     "网络",
+    specNetVal:  "需要互联网连接（在线对局时）",
+    noteLabel:   "※",
+    noteText:    "AI功能（局势判断・胜率计算）使用KataGo引擎。使用AI功能时，建议更高的配置。",
+  },
+  ko: {
+    pageTitle:   "시스템 요구사항",
+    pageSub:     "System Requirements",
+    backBtn:     "← 뒤로",
+    secOS:       "지원 운영체제",
+    secSpec:     "최소 사양",
+    winDetail:   "Windows 10 / 11\n64비트",
+    macDetail:   "macOS 10.15 Catalina 이상\nIntel / Apple Silicon 지원",
+    specCPU:     "CPU",
+    specCPURec:  "（AI 기능 사용 시: 2 GHz 이상 권장）",
+    specRAM:     "메모리",
+    specRAMRec:  "（8 GB 권장）",
+    specStorage: "저장 공간",
+    specDisplay: "디스플레이",
+    specNet:     "네트워크",
+    specNetVal:  "인터넷 연결 필요（온라인 대국 시）",
+    noteLabel:   "※",
+    noteText:    "AI 기능（형세 판단・승률 계산）은 KataGo 엔진을 사용합니다. AI 기능 사용 시 더 높은 사양을 권장합니다.",
+  },
+};
+
+function detectLang() {
+  const saved = localStorage.getItem('goka-lang');
+  if (saved && TRANSLATIONS[saved]) return saved;
+  const bl = (navigator.language || 'en').substring(0, 2).toLowerCase();
+  if (bl === 'ja') return 'ja';
+  if (bl === 'zh') return 'zh';
+  if (bl === 'ko') return 'ko';
+  return 'en';
+}
+
+function applyLang(lang) {
+  const t = TRANSLATIONS[lang];
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-key]').forEach(el => {
+    const key = el.dataset.key;
+    if (t[key] !== undefined) {
+      if (key === 'winDetail' || key === 'macDetail') {
+        el.innerHTML = t[key].replace(/\n/g, '<br>');
+      } else {
+        el.textContent = t[key];
+      }
+    }
+  });
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.lang === lang);
+  });
+  localStorage.setItem('goka-lang', lang);
+}
+
+applyLang(detectLang());
+document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.addEventListener('click', () => applyLang(btn.dataset.lang));
+});
+</script>
+
+</body>
+</html>
