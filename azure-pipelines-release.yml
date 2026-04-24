@@ -1,0 +1,177 @@
+# =============================================================================
+# Azure Pipelines — リリース一式（ZIP + version.json）を FTPS で自動配置
+#
+# 手動実行のみ（trigger なし）。パラメータ releaseVersion を指定する。
+#
+# 流れ:
+#   1) Windows: PyInstaller で goka_go / igo_admin をビルドし ZIP 化
+#   2) Linux: ステージング領域へ FTPS（/staging/version.json と /staging/releases/*.zip）
+#   3) Linux: 本番領域へ FTPS（/version.json と /releases/*.zip）
+#
+# 本番前に人間の確認を挟む場合:
+#   Azure DevOps → Environments → goka-igo-production に「チェック」または承認者を設定する。
+#   承認が完了するとステージ 3 が走り、version.json と ZIP が本番パスへ上がる。
+#
+# 変数（既存の web デプロイと同様。FTP_* はシークレット推奨）:
+#   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD … 必須
+#   GOKA_FTP_REMOTE … 例 public_html
+#   GOKA_FTP_TLS … 1=FTPS（既定）、0=平文
+#
+# 登録: Pipelines → 新規 → 既存の YAML → /azure-pipelines-release.yml
+# =============================================================================
+
+trigger: none
+pr: none
+
+parameters:
+  - name: releaseVersion
+    displayName: "リリース版（例 1.2.162）"
+    type: string
+    default: "1.2.162"
+  - name: releaseNotes
+    displayName: "release_notes（空なら v<version>）"
+    type: string
+    default: ""
+  - name: stagingPathPrefix
+    displayName: "ステージング用のパス接頭辞（FTP 上のサブフォルダ）"
+    type: string
+    default: "staging"
+
+variables:
+  PUBLIC_BASE: "https://goka-igo.com"
+
+stages:
+  - stage: Build
+    displayName: Build release ZIPs
+    jobs:
+      - job: WindowsBuild
+        pool:
+          vmImage: windows-latest
+        variables:
+          PYTHONIOENCODING: utf-8
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.13"
+
+          - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
+            displayName: Install build dependencies
+
+          - script: pyinstaller goka_go.spec --noconfirm
+            displayName: PyInstaller goka_go.spec
+
+          - script: python tools/download_katago_for_windows_build.py
+            displayName: Download KataGo (Windows)
+
+          - script: python tools/copy_katago_into_dist.py
+            displayName: Copy katago into dist/goka_go
+
+          - script: pyinstaller igo_admin.spec --noconfirm
+            displayName: PyInstaller igo_admin.spec
+
+          - script: python tools/make_release_zips.py ${{ parameters.releaseVersion }} "$(Build.ArtifactStagingDirectory)/release"
+            displayName: Create goka_go / goka_admin ZIPs
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)/release"
+              artifact: "release-zips"
+              publishLocation: "pipeline"
+            displayName: Publish release-zips artifact
+
+  - stage: Staging
+    displayName: Deploy staging (FTP)
+    dependsOn: Build
+    jobs:
+      - job: FtpStaging
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifactName: "release-zips"
+              targetPath: "$(Pipeline.Workspace)/release"
+
+          - script: |
+              set -e
+              VER='${{ parameters.releaseVersion }}'
+              python tools/release_publish_ftp.py \
+                --version "$VER" \
+                --zip-go "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
+                --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${VER}.zip" \
+                --path-prefix '${{ parameters.stagingPathPrefix }}' \
+                --public-base "$(PUBLIC_BASE)" \
+                --release-notes "${REL_NOTES}"
+            displayName: FTPS upload staging version.json + ZIPs
+            env:
+              GOKA_FTP_HOST: $(FTP_SERVER)
+              GOKA_FTP_USER: $(FTP_USERNAME)
+              GOKA_FTP_PASS: $(FTP_PASSWORD)
+              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+              REL_NOTES: ${{ parameters.releaseNotes }}
+
+          - script: |
+              set -e
+              curl -fsS "$(PUBLIC_BASE)/${{ parameters.stagingPathPrefix }}/version.json" | head -c 1200
+              echo
+            displayName: Smoke GET staging version.json
+
+  - stage: Production
+    displayName: Deploy production (FTP)
+    dependsOn: Staging
+    jobs:
+      - deployment: FtpProduction
+        displayName: FTPS production
+        environment: goka-igo-production
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: "3.12"
+
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifactName: "release-zips"
+                    targetPath: "$(Pipeline.Workspace)/release"
+
+                - script: |
+                    set -e
+                    VER='${{ parameters.releaseVersion }}'
+                    python tools/release_publish_ftp.py \
+                      --version "$VER" \
+                      --zip-go "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
+                      --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${VER}.zip" \
+                      --public-base "$(PUBLIC_BASE)" \
+                      --release-notes "${REL_NOTES}"
+                  displayName: FTPS upload production version.json + ZIPs
+                  env:
+                    GOKA_FTP_HOST: $(FTP_SERVER)
+                    GOKA_FTP_USER: $(FTP_USERNAME)
+                    GOKA_FTP_PASS: $(FTP_PASSWORD)
+                    GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+                    REL_NOTES: ${{ parameters.releaseNotes }}
+
+                - script: |
+                    set -e
+                    curl -fsS "$(PUBLIC_BASE)/version.json" | head -c 1200
+                    echo
+                  displayName: Smoke GET production version.json

@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 build/
 dist/
+dist_release/
 *.db
 *.json
 !goka_go.spec
