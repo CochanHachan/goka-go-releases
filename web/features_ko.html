@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>기능 소개 - Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    color: #e0e0e0;
+    background: #1a1a2e;
+    min-height: 100vh;
+  }
+  .header {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.05em;
+    margin-left: 12px;
+    font-weight: 400;
+  }
+  .header-back {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s;
+  }
+  .header-back:hover { color: #f0c860; }
+
+  .main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+  .page-title {
+    font-size: 2.4rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+  .divider {
+    width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 auto 60px;
+  }
+
+  /* Feature Grid */
+  .features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+  .feature-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 32px 28px;
+    transition: transform 0.3s, border-color 0.3s;
+  }
+  .feature-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(240,200,96,0.3);
+  }
+  .feature-icon {
+    font-size: 2rem;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .feature-card h2 {
+    font-size: 1.15rem;
+    color: #fff;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .feature-card p {
+    font-size: 0.9rem;
+    line-height: 1.8;
+    color: rgba(255,255,255,0.6);
+  }
+
+  /* Highlight card spans full width */
+  .feature-card.highlight {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, rgba(240,200,96,0.08), rgba(240,200,96,0.02));
+    border-color: rgba(240,200,96,0.2);
+  }
+
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 20px; }
+    .main { padding: 40px 16px 80px; }
+    .page-title { font-size: 1.8rem; }
+    .features { grid-template-columns: 1fr; }
+    .feature-card.highlight { grid-column: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="header-logo">碁華 <span>Goka GO</span></a>
+  <a href="index.html" class="header-back">&larr; 메인으로 돌아가기</a>
+</div>
+
+<div class="main">
+  <h1 class="page-title">기능 소개</h1>
+  <p class="page-subtitle">Features</p>
+  <div class="divider"></div>
+
+  <div class="features">
+
+    <div class="feature-card highlight">
+      <span class="feature-icon">&#x1F916;</span>
+      <h2>KataGo AI 엔진 내장</h2>
+      <p>
+        세계 최강 수준의 오픈소스 바둑 AI "KataGo"를 내장하고 있습니다.
+        30단계의 난이도를 갖추고 있어 초보자부터 고단자까지 적합한 상대를 찾을 수 있습니다.
+        대국 중에는 실시간으로 형세 판단(승률%)이 표시되어 자신의 수가 얼마나 좋았는지 즉시 확인할 수 있습니다.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F310;</span>
+      <h2>온라인 대전</h2>
+      <p>
+        인터넷을 통해 전 세계 플레이어와 실시간으로 대국할 수 있습니다.
+        도전장 송수신, 대국 신청 타임아웃 관리 등 쾌적한 대국 환경을 제공합니다.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4CA;</span>
+      <h2>기력 자동 판정</h2>
+      <p>
+        대국 결과에 따라 Elo 레이팅이 자동으로 계산되며, 그 수치에 따른 기력(예: 초단(중), 3급(상) 등)이 표시됩니다.
+        기력을 통해 자신의 실력을 직관적으로 파악하고 성장을 실감할 수 있습니다.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F50D;</span>
+      <h2>KataGo 집 계산</h2>
+      <p>
+        양쪽 모두 패스하면 KataGo가 정확하게 집을 계산합니다.
+        사석 판정도 AI가 수행하므로 초보자도 안심하고 대국을 종료할 수 있습니다.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4CB;</span>
+      <h2>기보 복기 모드</h2>
+      <p>
+        대국 종료 후 내비게이션 바를 사용하여 수를 앞뒤로 이동하며 국면을 되돌아볼 수 있습니다.
+        어디서 형세가 바뀌었는지 확인하고 다음 대국에 활용할 수 있습니다.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x23F1;&#xFE0F;</span>
+      <h2>제한 시간 &amp; 초읽기</h2>
+      <p>
+        제한 시간과 초읽기를 지원합니다. 초읽기에 들어가면 음성 카운트다운이 울립니다.
+        일본어, 영어, 중국어, 한국어 4개 언어의 음성을 탑재하고 있습니다.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F30F;</span>
+      <h2>다국어 지원</h2>
+      <p>
+        일본어, 영어, 중국어, 한국어 4개 언어를 지원합니다.
+        UI 언어 전환은 원클릭으로 완료됩니다.
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F504;</span>
+      <h2>자동 업데이트</h2>
+      <p>
+        앱 시작 시 새 버전을 자동으로 감지합니다.
+        원클릭으로 업데이트가 완료되어 항상 최신 상태로 사용할 수 있습니다.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer">
+  &copy; 2026 碁華 Goka GO. All rights reserved.
+</div>
+
+</body>
+</html>

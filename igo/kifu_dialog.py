@@ -1,0 +1,251 @@
+# -*- coding: utf-8 -*-
+"""碁華 棋譜ダイアログ"""
+import logging
+import tkinter as tk
+from tkinter import messagebox
+
+from igo.glossy_button import GlossyButton
+from igo.lang import L
+from igo.constants import BLACK, WHITE
+from igo.sgf import _parse_sgf_text
+from igo.window_settings import WindowSettings
+
+logger = logging.getLogger(__name__)
+
+# Lazy import: tksheet
+Sheet = None
+def _ensure_tksheet():
+    global Sheet
+    if Sheet is None:
+        from tksheet import Sheet as _Sheet
+        Sheet = _Sheet
+
+
+class KifuDialog:
+    """Dialog to browse and replay game records (棋譜)."""
+
+    def __init__(self, parent, app, go_board):
+        self.app = app
+        self.go_board = go_board
+        self._sort_col = None
+        self._sort_reverse = False  # ascending by default; first header click sorts ascending
+        self._selected_record_id = None  # record ID, not row index
+        self._records = []  # list of (id, played_at, black_name, white_name, result)
+        # Mapping from display column index to _records tuple index for sorting
+        self._col_to_sort_key = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}
+
+        self._ws = WindowSettings(app._ws._db_path, "kifu_dialog")
+
+        self.dlg = tk.Toplevel(parent)
+        self.dlg.title("棋譜一覧")
+        self.dlg.transient(parent)
+        self.dlg.resizable(True, True)
+        app._current_kifu_dialog = self
+        app._last_focused_dialog = self
+        def _on_focus(e, win=self.dlg, dlg=self, a=app):
+            try:
+                if e.widget.winfo_toplevel() == win:
+                    win.lift()
+                    a._last_focused_dialog = dlg
+            except tk.TclError:
+                pass  # widget destroyed during focus event
+        self.dlg.bind("<FocusIn>", _on_focus)
+
+        # Restore saved geometry or center on parent
+        saved_geo = self._ws.load("geometry")
+        if saved_geo:
+            self.dlg.geometry(saved_geo)
+        else:
+            self.dlg.update_idletasks()
+            pw = parent.winfo_width()
+            ph = parent.winfo_height()
+            px = parent.winfo_x()
+            py = parent.winfo_y()
+            w, h = 620, 420
+            x = px + (pw - w) // 2
+            y = py + (ph - h) // 2
+            self.dlg.geometry("{}x{}+{}+{}".format(w, h, x, y))
+
+        # Title label
+        tk.Label(self.dlg, text="棋譜一覧", font=("", 14, "bold"),
+                 fg="#996600").pack(pady=(10, 5))
+
+        # Grid frame
+        grid_border = tk.Frame(self.dlg, bd=1, relief="solid", bg="#bfbfbf")
+        grid_border.pack(fill="both", expand=True, padx=10, pady=(0, 5))
+        list_frame = tk.Frame(grid_border)
+        list_frame.pack(fill="both", expand=True, padx=1, pady=1)
+
+        _ensure_tksheet()
+        headers = ["棋譜番号", "対局日", "黒番", "白番", "勝敗"]
+        self.kifu_list = Sheet(list_frame,
+            headers=headers, data=[],
+            show_x_scrollbar=False, show_y_scrollbar=True,
+            show_row_index=False)
+        self.kifu_list.pack(fill="both", expand=True)
+        self.kifu_list.set_options(
+            table_bg="white", table_fg="black",
+            grid_color="#d9d9d9",
+            header_bg="#f3f3f3", header_fg="black",
+            index_bg="#f3f3f3", index_fg="black",
+            selected_cells_bg="#d9d9d9", selected_cells_fg="black",
+            selected_rows_bg="#d9d9d9", selected_rows_fg="black",
+            selected_columns_bg="#d9d9d9", selected_columns_fg="black",
+            header_selected_columns_bg="#e2f0d9",
+            header_selected_columns_fg="#217346",
+        )
+        self.kifu_list.set_all_row_heights(25)
+        try:
+            self.kifu_list.font(("Yu Gothic UI", 10, "normal"))
+            self.kifu_list.header_font(("Yu Gothic UI", 10, "normal"))
+        except (tk.TclError, AttributeError):
+            pass  # font not available on this platform
+        self.kifu_list.enable_bindings()
+        self.kifu_list.disable_bindings("edit_cell", "edit_header", "edit_index",
+            "rc_select", "rc_insert_row", "rc_delete_row",
+            "rc_insert_column", "rc_delete_column",
+            "copy", "cut", "paste", "undo", "delete")
+        self.kifu_list.extra_bindings("cell_select", self._on_cell_select)
+        # Header click for sorting
+        self.kifu_list.extra_bindings("column_select", self._on_header_click)
+
+        # OK / Close buttons (right-aligned)
+        btn_frame = tk.Frame(self.dlg)
+        btn_frame.pack(fill="x", padx=10, pady=(0, 10))
+        bg_color = btn_frame.cget("bg")
+        # デザイン2: 閉じるボタン (right)
+        close_btn = GlossyButton(btn_frame,
+            text=L("btn_close"), width=100, height=33,
+            base_color=(125, 125, 125), text_color="white",
+            font=("Yu Gothic UI", 11, "bold"),
+            focus_border_width=2, focus_border_color=(89, 84, 85),
+            depth=0.7, command=self._close, bg=bg_color)
+        close_btn.pack(side="right", padx=(5, 0))
+        # デザイン1: 表示ボタン（緑）(left of close)
+        ok_btn = GlossyButton(btn_frame,
+            text=L("btn_show"), width=100, height=30,
+            base_color=(50, 150, 50), text_color="white",
+            font=("Yu Gothic UI", 11, "bold"),
+            focus_border_width=3, focus_border_color=(40, 120, 40),
+            depth=0.7, command=self._on_ok, bg=bg_color)
+        ok_btn.pack(side="right")
+
+        self.dlg.protocol("WM_DELETE_WINDOW", self._close)
+
+        # Load data
+        self._load_records()
+
+    def _load_records(self):
+        """Load game records from DB."""
+        if not self.app or not self.app.current_user:
+            return
+        handle = self.app.current_user["handle_name"]
+        rows = self.app.db.get_game_records_for_user(handle)
+        self._records = []
+        display_rows = []
+        for row in rows:
+            rec_id = row[0]
+            played_at = row[1]
+            black_name = row[2]
+            white_name = row[3]
+            result = row[4]
+            self._records.append((rec_id, played_at, black_name, white_name, result))
+            kifu_no = "R{:06d}".format(rec_id)
+            display_rows.append([kifu_no, played_at, black_name, white_name, result])
+        self.kifu_list.set_sheet_data(display_rows, redraw=False)
+        self._ws.restore_column_widths(self.kifu_list, 5, [90, 130, 100, 100, 140])
+        self._apply_header_colors()
+
+    def _on_cell_select(self, event):
+        selected = self.kifu_list.get_selected_cells()
+        if not selected:
+            return
+        row_idx = list(selected)[0][0]
+        if row_idx >= len(self._records):
+            return
+        rec_id = self._records[row_idx][0]
+        # Toggle: deselect if same record clicked again
+        if self._selected_record_id == rec_id:
+            self._selected_record_id = None
+            self.kifu_list.deselect()
+            return
+        self._selected_record_id = rec_id
+        self.kifu_list.deselect()
+        self.kifu_list.highlight_rows(rows=[row_idx], bg="#DCE9F6", fg="#000000")
+
+    def _on_ok(self):
+        """Load selected kifu and close dialog."""
+        if self._selected_record_id is None:
+            return
+        self._load_kifu(self._selected_record_id)
+
+    def _load_kifu(self, record_id):
+        """Load a game record onto the board and close dialog."""
+        sgf_text = self.app.db.get_game_record_sgf(record_id)
+        if not sgf_text:
+            logger.debug("No SGF text found for record_id=%s", record_id)
+            messagebox.showwarning(L("msg_error"), L("kifu_load_failed"))
+            return
+        try:
+            moves, metadata = _parse_sgf_text(sgf_text)
+            self.go_board.load_sgf_to_board(moves, metadata)
+        except Exception:
+            logger.debug("Failed to load kifu record_id=%s", record_id, exc_info=True)
+            messagebox.showerror(L("msg_error"), L("kifu_load_failed"))
+            return
+        self._close()
+
+    def _on_header_click(self, event):
+        """Sort by clicked column."""
+        selected = self.kifu_list.get_selected_columns()
+        if not selected:
+            return
+        col = list(selected)[0]
+        if self._sort_col == col:
+            self._sort_reverse = not self._sort_reverse
+        else:
+            self._sort_col = col
+            self._sort_reverse = False
+        # Sort _records using column-to-key mapping (decoupled from display order)
+        sort_key_idx = self._col_to_sort_key.get(col, col)
+        self._records.sort(key=lambda r: r[sort_key_idx], reverse=self._sort_reverse)
+        # Rebuild display, restoring selection by record_id
+        self._rebuild_display(highlight_col=col)
+
+    def _rebuild_display(self, highlight_col=None):
+        """Rebuild display rows from _records and restore selection by record_id."""
+        display_rows = []
+        new_sel_row = None
+        for i, rec in enumerate(self._records):
+            kifu_no = "R{:06d}".format(rec[0])
+            display_rows.append([kifu_no, rec[1], rec[2], rec[3], rec[4]])
+            if rec[0] == self._selected_record_id:
+                new_sel_row = i
+        self.kifu_list.set_sheet_data(display_rows, redraw=False, reset_col_positions=False)
+        # Restore selection
+        self.kifu_list.deselect()
+        if new_sel_row is not None:
+            self.kifu_list.highlight_rows(rows=[new_sel_row], bg="#DCE9F6", fg="#000000")
+        else:
+            self._selected_record_id = None
+        self._apply_header_colors(highlight_col)
+
+    def _apply_header_colors(self, highlight_col=None):
+        """Apply header colors, highlighting the sorted column if specified."""
+        for i in range(5):
+            if i == highlight_col:
+                self.kifu_list.CH.cell_options[i] = {"highlight": ("#e2f0d9", "#217346")}
+            else:
+                self.kifu_list.CH.cell_options[i] = {"highlight": ("#f3f3f3", "black")}
+        self.kifu_list.set_options(header_bg="#f3f3f3", header_fg="black")
+        self.kifu_list.CH.config(background="#f3f3f3")
+        self.kifu_list.redraw()
+
+    def _close(self):
+        try:
+            self._ws.save_window(self.dlg, self.kifu_list, 5)
+        except (tk.TclError, AttributeError):
+            logger.debug("Failed to save kifu dialog settings", exc_info=True)
+        self.app.on_kifu_dialog_closed(self)
+        self.dlg.destroy()
+

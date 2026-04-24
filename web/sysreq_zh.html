@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运行环境 - 碁华 Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    color: #e0e0e0;
+    background: #1a1a2e;
+    min-height: 100vh;
+  }
+  .header {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.05em;
+    margin-left: 12px;
+    font-weight: 400;
+  }
+  .header-back {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s;
+  }
+  .header-back:hover { color: #f0c860; }
+
+  .main {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+  .page-title {
+    font-size: 2.4rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+  .divider {
+    width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 auto 60px;
+  }
+
+  /* Requirements Table */
+  .req-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 48px;
+  }
+  .req-table th,
+  .req-table td {
+    padding: 18px 20px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  .req-table th {
+    color: #f0c860;
+    font-weight: 600;
+    width: 160px;
+    letter-spacing: 0.05em;
+    vertical-align: top;
+  }
+  .req-table td {
+    color: rgba(255,255,255,0.75);
+  }
+  .req-table tr:last-child th,
+  .req-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Section */
+  .section-title {
+    font-size: 1.3rem;
+    color: #fff;
+    letter-spacing: 0.1em;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    font-weight: 600;
+  }
+  .section {
+    margin-bottom: 48px;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 20px; }
+    .main { padding: 40px 16px 80px; }
+    .page-title { font-size: 1.8rem; }
+    .req-table th { width: 100px; font-size: 0.85rem; }
+    .req-table td { font-size: 0.85rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="header-logo">碁华 <span>Goka GO</span></a>
+  <a href="index.html" class="header-back">&larr; 返回首页</a>
+</div>
+
+<div class="main">
+  <h1 class="page-title">运行环境</h1>
+  <p class="page-subtitle">System Requirements</p>
+  <div class="divider"></div>
+
+  <div class="section">
+    <h2 class="section-title">必要环境</h2>
+    <table class="req-table">
+      <tr>
+        <th>操作系统</th>
+        <td>Windows 10 / 11（64位）</td>
+      </tr>
+      <tr>
+        <th>CPU</th>
+        <td>Intel Core i3 以上 / AMD Ryzen 3 以上（推荐: Core i5 / Ryzen 5 以上）</td>
+      </tr>
+      <tr>
+        <th>内存</th>
+        <td>4GB 以上（推荐: 8GB 以上）</td>
+      </tr>
+      <tr>
+        <th>GPU</th>
+        <td>支持OpenCL 1.2的GPU（NVIDIA / AMD / Intel 集成显卡）</td>
+      </tr>
+      <tr>
+        <th>磁盘空间</th>
+        <td>约500MB 可用空间（含KataGo AI模型）</td>
+      </tr>
+      <tr>
+        <th>网络</th>
+        <td>需要互联网连接（网络对局及自动更新所需）</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2 class="section-title">支持语言</h2>
+    <table class="req-table">
+      <tr>
+        <th>界面语言</th>
+        <td>日语、英语、中文、韩语</td>
+      </tr>
+      <tr>
+        <th>读秒语音</th>
+        <td>日语、英语、中文、韩语</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div class="footer">
+  &copy; 2026 碁华 Goka GO. All rights reserved.
+</div>
+
+</body>
+</html>

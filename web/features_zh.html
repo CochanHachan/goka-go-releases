@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>功能说明 - 碁华 Goka GO</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    color: #e0e0e0;
+    background: #1a1a2e;
+    min-height: 100vh;
+  }
+  .header {
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    padding: 16px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-logo {
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .header-logo span {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.05em;
+    margin-left: 12px;
+    font-weight: 400;
+  }
+  .header-back {
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    transition: color 0.3s;
+  }
+  .header-back:hover { color: #f0c860; }
+
+  .main {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+  }
+  .page-title {
+    font-size: 2.4rem;
+    letter-spacing: 0.2em;
+    color: #fff;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .page-subtitle {
+    text-align: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 60px;
+  }
+  .divider {
+    width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.2);
+    margin: 0 auto 60px;
+  }
+
+  /* Feature Grid */
+  .features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+  }
+  .feature-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 32px 28px;
+    transition: transform 0.3s, border-color 0.3s;
+  }
+  .feature-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(240,200,96,0.3);
+  }
+  .feature-icon {
+    font-size: 2rem;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .feature-card h2 {
+    font-size: 1.15rem;
+    color: #fff;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .feature-card p {
+    font-size: 0.9rem;
+    line-height: 1.8;
+    color: rgba(255,255,255,0.6);
+  }
+
+  /* Highlight card spans full width */
+  .feature-card.highlight {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, rgba(240,200,96,0.08), rgba(240,200,96,0.02));
+    border-color: rgba(240,200,96,0.2);
+  }
+
+  .footer {
+    text-align: center;
+    padding: 40px 24px;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  @media (max-width: 600px) {
+    .header { padding: 12px 20px; }
+    .main { padding: 40px 16px 80px; }
+    .page-title { font-size: 1.8rem; }
+    .features { grid-template-columns: 1fr; }
+    .feature-card.highlight { grid-column: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="header-logo">碁华 <span>Goka GO</span></a>
+  <a href="index.html" class="header-back">&larr; 返回首页</a>
+</div>
+
+<div class="main">
+  <h1 class="page-title">功能说明</h1>
+  <p class="page-subtitle">Features</p>
+  <div class="divider"></div>
+
+  <div class="features">
+
+    <div class="feature-card highlight">
+      <span class="feature-icon">&#x1F916;</span>
+      <h2>内置KataGo AI引擎</h2>
+      <p>
+        搭载世界顶级开源围棋AI"KataGo"。
+        配备30个难度级别，从初学者到高段位玩家都能找到合适的对手。
+        对局中实时显示形势判断（胜率%），让您即时了解每手棋的优劣。
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F310;</span>
+      <h2>网络对战</h2>
+      <p>
+        通过互联网与世界各地的玩家实时对弈。
+        支持挑战的发送与接收、对局申请超时管理等功能，提供舒适的对局环境。
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4CA;</span>
+      <h2>棋力自动判定</h2>
+      <p>
+        根据对局结果自动计算Elo等级分，并根据该数值显示对应的棋力（例如：初段（中）、3级（上）等）。
+        通过棋力直观了解自己的实力，感受成长的过程。
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F50D;</span>
+      <h2>KataGo数子</h2>
+      <p>
+        双方都选择停手后，KataGo会精确计算地盘。
+        死子的判定也由AI完成，即使是初学者也能放心结束对局。
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F4CB;</span>
+      <h2>棋谱复盘模式</h2>
+      <p>
+        对局结束后，可以使用导航栏前进或后退查看每一手棋。
+        确认形势发生变化的关键节点，为下一局对弈积累经验。
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x23F1;&#xFE0F;</span>
+      <h2>用时与读秒</h2>
+      <p>
+        支持保留时间和读秒功能。进入读秒后会有语音倒计时提示。
+        搭载日语、英语、中文、韩语4种语言的语音。
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F30F;</span>
+      <h2>多语言支持</h2>
+      <p>
+        支持日语、英语、中文、韩语4种语言。
+        界面语言一键即可切换。
+      </p>
+    </div>
+
+    <div class="feature-card">
+      <span class="feature-icon">&#x1F504;</span>
+      <h2>自动更新</h2>
+      <p>
+        启动应用时自动检测新版本。
+        一键即可完成更新，始终保持最新状态。
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer">
+  &copy; 2026 碁华 Goka GO. All rights reserved.
+</div>
+
+</body>
+</html>

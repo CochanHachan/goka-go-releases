@@ -1,0 +1,246 @@
+name: One Click Staging EXE
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: "ビルド元ブランチ（例: feature/xxx）。未指定時は main"
+        required: false
+        default: "main"
+      auto_merge_to_main:
+        description: "true の場合、実行前に source_branch を main に自動マージ"
+        required: true
+        type: choice
+        options:
+          - "false"
+          - "true"
+        default: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-click-staging-exe
+  cancel-in-progress: true
+
+jobs:
+  prepare-ref:
+    name: Prepare Build Ref
+    runs-on: ubuntu-latest
+    outputs:
+      build_ref: ${{ steps.pick-ref.outputs.build_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve input branches
+        id: vars
+        shell: bash
+        run: |
+          SOURCE="${{ github.event.inputs.source_branch }}"
+          if [ -z "$SOURCE" ]; then
+            SOURCE="main"
+          fi
+          echo "source_branch=$SOURCE" >> "$GITHUB_OUTPUT"
+
+      - name: Optional auto merge into main
+        if: ${{ github.event.inputs.auto_merge_to_main == 'true' }}
+        shell: bash
+        run: |
+          SOURCE="${{ steps.vars.outputs.source_branch }}"
+          echo "Auto-merging ${SOURCE} -> main"
+          git fetch origin
+          git checkout main
+          git merge --no-ff --no-edit "origin/${SOURCE}"
+          git push origin main
+
+      - name: Pick build ref
+        id: pick-ref
+        shell: bash
+        run: |
+          if [ "${{ github.event.inputs.auto_merge_to_main }}" = "true" ]; then
+            echo "build_ref=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "build_ref=${{ steps.vars.outputs.source_branch }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-staging-client:
+    name: Build Staging Client/Admin
+    runs-on: windows-latest
+    needs: prepare-ref
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-ref.outputs.build_ref }}
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install pyinstaller tksheet cryptography websockets pillow pygame
+
+      - name: Switch to staging environment
+        shell: python
+        run: |
+          import sys
+
+          env_file = "igo/constants_env.py"
+          search = '_ENV = "production"'
+          replace = '_ENV = "staging"'
+
+          with open(env_file, "r", encoding="utf-8") as f:
+              content = f.read()
+          if search not in content:
+              print(f"ERROR: '{search}' not found in {env_file}")
+              sys.exit(1)
+
+          with open(env_file, "w", encoding="utf-8") as f:
+              f.write(content.replace(search, replace, 1))
+
+      - name: Download KataGo
+        shell: python
+        run: |
+          import gzip
+          import os
+          import shutil
+          import urllib.request
+          import zipfile
+
+          katago_url = "https://github.com/lightvector/KataGo/releases/download/v1.16.4/katago-v1.16.4-opencl-windows-x64.zip"
+          katago_zip = "katago-opencl.zip"
+          urllib.request.urlretrieve(katago_url, katago_zip)
+
+          os.makedirs("katago", exist_ok=True)
+          with zipfile.ZipFile(katago_zip, "r") as zf:
+              for member in zf.infolist():
+                  name = member.filename
+                  if name.endswith((".exe", ".dll", ".cfg", ".pem")):
+                      member.filename = os.path.basename(name)
+                      zf.extract(member, "katago")
+
+          model_url = "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"
+          req = urllib.request.Request(
+              model_url,
+              headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+          )
+          with urllib.request.urlopen(req) as resp, open("model.bin.gz", "wb") as out:
+              shutil.copyfileobj(resp, out)
+          with gzip.open("model.bin.gz", "rb") as src, open(os.path.join("katago", "model.bin"), "wb") as dst:
+              shutil.copyfileobj(src, dst)
+
+          human_url = "https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz"
+          urllib.request.urlretrieve(human_url, "human_model.bin.gz")
+          with gzip.open("human_model.bin.gz", "rb") as src, open(os.path.join("katago", "human_model.bin"), "wb") as dst:
+              shutil.copyfileobj(src, dst)
+
+          os.makedirs(os.path.join("katago", "KataGoData"), exist_ok=True)
+          with open(os.path.join("katago", "KataGoData", ".keep"), "w", encoding="utf-8") as f:
+              f.write("")
+
+      - name: Build client with PyInstaller
+        run: pyinstaller goka_go.spec --noconfirm
+
+      - name: Build admin panel with PyInstaller
+        run: pyinstaller igo_admin.spec --noconfirm
+
+      - name: Copy KataGo into dist folder
+        shell: python
+        run: |
+          import os
+          import shutil
+          src = "katago"
+          dst = os.path.join("dist", "goka_go", "katago")
+          shutil.copytree(src, dst, dirs_exist_ok=True)
+
+      - name: Create staging ZIPs
+        shell: python
+        run: |
+          import os
+          import shutil
+
+          def create_zip(src_dir, dst_zip):
+              # NOTE:
+              # PyInstaller の onedir 出力には `_tk_data/` のような「空ディレクトリ」が含まれる。
+              # zipfile で手組みすると dirs が無視され、展開後に Tcl/Tk ランタイムが欠落して起動失敗する。
+              # shutil.make_archive は空ディレクトリも含めてアーカイブできる。
+              base_dir = os.path.dirname(os.path.abspath(src_dir))
+              base_name = os.path.join(os.path.dirname(os.path.abspath(dst_zip)), "_tmp_archive")
+              shutil.make_archive(base_name, "zip", root_dir=base_dir, base_dir=os.path.basename(src_dir))
+              tmp_zip = base_name + ".zip"
+              os.replace(tmp_zip, dst_zip)
+
+          create_zip("dist/goka_go", "dist/goka_go_staging.zip")
+          create_zip("dist/igo_admin", "dist/igo_admin_staging.zip")
+
+      - name: Upload staging client ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-go-staging-zip
+          path: dist/goka_go_staging.zip
+          retention-days: 7
+
+      - name: Upload staging admin ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-admin-staging-zip
+          path: dist/igo_admin_staging.zip
+          retention-days: 7
+
+  publish-fixed-release:
+    name: Publish Fixed URL Release
+    runs-on: ubuntu-latest
+    needs: build-staging-client
+    steps:
+      - name: Download client artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: goka-go-staging-zip
+          path: out/client
+
+      - name: Download admin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: goka-admin-staging-zip
+          path: out/admin
+
+      - name: Normalize filenames
+        shell: bash
+        run: |
+          cp out/client/*.zip goka-go-staging.zip
+          cp out/admin/*.zip goka-admin-staging.zip
+
+      - name: Publish or update staging-latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: staging-latest
+          name: Staging Latest
+          prerelease: true
+          make_latest: false
+          body: |
+            Auto updated by One Click Staging EXE workflow.
+            Source branch: `${{ github.event.inputs.source_branch || 'main' }}`
+            Auto merge to main: `${{ github.event.inputs.auto_merge_to_main }}`
+          files: |
+            goka-go-staging.zip
+            goka-admin-staging.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show fixed URLs
+        shell: bash
+        run: |
+          REPO="${{ github.repository }}"
+          echo "## Fixed download URLs" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Client: https://github.com/${REPO}/releases/download/staging-latest/goka-go-staging.zip" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Admin: https://github.com/${REPO}/releases/download/staging-latest/goka-admin-staging.zip" >> "$GITHUB_STEP_SUMMARY"

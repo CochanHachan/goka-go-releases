@@ -1,0 +1,498 @@
+name: Build and Deploy
+
+on:
+  # 手動トリガー（バージョン指定可能）
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースバージョン（例: 1.2.4）。空欄の場合はパッチバージョンを自動インクリメント'
+        required: false
+        default: ''
+      release_notes:
+        description: 'リリースノート'
+        required: false
+        default: ''
+  # mainへのソースコード変更push時に自動実行
+  push:
+    branches: [main]
+    paths:
+      - 'igo/**'
+      - 'igo_game.py'
+      - 'igo_cloud_client.py'
+      - 'glossy_button.py'
+      - 'glossy_pill_button.py'
+      - 'teal_banner.py'
+      - 'decorative_banner.py'
+      - 'lang.py'
+      - 'login_form.py'
+      - 'window_settings.py'
+      - 'goka_go.spec'
+      - 'image/**'
+      - '*.png'
+      - '*.wav'
+      - 'server.py'
+      - 'igo_ws_server.py'
+      - 'igo_admin.py'
+      - 'igo_admin.spec'
+
+permissions:
+  contents: write
+  actions: write
+
+# 同時実行を防止（PRマージの自動実行と手動実行が競合するのを防ぐ）
+concurrency:
+  group: build-and-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install pyinstaller tksheet cryptography websockets pillow pygame
+
+      - name: Determine version
+        id: version
+        shell: python
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+        run: |
+          import json, re, os
+
+          # 手動入力のバージョン
+          manual_version = os.environ.get("INPUT_VERSION", "").strip()
+
+          if manual_version:
+              new_version = manual_version
+          else:
+              # version.jsonから現在バージョンを読み取り、パッチをインクリメント
+              with open("version.json", "r", encoding="utf-8") as f:
+                  data = json.load(f)
+              current = data["version"]
+              parts = current.split(".")
+              parts[-1] = str(int(parts[-1]) + 1)
+              new_version = ".".join(parts)
+
+          # リリースノート
+          notes = os.environ.get("INPUT_RELEASE_NOTES", "").strip()
+          if not notes:
+              notes = f"v{new_version} 自動ビルド"
+
+          # ビルド日付
+          from datetime import datetime, timezone
+          build_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"version={new_version}\n")
+              f.write(f"build_date={build_date}\n")
+              f.write(f"release_notes={notes}\n")
+
+          print(f"Version: {new_version}, Build: {build_date}")
+
+      - name: Update version in source files
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          BUILD_DATE: ${{ steps.version.outputs.build_date }}
+        run: |
+          import re, os
+
+          version = os.environ["RELEASE_VERSION"]
+          build_date = os.environ["BUILD_DATE"]
+
+          # igo/constants.py
+          with open("igo/constants.py", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(
+              r'(APP_VERSION\s*=\s*")[^"]*(")',
+              rf'\g<1>{version}\2',
+              content
+          )
+          content = re.sub(
+              r'(APP_BUILD\s*=\s*")[^"]*(")',
+              rf'\g<1>{build_date}\2',
+              content
+          )
+          with open("igo/constants.py", "w", encoding="utf-8") as f:
+              f.write(content)
+          print(f"Updated constants.py: APP_VERSION={version}, APP_BUILD={build_date}")
+
+          # installer/GokaGo_Setup.iss
+          with open("installer/GokaGo_Setup.iss", "r", encoding="utf-8") as f:
+              content = f.read()
+          content = re.sub(
+              r'(#define AppVersion\s+")[^"]*(")',
+              rf'\g<1>{version}\2',
+              content
+          )
+          with open("installer/GokaGo_Setup.iss", "w", encoding="utf-8") as f:
+              f.write(content)
+          print(f"Updated GokaGo_Setup.iss: AppVersion={version}")
+
+      - name: Build with PyInstaller
+        run: pyinstaller goka_go.spec --noconfirm
+
+      - name: Download KataGo
+        shell: python
+        run: |
+          import urllib.request, zipfile, gzip, shutil, os
+
+          # KataGo OpenCL Windows x64 バイナリ
+          katago_url = "https://github.com/lightvector/KataGo/releases/download/v1.16.4/katago-v1.16.4-opencl-windows-x64.zip"
+          katago_zip = "katago-opencl.zip"
+          print(f"Downloading KataGo binary from {katago_url}...")
+          urllib.request.urlretrieve(katago_url, katago_zip)
+
+          os.makedirs("katago", exist_ok=True)
+          with zipfile.ZipFile(katago_zip, "r") as zf:
+              for member in zf.infolist():
+                  # DLL, exe, cfg, pem のみ展開
+                  name = member.filename
+                  if name.endswith((".exe", ".dll", ".cfg", ".pem")):
+                      member.filename = os.path.basename(name)
+                      zf.extract(member, "katago")
+                      print(f"  Extracted: {member.filename}")
+
+          # KataGo ニューラルネットモデル（b28c512nbt — 最強モデル、約278MB展開後）
+          model_url = "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b28c512nbt-s12763923712-d5805955894.bin.gz"
+          model_gz = "model.bin.gz"
+          print(f"Downloading KataGo model from {model_url}...")
+          req = urllib.request.Request(model_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+          with urllib.request.urlopen(req) as resp, open(model_gz, "wb") as out:
+              shutil.copyfileobj(resp, out)
+
+          with gzip.open(model_gz, "rb") as f_in:
+              with open(os.path.join("katago", "model.bin"), "wb") as f_out:
+                  shutil.copyfileobj(f_in, f_out)
+          print(f"  Extracted: model.bin ({os.path.getsize(os.path.join('katago', 'model.bin')) / (1024*1024):.1f} MB)")
+
+          # Human SL モデル（humanSLProfile 用、人間らしい着手を再現）
+          human_url = "https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz"
+          human_gz = "human_model.bin.gz"
+          print(f"Downloading KataGo Human SL model from {human_url}...")
+          urllib.request.urlretrieve(human_url, human_gz)
+
+          with gzip.open(human_gz, "rb") as f_in:
+              with open(os.path.join("katago", "human_model.bin"), "wb") as f_out:
+                  shutil.copyfileobj(f_in, f_out)
+          print(f"  Extracted: human_model.bin ({os.path.getsize(os.path.join('katago', 'human_model.bin')) / (1024*1024):.1f} MB)")
+
+          # KataGoData フォルダ作成（初回起動時に自動生成されるが、Inno Setupに必要）
+          os.makedirs(os.path.join("katago", "KataGoData"), exist_ok=True)
+          # プレースホルダーファイル
+          with open(os.path.join("katago", "KataGoData", ".keep"), "w") as f:
+              f.write("")
+
+          print("KataGo setup complete.")
+          for fn in sorted(os.listdir("katago")):
+              fp = os.path.join("katago", fn)
+              if os.path.isfile(fp):
+                  print(f"  {fn}: {os.path.getsize(fp) / (1024*1024):.2f} MB")
+
+      - name: Prepare installer assets
+        shell: python
+        run: |
+          import json, os
+
+          # igo_config.json（デフォルト設定ファイル、リポジトリには未コミット）
+          if not os.path.exists("igo_config.json"):
+              cfg = {"theme": "light", "language": "ja"}
+              with open("igo_config.json", "w", encoding="utf-8") as f:
+                  json.dump(cfg, f, ensure_ascii=False, indent=2)
+              print("Created default igo_config.json")
+          else:
+              print("igo_config.json already exists")
+
+      - name: Sign main executable with SSL.com eSigner
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: dist/goka_go/goka_go.exe
+          output_path: dist/goka_go_signed
+          environment_name: PROD
+
+      - name: Replace exe with signed version
+        shell: bash
+        run: |
+          cp -f dist/goka_go_signed/goka_go.exe dist/goka_go/goka_go.exe
+          echo "Replaced exe with signed version"
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer with Inno Setup
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            Write-Error "Inno Setup not found at $iscc"
+            exit 1
+          }
+          & $iscc "installer\GokaGo_Setup.iss"
+          $exeName = "GokaGo_Setup_${env:RELEASE_VERSION}.exe"
+          $exePath = "dist\installer\$exeName"
+          if (Test-Path $exePath) {
+            $sizeMB = (Get-Item $exePath).Length / 1MB
+            Write-Output "Installer created: $exePath ($([math]::Round($sizeMB, 1)) MB)"
+          } else {
+            Write-Error "Installer not found at $exePath"
+            exit 1
+          }
+
+      - name: Sign installer with SSL.com eSigner
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: dist/installer/GokaGo_Setup_${{ steps.version.outputs.version }}.exe
+          output_path: dist/installer_signed
+          environment_name: PROD
+
+      - name: Replace installer with signed version
+        shell: bash
+        run: |
+          cp -f "dist/installer_signed/GokaGo_Setup_${{ steps.version.outputs.version }}.exe" "dist/installer/GokaGo_Setup_${{ steps.version.outputs.version }}.exe"
+          echo "Replaced installer with signed version"
+
+      - name: Create update ZIP
+        shell: python
+        run: |
+          import zipfile, os
+
+          src = "dist/goka_go"
+          dst = "dist/goka_go.zip"
+          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
+              for root, dirs, files in os.walk(src):
+                  for f in files:
+                      fp = os.path.join(root, f)
+                      # フラット構造: goka_go/ サブフォルダなしで直接ファイルを格納
+                      # 古いクライアント（inner-dir検出なし）でも正しくコピーできる
+                      arcname = os.path.relpath(fp, src)
+                      try:
+                          zf.write(fp, arcname)
+                      except PermissionError as e:
+                          print(f"WARNING: Could not add {fp}: {e}")
+
+          size_mb = os.path.getsize(dst) / (1024 * 1024)
+          print(f"Created {dst} ({size_mb:.1f} MB)")
+
+      - name: Build admin (PyInstaller)
+        run: pyinstaller igo_admin.spec --noconfirm
+
+      - name: Create admin update ZIP
+        shell: python
+        run: |
+          import zipfile, os
+
+          src = "dist/igo_admin"
+          dst = "dist/goka_admin.zip"
+          with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zf:
+              for root, dirs, files in os.walk(src):
+                  for f in files:
+                      fp = os.path.join(root, f)
+                      arcname = os.path.relpath(fp, src)
+                      try:
+                          zf.write(fp, arcname)
+                      except PermissionError as e:
+                          print(f"WARNING: Could not add {fp}: {e}")
+
+          size_mb = os.path.getsize(dst) / (1024 * 1024)
+          print(f"Created {dst} ({size_mb:.1f} MB)")
+
+      - name: Deploy update ZIP and version.json
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
+        run: |
+          import json, shutil, os
+
+          version = os.environ["RELEASE_VERSION"]
+          notes = os.environ["RELEASE_NOTES"]
+
+          # ZIPをreleasesフォルダにコピー
+          src_zip = "dist/goka_go.zip"
+          dst_zip = f"releases/goka_go_{version}.zip"
+          os.makedirs("releases", exist_ok=True)
+          shutil.copy2(src_zip, dst_zip)
+          print(f"Copied {src_zip} -> {dst_zip}")
+
+          admin_src = "dist/goka_admin.zip"
+          admin_dst = f"releases/goka_admin_{version}.zip"
+          shutil.copy2(admin_src, admin_dst)
+          print(f"Copied {admin_src} -> {admin_dst}")
+
+          # version.json更新
+          vj = {
+              "version": version,
+              "download_url": f"https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/releases/goka_go_{version}.zip",
+              "admin_download_url": f"https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/releases/goka_admin_{version}.zip",
+              "release_notes": notes
+          }
+          with open("version.json", "w", encoding="utf-8") as f:
+              json.dump(vj, f, ensure_ascii=False)
+              f.write("\n")
+          print(f"Updated version.json to v{version}")
+
+      - name: Commit and push release
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json "releases/goka_go_${RELEASE_VERSION}.zip" "releases/goka_admin_${RELEASE_VERSION}.zip" igo/constants.py installer/GokaGo_Setup.iss
+          git diff --cached --quiet || (git commit -m "Release v${RELEASE_VERSION}: ${RELEASE_NOTES}" && git pull --rebase origin main && git push)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
+        run: |
+          $version = $env:RELEASE_VERSION
+          $notes = $env:RELEASE_NOTES
+          $zipFile = "releases/goka_go_${version}.zip"
+          $adminZip = "releases/goka_admin_${version}.zip"
+          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" "${adminZip}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            # ZIP配布のみを公開（インストーラーEXEは添付しない）
+            gh release upload "v${version}" "${zipFile}" "${adminZip}" --clobber 2>$null
+          }
+        shell: pwsh
+
+      - name: Update homepage download link
+        shell: python
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          import re, os
+
+          version = os.environ["RELEASE_VERSION"]
+          index_path = "web/index.html"
+
+          with open(index_path, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          # ダウンロードリンクをZIPに更新
+          new_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/goka_go_{version}.zip"
+          content = re.sub(
+              r'(<a\s+href=")[^"]*("\s+data-key="navDownload")',
+              rf'\g<1>{new_link}\2',
+              content
+          )
+
+          with open(index_path, "w", encoding="utf-8") as f:
+              f.write(content)
+
+          admin_link = f"https://github.com/CochanHachan/goka-go-releases/releases/download/v{version}/goka_admin_{version}.zip"
+          admin_path = "web/admin-test.html"
+          with open(admin_path, "r", encoding="utf-8") as f:
+              admin_html = f.read()
+          # admin-test.html: <a ... class="admin-dl-bundle">…</a> を丸ごと差し替え（複数行可）
+          admin_bundle = (
+              f'<a href="{admin_link}" data-admin-dl class="admin-dl-bundle">'
+              f'<span class="dl-title">管理者の修正版ZIP — ここをクリックしてダウンロード</span><br>'
+              f'<span class="dl-url">{admin_link}</span></a>'
+          )
+          admin_html = re.sub(
+              r'<a\s+href="[^"]*"\s+data-admin-dl\s+class="admin-dl-bundle">.*?</a>',
+              admin_bundle,
+              admin_html,
+              count=1,
+              flags=re.DOTALL,
+          )
+          with open(admin_path, "w", encoding="utf-8") as f:
+              f.write(admin_html)
+
+          print(f"Updated download link to v{version}")
+
+      - name: Commit homepage update
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git add web/index.html web/admin-test.html
+          git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git pull --rebase origin main && git push)
+
+      - name: Trigger GitHub Pages deploy
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-web.yml
+
+      - name: Deploy server (git pull + restart)
+        continue-on-error: true
+        shell: bash
+        env:
+          GOKA_ADMIN_TOKEN: ${{ secrets.GOKA_ADMIN_TOKEN }}
+          GOKA_SERVER_URL: ${{ secrets.GOKA_SERVER_URL }}
+        run: |
+          # デフォルト値（secretsが未設定の場合）
+          TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
+          URL="${GOKA_SERVER_URL:-http://34.85.118.112:8000}"
+
+          echo "=== 通常デプロイ (git pull) ==="
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Token: ${TOKEN}" \
+            "${URL}/admin/update" \
+            --connect-timeout 10 --max-time 120)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          echo "HTTP ${HTTP_CODE}: ${BODY}"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Server deploy triggered successfully."
+            exit 0
+          fi
+
+          echo ""
+          echo "=== 通常デプロイ失敗。ホットパッチ (HTTP直接更新) を試行 ==="
+          # server.pyをGitHub rawから取得してサーバーに直接送信
+          RAW_URL="https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/server.py"
+          echo "Downloading server.py from ${RAW_URL}..."
+          SERVER_PY=$(curl -sL "${RAW_URL}")
+          if [ -z "$SERVER_PY" ]; then
+            echo "WARNING: Failed to download server.py"
+            exit 0
+          fi
+          echo "Downloaded $(echo "$SERVER_PY" | wc -c) bytes"
+
+          RESPONSE2=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "X-Token: ${TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @- \
+            "${URL}/admin/hotpatch" \
+            --connect-timeout 10 --max-time 30 <<< "$SERVER_PY")
+          HTTP_CODE2=$(echo "$RESPONSE2" | tail -1)
+          BODY2=$(echo "$RESPONSE2" | head -n -1)
+          echo "Hotpatch HTTP ${HTTP_CODE2}: ${BODY2}"
+
+          if [ "$HTTP_CODE2" = "200" ]; then
+            echo "Server hotpatch applied successfully."
+          else
+            echo "WARNING: Server deploy may have failed (both methods)"
+          fi
