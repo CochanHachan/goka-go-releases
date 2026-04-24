@@ -13,7 +13,9 @@ import traceback
 import urllib.request
 import urllib.error
 import urllib.parse
+import re
 import sys
+import unicodedata
 from pathlib import Path
 from window_settings import WindowSettings
 from cryptography.fernet import Fernet
@@ -84,12 +86,163 @@ _ADMIN_SERVER_CONFIG = {
     },
 }
 
-_admin_cfg = _ADMIN_SERVER_CONFIG.get(_ENV)
-if _admin_cfg is None:
-    raise RuntimeError("Unknown _ENV={!r}. Must be 'production' or 'staging'.".format(_ENV))
+def _resolve_admin_env() -> str:
+    """管理者画面の接続先環境を決定する。
 
+    優先順位:
+      1) CLI引数 --env=production|staging
+      2) 環境変数 GOKA_ENV_OVERRIDE
+      3) constants_env.py の _ENV
+    """
+    env = ""
+    for arg in sys.argv[1:]:
+        if arg.startswith("--env="):
+            env = arg.split("=", 1)[1].strip().lower()
+            break
+    if not env:
+        # 実行ファイル横の設定（前回選択）を読む
+        cfg_path = os.path.join(_admin_app_base_dir(), "igo_config.json")
+        try:
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                    env = str(saved.get("admin_env", "")).strip().lower()
+        except Exception:
+            env = ""
+    if not env:
+        env = os.environ.get("GOKA_ENV_OVERRIDE", "").strip().lower()
+    if not env:
+        env = _ENV
+    if env not in _ADMIN_SERVER_CONFIG:
+        raise RuntimeError(
+            "Unknown admin env={!r}. Must be 'production' or 'staging'.".format(env)
+        )
+    return env
+
+_ACTIVE_ENV = _resolve_admin_env()
+_admin_cfg = _ADMIN_SERVER_CONFIG[_ACTIVE_ENV]
 API_BASE_URL = _admin_cfg["api_base_url"]
 _ADMIN_TITLE = _admin_cfg["title"]
+
+
+def _normalize_num_text(text: str) -> str:
+    """全角数字やカンマ混じりを正規化して数値文字列に寄せる。"""
+    s = unicodedata.normalize("NFKC", str(text or ""))
+    s = s.strip().replace(",", "").replace(" ", "")
+    return s
+
+
+def _to_int(value, default: int = 0, *, min_value=None, max_value=None) -> int:
+    """UI入力の数値変換を一元化する。変換不能時は default。"""
+    try:
+        n = int(_normalize_num_text(value))
+    except Exception:
+        n = default
+    if min_value is not None and n < min_value:
+        n = min_value
+    if max_value is not None and n > max_value:
+        n = max_value
+    return n
+
+
+def _to_float(value, default: float = 0.0, *, min_value=None, max_value=None) -> float:
+    """UI入力の小数変換を一元化する。変換不能時は default。"""
+    try:
+        n = float(_normalize_num_text(value))
+    except Exception:
+        n = default
+    if min_value is not None and n < min_value:
+        n = min_value
+    if max_value is not None and n > max_value:
+        n = max_value
+    return n
+
+
+def _num_sort_key(val):
+    """ソート時の数値比較（カンマ/全角を許容）。"""
+    if val is None:
+        val = ""
+    s = _normalize_num_text(val)
+    try:
+        return (0, float(s))
+    except Exception:
+        return (1, str(val).lower())
+
+
+def _convert_time_string_vba_style(s_input: str) -> str:
+    """H.M.S(または H,M,S) を「○時間○分○秒」に変換する。"""
+    s = unicodedata.normalize("NFKC", str(s_input or "")).strip()
+    if not s:
+        return ""
+    # 区切りは . / , のどちらでも受ける
+    parts = re.split(r"[.,]", s)
+    if len(parts) != 3:
+        return "入力形式エラー"
+    try:
+        h = int(_normalize_num_text(parts[0]))
+        m = int(_normalize_num_text(parts[1]))
+        sec = int(_normalize_num_text(parts[2]))
+    except Exception:
+        return "入力形式エラー"
+    if h < 0 or m < 0 or sec < 0:
+        return "入力形式エラー"
+    result = ""
+    if h > 0:
+        result += "{}時間".format(h)
+    if m > 0:
+        result += "{}分".format(m)
+    if sec > 0:
+        result += "{}秒".format(sec)
+    if not result:
+        result = "0秒"
+    return result
+
+
+def _canonical_hms_text(s_input: str) -> str:
+    """H.M.S 形式を正規化した文字列で返す。形式不正時は空文字。"""
+    s = unicodedata.normalize("NFKC", str(s_input or "")).strip()
+    if not s:
+        return ""
+    parts = re.split(r"[.,]", s)
+    if len(parts) != 3:
+        return ""
+    try:
+        h = int(_normalize_num_text(parts[0]))
+        m = int(_normalize_num_text(parts[1]))
+        sec = int(_normalize_num_text(parts[2]))
+    except Exception:
+        return ""
+    if h < 0 or m < 0 or sec < 0:
+        return ""
+    return "{}.{}.{}".format(h, m, sec)
+
+
+def _duration_seconds_from_text(text: str, default_seconds: int = 0) -> int:
+    """H.M.S / 日本語時間文字列 / 素の数値 を秒に変換する。"""
+    raw = str(text or "").strip()
+    if not raw:
+        return default_seconds
+
+    # 1) H.M.S
+    hms = _canonical_hms_text(raw)
+    if hms:
+        h, m, s = [int(x) for x in hms.split(".")]
+        return h * 3600 + m * 60 + s
+
+    # 2) 「10時間5分30秒」系
+    m = re.fullmatch(r"\s*(?:(\d+)\s*時間)?\s*(?:(\d+)\s*分)?\s*(?:(\d+)\s*秒)?\s*", raw)
+    if m:
+        hh = int(m.group(1) or 0)
+        mm = int(m.group(2) or 0)
+        ss = int(m.group(3) or 0)
+        if hh or mm or ss or "0秒" in raw:
+            return hh * 3600 + mm * 60 + ss
+
+    # 3) 素の秒数/分数
+    try:
+        return int(_normalize_num_text(raw))
+    except Exception:
+        return default_seconds
 
 
 class AdminApp:
@@ -115,6 +268,8 @@ class AdminApp:
         self._config_path = os.path.join(_base, "igo_config.json")
         _db_path = os.path.join(_base, "ui_settings.db")
         self._ws = WindowSettings(_db_path, "admin")
+        self._active_env = _ACTIVE_ENV
+        self._api_base_url = _ADMIN_SERVER_CONFIG[self._active_env]["api_base_url"]
         self._online_users = {}
         self._opponents = {}
         self._online_lock = threading.Lock()
@@ -198,6 +353,46 @@ class AdminApp:
                                             font=("Yu Gothic UI", 11, "bold"),
                                             fg=T("active_green"), bg=T("root_bg"))
         self.online_count_label.pack(side="left")
+        # 常時表示の接続先切替（1本運用でも見失わない位置）
+        env_frame = tk.Frame(info_frame, bg=T("root_bg"))
+        env_frame.pack(side="left", padx=(14, 0))
+        tk.Label(env_frame, text="接続先:",
+                 font=("Yu Gothic UI", 10, "bold"),
+                 fg=T("text_primary"), bg=T("root_bg")).pack(side="left", padx=(0, 4))
+        self._env_var = tk.StringVar(value=self._active_env)
+        tk.Radiobutton(env_frame, text="本番",
+                       variable=self._env_var, value="production",
+                       command=self._on_env_selected,
+                       font=("Yu Gothic UI", 10),
+                       fg=T("text_primary"), bg=T("root_bg"),
+                       selectcolor=T("input_bg"),
+                       activebackground=T("root_bg"),
+                       activeforeground=T("text_primary")).pack(side="left", padx=(0, 2))
+        tk.Radiobutton(env_frame, text="テスト",
+                       variable=self._env_var, value="staging",
+                       command=self._on_env_selected,
+                       font=("Yu Gothic UI", 10),
+                       fg=T("text_primary"), bg=T("root_bg"),
+                       selectcolor=T("input_bg"),
+                       activebackground=T("root_bg"),
+                       activeforeground=T("text_primary")).pack(side="left")
+        env_now = "本番" if self._active_env == "production" else "テスト"
+        self._env_info_label = tk.Label(
+            env_frame,
+            text="現在: {} ({})".format(env_now, self._api_base_url),
+            font=("Yu Gothic UI", 9),
+            fg=T("text_primary"),
+            bg=T("root_bg"),
+        )
+        self._env_info_label.pack(side="left", padx=(8, 0))
+        self._runtime_info_label = tk.Label(
+            info_frame,
+            text="",
+            font=("Yu Gothic UI", 8),
+            fg=T("text_primary"),
+            bg=T("root_bg"),
+        )
+        self._runtime_info_label.pack(side="left", padx=(10, 0))
 
         # ============================================================
         # メインテーブル
@@ -253,8 +448,7 @@ class AdminApp:
 
         # ============================================================
         # タブ（シートとボタン欄の間）
-        # ・「時間」: 対局申込タイムアウト / Fischer / ロボ出現
-        # ・「サイズ・位置」: テーマ（ほかは後から）
+        # Accessサンプルに合わせて「時間」「サイズ・位置」の項目を配置
         # ============================================================
         tab_outer = tk.Frame(
             self.root, bg=T("root_bg"), height=_ADMIN_TAB_AREA_HEIGHT)
@@ -268,124 +462,221 @@ class AdminApp:
 
         self._admin_tab_size_pos = tk.Frame(self._admin_tabs, bg="white")
         self._admin_tab_time = tk.Frame(self._admin_tabs, bg="white")
-        self._admin_tabs.add(self._admin_tab_size_pos, text="サイズ・位置")
         self._admin_tabs.add(self._admin_tab_time, text="時間")
+        self._admin_tabs.add(self._admin_tab_size_pos, text="サイズ・位置")
 
         _tab_bg = "white"
 
-        time_row = tk.Frame(self._admin_tab_time, bg=_tab_bg)
-        time_row.pack(fill="x", padx=8, pady=8)
-
-        # --- 対局申込タイムアウト ---
-        timeout_frame = tk.Frame(time_row, bg=_tab_bg)
-        timeout_frame.pack(side="left", padx=(0, 16))
-
-        tk.Label(timeout_frame, text="対局申込タイムアウト",
-                 font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
-
-        current_timeout = 3
         server_settings = None
+        current_timeout = 3
+        current_fischer_main = 5
+        current_fischer_inc = 10
+        current_bot_delay = 30
         try:
             server_settings = self._api_get("/api/settings")
             if server_settings:
                 current_timeout = int(server_settings.get("offer_timeout_min", 3))
-        except Exception:
-            pass
-
-        self._timeout_var = tk.StringVar(value=str(current_timeout))
-        timeout_vals = [str(i) for i in range(1, 11)]
-        timeout_cb = ttk.Combobox(timeout_frame, textvariable=self._timeout_var,
-            values=timeout_vals, state="readonly",
-            font=("Yu Gothic UI", 10), width=3)
-        timeout_cb.pack(side="left", padx=2)
-
-        tk.Label(timeout_frame, text="分",
-                 font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=_tab_bg).pack(side="left")
-
-        # --- フィッシャー時間設定 ---
-        fischer_frame = tk.Frame(time_row, bg=_tab_bg)
-        fischer_frame.pack(side="left", padx=(0, 16))
-
-        tk.Label(fischer_frame, text="Fischer",
-                 font=("Yu Gothic UI", 10, "bold"),
-                 fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
-
-        current_fischer_main = 5
-        current_fischer_inc = 10
-        try:
-            if server_settings:
                 current_fischer_main = int(server_settings.get("fischer_main_time", 300)) // 60
                 current_fischer_inc = int(server_settings.get("fischer_increment", 10))
-        except Exception:
-            pass
-
-        self._fischer_main_var = tk.StringVar(value=str(current_fischer_main))
-        fischer_main_vals = [str(i) for i in range(1, 31)]
-        fischer_main_cb = ttk.Combobox(fischer_frame, textvariable=self._fischer_main_var,
-            values=fischer_main_vals, state="readonly",
-            font=("Yu Gothic UI", 10), width=3)
-        fischer_main_cb.pack(side="left", padx=2)
-
-        tk.Label(fischer_frame, text="分+",
-                 font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=_tab_bg).pack(side="left")
-
-        self._fischer_inc_var = tk.StringVar(value=str(current_fischer_inc))
-        fischer_inc_vals = [str(i) for i in [5, 10, 15, 20, 25, 30]]
-        fischer_inc_cb = ttk.Combobox(fischer_frame, textvariable=self._fischer_inc_var,
-            values=fischer_inc_vals, state="readonly",
-            font=("Yu Gothic UI", 10), width=3)
-        fischer_inc_cb.pack(side="left", padx=2)
-
-        tk.Label(fischer_frame, text="秒",
-                 font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=_tab_bg).pack(side="left")
-
-        # --- ロボ出現時間 ---
-        bot_delay_frame = tk.Frame(time_row, bg=_tab_bg)
-        bot_delay_frame.pack(side="left", padx=(0, 16))
-
-        tk.Label(bot_delay_frame, text="ロボ出現",
-                 font=("Yu Gothic UI", 10),
-                 fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
-
-        current_bot_delay = 30
-        try:
-            if server_settings:
                 current_bot_delay = int(server_settings.get("bot_offer_delay", 30))
         except Exception:
             pass
+        self._timeout_var = tk.StringVar(value=str(current_timeout))
+        self._fischer_main_var = tk.StringVar(value=str(current_fischer_main))
+        self._fischer_inc_var = tk.StringVar(value=str(current_fischer_inc))
+        self._bot_delay_var = tk.StringVar(value=str(current_bot_delay))
 
-        # 10秒刻み〜60秒 + 1分刻み〜10分 の選択肢
-        bot_delay_vals = []  # (display_text, seconds)
-        for s in range(10, 61, 10):
-            bot_delay_vals.append(("{}秒".format(s), s))
-        for m in range(2, 11):
-            bot_delay_vals.append(("{}分".format(m), m * 60))
+        cfg = {}
+        try:
+            if os.path.exists(self._config_path):
+                with open(self._config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+        except Exception:
+            cfg = {}
 
-        self._bot_delay_display = [v[0] for v in bot_delay_vals]
-        self._bot_delay_seconds = [v[1] for v in bot_delay_vals]
+        time_row = tk.Frame(self._admin_tab_time, bg=_tab_bg)
+        time_row.pack(fill="x", padx=18, pady=16)
 
-        # 現在値に対応する表示テキストを特定
-        current_display = "{}秒".format(current_bot_delay)
-        if current_bot_delay >= 120:
-            current_display = "{}分".format(current_bot_delay // 60)
-        elif current_bot_delay == 60:
-            current_display = "60秒"
-        self._bot_delay_var = tk.StringVar(value=current_display)
-        bot_delay_cb = ttk.Combobox(bot_delay_frame, textvariable=self._bot_delay_var,
-            values=self._bot_delay_display, state="readonly",
-            font=("Yu Gothic UI", 10), width=4)
-        bot_delay_cb.pack(side="left", padx=2)
+        left_time = tk.Frame(time_row, bg=_tab_bg)
+        left_time.pack(side="left", padx=(0, 26), anchor="n")
+
+        def _time_line(parent, label, var):
+            row = tk.Frame(parent, bg=_tab_bg)
+            row.pack(anchor="w", pady=3)
+            tk.Label(row, text=label, width=14, anchor="w",
+                     font=("Yu Gothic UI", 10),
+                     fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 8))
+            ent = tk.Entry(row, textvariable=var, width=14,
+                           font=("Yu Gothic UI", 10))
+            ent.pack(side="left")
+            return ent
+
+        timeout_ent = _time_line(left_time, "申請待時間", self._timeout_var)
+        bot_ent = _time_line(left_time, "ロボ出現時間", self._bot_delay_var)
+        fmain_ent = _time_line(left_time, "フィッシャー持ち時間", self._fischer_main_var)
+        finc_ent = _time_line(left_time, "フィッシャー加算時間", self._fischer_inc_var)
+        self._time_preview_label = tk.Label(
+            left_time,
+            text="",
+            justify="left",
+            font=("Yu Gothic UI", 9),
+            fg=T("text_primary"),
+            bg=_tab_bg,
+        )
+        self._time_preview_label.pack(anchor="w", pady=(8, 0))
+        conv_row = tk.Frame(left_time, bg=_tab_bg)
+        conv_row.pack(anchor="w", pady=(8, 0))
+        tk.Label(conv_row, text="時間変換(H.M.S)", width=14, anchor="w",
+                 font=("Yu Gothic UI", 10),
+                 fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 8))
+        self._time_convert_input_var = tk.StringVar(value="")
+        convert_ent = tk.Entry(conv_row, textvariable=self._time_convert_input_var, width=14,
+                               font=("Yu Gothic UI", 10))
+        convert_ent.pack(side="left")
+        self._time_convert_result_label = tk.Label(
+            left_time,
+            text="",
+            justify="left",
+            font=("Yu Gothic UI", 9),
+            fg=T("text_primary"),
+            bg=_tab_bg,
+        )
+        self._time_convert_result_label.pack(anchor="w", pady=(2, 0))
+
+        def _refresh_time_preview(*_args):
+            wait_m = _to_int(self._timeout_var.get(), 3, min_value=0, max_value=600)
+            bot_s = _to_int(self._bot_delay_var.get(), 30, min_value=0, max_value=36000)
+            fish_m = _to_int(self._fischer_main_var.get(), 5, min_value=0, max_value=600)
+            fish_inc = _to_int(self._fischer_inc_var.get(), 10, min_value=0, max_value=36000)
+            lines = [
+                "申請待時間: {}".format(_convert_time_string_vba_style("0.{}.0".format(wait_m))),
+                "ロボ出現時間: {}".format(_convert_time_string_vba_style("0.0.{}".format(bot_s))),
+                "フィッシャー持ち時間: {}".format(_convert_time_string_vba_style("0.{}.0".format(fish_m))),
+                "フィッシャー加算時間: {}".format(_convert_time_string_vba_style("0.0.{}".format(fish_inc))),
+            ]
+            self._time_preview_label.config(text="\n".join(lines))
+            src = self._time_convert_input_var.get()
+            if src.strip():
+                converted = _convert_time_string_vba_style(src)
+                self._time_convert_result_label.config(text="変換結果: {}".format(converted))
+            else:
+                self._time_convert_result_label.config(text="")
+
+        self._timeout_var.trace_add("write", _refresh_time_preview)
+        self._bot_delay_var.trace_add("write", _refresh_time_preview)
+        self._fischer_main_var.trace_add("write", _refresh_time_preview)
+        self._fischer_inc_var.trace_add("write", _refresh_time_preview)
+        self._time_convert_input_var.trace_add("write", _refresh_time_preview)
+        _refresh_time_preview()
+
+        # Access互換: テキストボックスがフォーカスを失う直前に数値文字を正規化
+        def _normalize_int_var_on_focusout(var, default_value, min_value, max_value, unit="sec"):
+            sec = _duration_seconds_from_text(var.get(), default_seconds=default_value)
+            if unit == "min":
+                n = max(0, sec // 60)
+            else:
+                n = max(0, sec)
+            # フォーカスアウト時は変換結果を優先し、保存時に最終クランプする
+            var.set(str(n))
+
+        timeout_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._timeout_var, 180, 1, 10, unit="min"))
+        bot_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._bot_delay_var, 30, 10, 600, unit="sec"))
+        fmain_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._fischer_main_var, 300, 1, 30, unit="min"))
+        finc_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._fischer_inc_var, 10, 1, 300, unit="sec"))
+
+        # H.M.S 入力はフォーカスアウト時に「正規化H.M.S」に補正し、変換結果を即反映
+        def _on_hms_focusout(_e):
+            raw = self._time_convert_input_var.get()
+            if not raw.strip():
+                self._time_convert_result_label.config(text="")
+                return
+            canonical = _canonical_hms_text(raw)
+            if canonical:
+                self._time_convert_input_var.set(canonical)
+                self._time_convert_result_label.config(
+                    text="変換結果: {}".format(_convert_time_string_vba_style(canonical))
+                )
+            else:
+                self._time_convert_result_label.config(text="変換結果: 入力形式エラー")
+
+        convert_ent.bind("<FocusOut>", _on_hms_focusout)
+
+        right_default = tk.LabelFrame(
+            time_row, text="デフォルト持ち時間",
+            font=("Yu Gothic UI", 10),
+            fg=T("text_primary"), bg=_tab_bg,
+            bd=1, relief="groove", padx=10, pady=8
+        )
+        right_default.pack(side="left", anchor="n")
+
+        self._default_main_time_var = tk.StringVar(
+            value=str(_to_int(cfg.get("default_main_time_min", 10), 10, min_value=1, max_value=180)))
+        self._default_byoyomi_sec_var = tk.StringVar(
+            value=str(_to_int(cfg.get("default_byoyomi_sec", 30), 30, min_value=1, max_value=180)))
+        self._default_byoyomi_count_var = tk.StringVar(
+            value=str(_to_int(cfg.get("default_byoyomi_count", 3), 3, min_value=1, max_value=30)))
+        self._default_komi_var = tk.StringVar(
+            value=str(_to_float(cfg.get("default_komi", 7.5), 7.5, min_value=-50.0, max_value=50.0)))
+
+        def _default_line(parent, label, var):
+            row = tk.Frame(parent, bg=_tab_bg)
+            row.pack(anchor="w", pady=2)
+            tk.Label(row, text=label, width=10, anchor="w",
+                     font=("Yu Gothic UI", 10),
+                     fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 10))
+            tk.Entry(row, textvariable=var, width=12,
+                     font=("Yu Gothic UI", 10)).pack(side="left")
+
+        _default_line(right_default, "持ち時間", self._default_main_time_var)
+        _default_line(right_default, "秒読み時間", self._default_byoyomi_sec_var)
+        _default_line(right_default, "秒読み回数", self._default_byoyomi_count_var)
+        _default_line(right_default, "コミ", self._default_komi_var)
+        tk.Label(right_default, text="※インストール時のデフォルト",
+                 font=("Yu Gothic UI", 9),
+                 fg=T("text_primary"), bg=_tab_bg).pack(anchor="w", pady=(6, 0))
+
+        size_root = tk.Frame(self._admin_tab_size_pos, bg=_tab_bg)
+        size_root.pack(anchor="w", padx=18, pady=16)
+        size_frame = tk.LabelFrame(
+            size_root, text="アプリインストール時のデフォルト値",
+            font=("Yu Gothic UI", 10),
+            fg=T("text_primary"), bg=_tab_bg,
+            bd=1, relief="groove", padx=10, pady=8
+        )
+        size_frame.pack(anchor="w")
+        tk.Label(size_frame, text="※高さはWindows作業領域内の割合を示す",
+                 font=("Yu Gothic UI", 9),
+                 fg=T("text_primary"), bg=_tab_bg).pack(anchor="w", pady=(0, 6))
+
+        self._board_frame_height_var = tk.StringVar(
+            value=str(_to_float(cfg.get("board_frame_height", 0.78), 0.78, min_value=0.10, max_value=1.00)))
+        self._match_apply_height_var = tk.StringVar(
+            value=str(_to_float(cfg.get("match_apply_height", 0.40), 0.40, min_value=0.10, max_value=1.00)))
+        self._challenge_accept_height_var = tk.StringVar(
+            value=str(_to_float(cfg.get("challenge_accept_height", 0.40), 0.40, min_value=0.10, max_value=1.00)))
+        self._sakura_dialog_height_var = tk.StringVar(
+            value=str(_to_float(cfg.get("sakura_dialog_height", 0.36), 0.36, min_value=0.10, max_value=1.00)))
+
+        def _size_line(parent, label, var):
+            row = tk.Frame(parent, bg=_tab_bg)
+            row.pack(anchor="w", pady=3)
+            tk.Label(row, text=label, width=18, anchor="w",
+                     font=("Yu Gothic UI", 10),
+                     fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 10))
+            tk.Entry(row, textvariable=var, width=8,
+                     font=("Yu Gothic UI", 10)).pack(side="left")
+
+        _size_line(size_frame, "基盤フレームの高さ", self._board_frame_height_var)
+        _size_line(size_frame, "対局申込画面の高さ", self._match_apply_height_var)
+        _size_line(size_frame, "挑戦状受付画面の高さ", self._challenge_accept_height_var)
+        _size_line(size_frame, "桜吹雪ダイアログの高さ", self._sakura_dialog_height_var)
 
         # --- テーマ設定（サイズ・位置タブ）---
         theme_frame = tk.LabelFrame(self._admin_tab_size_pos, text="テーマ",
                                      font=("Yu Gothic UI", 9),
                                      fg=T("text_primary"), bg=_tab_bg,
                                      bd=1, relief="groove", padx=6, pady=2)
-        theme_frame.pack(anchor="w", padx=8, pady=8)
+        theme_frame.pack(anchor="w", padx=18, pady=(2, 8))
 
         self._theme_var = tk.StringVar(value=get_current_theme_name())
         tk.Radiobutton(theme_frame, text="ダーク",
@@ -496,10 +787,73 @@ class AdminApp:
     # =================================================================
     def _on_ok(self):
         """OKボタン: テーマとタイムアウトを両方適用する。"""
+        self._apply_env_switch_if_needed()
         self._apply_theme()
         self._apply_timeout()
         self._apply_fischer()
         self._apply_bot_delay()
+        self._apply_default_time_values()
+        self._apply_size_position_defaults()
+
+    def _apply_env_switch_if_needed(self) -> bool:
+        """接続先切替があれば保存して即時反映する。"""
+        selected = (self._env_var.get() or "").strip().lower()
+        if selected not in ("production", "staging"):
+            selected = self._active_env
+        if selected == self._active_env:
+            return False
+        self._switch_env_live(selected)
+        return False
+
+    def _on_env_selected(self):
+        """ヘッダーの接続先ラジオ選択時に即時切替する。"""
+        self._apply_env_switch_if_needed()
+
+    def _switch_env_live(self, selected: str):
+        """接続先を即時に切替し、一覧を再読込する。"""
+        cfg = self._load_config_safely()
+        cfg["admin_env"] = selected
+        self._save_config_safely(cfg)
+
+        self._active_env = selected
+        self._api_base_url = _ADMIN_SERVER_CONFIG[selected]["api_base_url"]
+        self.root.title(_ADMIN_SERVER_CONFIG[selected]["title"])
+        env_now = "本番" if selected == "production" else "テスト"
+        self._env_info_label.config(
+            text="現在: {} ({})".format(env_now, self._api_base_url)
+        )
+        self._runtime_info_label.config(text="接続先情報: 切替中...")
+        self._refresh()
+
+    def _relaunch_admin_with_env(self, env: str) -> None:
+        """同じ管理者ツールを指定環境で再起動する。"""
+        try:
+            if getattr(sys, "frozen", False):
+                exe = sys.executable
+                os.spawnl(os.P_NOWAIT, exe, exe, "--env={}".format(env))
+                return
+            py = sys.executable
+            script = os.path.abspath(__file__)
+            os.spawnl(os.P_NOWAIT, py, py, script, "--env={}".format(env))
+        except Exception as e:
+            messagebox.showerror("再起動エラー", str(e))
+
+    def _load_config_safely(self):
+        cfg = {}
+        try:
+            if os.path.exists(self._config_path):
+                with open(self._config_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        return cfg
+
+    def _save_config_safely(self, cfg):
+        try:
+            with open(self._config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False)
+        except Exception:
+            pass
 
     def _apply_theme(self):
         new_theme = self._theme_var.get()
@@ -516,50 +870,64 @@ class AdminApp:
             pass
 
     def _apply_timeout(self):
-        try:
-            minutes = int(self._timeout_var.get())
-        except ValueError:
-            return
+        minutes = _to_int(self._timeout_var.get(), 3, min_value=1, max_value=10)
+        self._timeout_var.set(str(minutes))
         self._api_put("/api/settings", {"offer_timeout_min": minutes})
-        try:
-            cfg = {}
-            if os.path.exists(self._config_path):
-                with open(self._config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-            cfg["offer_timeout_min"] = minutes
-            with open(self._config_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False)
-        except Exception:
-            pass
+        cfg = self._load_config_safely()
+        cfg["offer_timeout_min"] = minutes
+        self._save_config_safely(cfg)
 
     def _apply_bot_delay(self):
-        display = self._bot_delay_var.get()
-        try:
-            idx = self._bot_delay_display.index(display)
-            seconds = self._bot_delay_seconds[idx]
-        except (ValueError, IndexError):
-            return
+        seconds = _to_int(self._bot_delay_var.get(), 30, min_value=10, max_value=600)
+        self._bot_delay_var.set(str(seconds))
         self._api_put("/api/settings", {"bot_offer_delay": seconds})
+        cfg = self._load_config_safely()
+        cfg["bot_offer_delay"] = seconds
+        self._save_config_safely(cfg)
 
     def _apply_fischer(self):
-        try:
-            main_min = int(self._fischer_main_var.get())
-            inc_sec = int(self._fischer_inc_var.get())
-        except ValueError:
-            return
+        main_min = _to_int(self._fischer_main_var.get(), 5, min_value=1, max_value=30)
+        inc_sec = _to_int(self._fischer_inc_var.get(), 10, min_value=1, max_value=300)
+        self._fischer_main_var.set(str(main_min))
+        self._fischer_inc_var.set(str(inc_sec))
         main_sec = main_min * 60
         self._api_put("/api/settings", {"fischer_main_time": main_sec, "fischer_increment": inc_sec})
-        try:
-            cfg = {}
-            if os.path.exists(self._config_path):
-                with open(self._config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-            cfg["fischer_main_time"] = main_sec
-            cfg["fischer_increment"] = inc_sec
-            with open(self._config_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False)
-        except Exception:
-            pass
+        cfg = self._load_config_safely()
+        cfg["fischer_main_time"] = main_sec
+        cfg["fischer_increment"] = inc_sec
+        self._save_config_safely(cfg)
+
+    def _apply_default_time_values(self):
+        cfg = self._load_config_safely()
+        default_main = _to_int(self._default_main_time_var.get(), 10, min_value=1, max_value=180)
+        byoyomi_sec = _to_int(self._default_byoyomi_sec_var.get(), 30, min_value=1, max_value=180)
+        byoyomi_count = _to_int(self._default_byoyomi_count_var.get(), 3, min_value=1, max_value=30)
+        komi = _to_float(self._default_komi_var.get(), 7.5, min_value=-50.0, max_value=50.0)
+        self._default_main_time_var.set(str(default_main))
+        self._default_byoyomi_sec_var.set(str(byoyomi_sec))
+        self._default_byoyomi_count_var.set(str(byoyomi_count))
+        self._default_komi_var.set(str(komi))
+        cfg["default_main_time_min"] = default_main
+        cfg["default_byoyomi_sec"] = byoyomi_sec
+        cfg["default_byoyomi_count"] = byoyomi_count
+        cfg["default_komi"] = komi
+        self._save_config_safely(cfg)
+
+    def _apply_size_position_defaults(self):
+        cfg = self._load_config_safely()
+        board_h = _to_float(self._board_frame_height_var.get(), 0.78, min_value=0.10, max_value=1.00)
+        match_h = _to_float(self._match_apply_height_var.get(), 0.40, min_value=0.10, max_value=1.00)
+        challenge_h = _to_float(self._challenge_accept_height_var.get(), 0.40, min_value=0.10, max_value=1.00)
+        sakura_h = _to_float(self._sakura_dialog_height_var.get(), 0.36, min_value=0.10, max_value=1.00)
+        self._board_frame_height_var.set(str(board_h))
+        self._match_apply_height_var.set(str(match_h))
+        self._challenge_accept_height_var.set(str(challenge_h))
+        self._sakura_dialog_height_var.set(str(sakura_h))
+        cfg["board_frame_height"] = board_h
+        cfg["match_apply_height"] = match_h
+        cfg["challenge_accept_height"] = challenge_h
+        cfg["sakura_dialog_height"] = sakura_h
+        self._save_config_safely(cfg)
 
     # =================================================================
     # テーブル操作
@@ -596,13 +964,7 @@ class AdminApp:
             return
         def sort_key(row):
             val = row[col] if col < len(row) else ""
-            if val is None:
-                val = ""
-            try:
-                # コンマ区切り数値をfloatに変換
-                return (0, float(str(val).replace(",", "")))
-            except (ValueError, TypeError):
-                return (1, str(val).lower())
+            return _num_sort_key(val)
         data.sort(key=sort_key, reverse=not self._sort_ascending)
         self.tree.set_sheet_data(data, redraw=False, reset_col_positions=False)
         headers = list(self._admin_headers)
@@ -671,26 +1033,25 @@ class AdminApp:
         preview_label.grid(row=3, column=0, columnspan=2, padx=15, pady=(0, 5))
 
         def update_preview(*args):
-            try:
-                elo_val = int(elo_var.get())
-                preview_label.config(text="→ {}".format(elo_to_display_rank(elo_val)))
-            except ValueError:
+            elo_txt = _normalize_num_text(elo_var.get())
+            if not elo_txt or not elo_txt.lstrip("-").isdigit():
                 preview_label.config(text="")
+                return
+            elo_val = _to_int(elo_txt, 0, min_value=0, max_value=5000)
+            preview_label.config(text="→ {}".format(elo_to_display_rank(elo_val)))
         elo_var.trace_add("write", update_preview)
         update_preview()
 
         def do_save():
-            try:
-                new_elo = int(elo_var.get())
-                if new_elo < 0 or new_elo > 5000:
-                    messagebox.showwarning("警告", "Eloは0〜5000の範囲で入力してください")
-                    return
-                self._api_put("/api/user/{}/elo".format(handle),
-                              {"elo": new_elo, "token": "admin"})
-                dlg.destroy()
-                self._refresh()
-            except ValueError:
+            elo_txt = _normalize_num_text(elo_var.get())
+            if not elo_txt or not elo_txt.lstrip("-").isdigit():
                 messagebox.showwarning("警告", "数値を入力してください")
+                return
+            new_elo = _to_int(elo_txt, 0, min_value=0, max_value=5000)
+            self._api_put("/api/user/{}/elo".format(handle),
+                          {"elo": new_elo, "token": "admin"})
+            dlg.destroy()
+            self._refresh()
 
         btn_frame = tk.Frame(dlg)
         btn_frame.grid(row=4, column=0, columnspan=2, pady=(5, 15))
@@ -759,7 +1120,7 @@ class AdminApp:
     # =================================================================
     def _api_get(self, path):
         try:
-            url = API_BASE_URL + urllib.parse.quote(path, safe="/=?&")
+            url = self._api_base_url + urllib.parse.quote(path, safe="/=?&")
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=3) as resp:
                 return json.loads(resp.read().decode("utf-8"))
@@ -769,7 +1130,7 @@ class AdminApp:
 
     def _api_put(self, path, data):
         try:
-            url = API_BASE_URL + urllib.parse.quote(path, safe="/=?&")
+            url = self._api_base_url + urllib.parse.quote(path, safe="/=?&")
             body = json.dumps(data, ensure_ascii=False).encode("utf-8")
             req = urllib.request.Request(url, data=body, method="PUT")
             req.add_header("Content-Type", "application/json")
@@ -778,6 +1139,19 @@ class AdminApp:
         except Exception as e:
             print("API PUT error:", path, e)
             return None
+
+    def _update_runtime_info_label(self):
+        info = self._api_get("/api/runtime-info")
+        if not info:
+            self._runtime_info_label.config(
+                text="接続先情報: 取得失敗（server.py 未更新の可能性）"
+            )
+            return
+        env = info.get("env", "?")
+        db_name = os.path.basename(str(info.get("db_path", "")))
+        self._runtime_info_label.config(
+            text="接続先情報 env={} db={}".format(env, db_name)
+        )
 
     # =================================================================
     # AIボット定義
@@ -819,6 +1193,7 @@ class AdminApp:
     # データ更新
     # =================================================================
     def _refresh(self, force=False):
+        self._update_runtime_info_label()
         self._refresh_gen += 1  # 進行中の自動リフレッシュ結果を無効化
         users = self._api_get("/api/users")
         if users is None:
@@ -881,12 +1256,7 @@ class AdminApp:
                 col = self._sort_column
                 def sort_key(row):
                     val = row[col] if col < len(row) else ""
-                    if val is None:
-                        val = ""
-                    try:
-                        return (0, float(str(val).replace(",", "")))
-                    except (ValueError, TypeError):
-                        return (1, str(val).lower())
+                    return _num_sort_key(val)
                 data.sort(key=sort_key, reverse=not self._sort_ascending)
                 self.tree.set_sheet_data(data, redraw=False, reset_col_positions=False)
                 headers = list(self._admin_headers)
@@ -955,7 +1325,7 @@ class AdminApp:
         if messagebox.askyesno("確認", "'{}'を削除しますか？".format(handle)):
             try:
                 req = urllib.request.Request(
-                    API_BASE_URL + "/api/user/" + urllib.parse.quote(handle, safe=''), method="DELETE")
+                    self._api_base_url + "/api/user/" + urllib.parse.quote(handle, safe=''), method="DELETE")
                 urllib.request.urlopen(req, timeout=5)
             except Exception as e:
                 messagebox.showerror("エラー", str(e))

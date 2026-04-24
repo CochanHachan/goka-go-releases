@@ -660,6 +660,17 @@ async def get_settings():
     return _load_settings()
 
 
+@app.get("/api/runtime-info")
+async def get_runtime_info():
+    """管理者画面向け: 接続先の環境とDB識別情報を返す。"""
+    return {
+        "env": _ENV_LABEL,
+        "db_path": str(DB_PATH),
+        "settings_path": str(SETTINGS_PATH),
+        "port": PORT,
+    }
+
+
 @app.put("/api/settings")
 async def update_settings(req: UpdateSettingsRequest):
     """グローバル設定を更新する。"""
