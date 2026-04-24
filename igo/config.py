@@ -6,7 +6,7 @@ import sys
 import json
 import socket
 
-from igo.constants import API_BASE_URL
+from igo.constants import API_BASE_URL, APP_DATA_SUBDIR
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ def _get_app_data_dir():
     if getattr(sys, 'frozen', False):
         # PyInstaller exe: use %APPDATA%\GokaGo
         base = os.environ.get('APPDATA') or os.path.dirname(sys.executable)
-        app_dir = os.path.join(base, 'GokaGo')
+        app_dir = os.path.join(base, APP_DATA_SUBDIR)
     else:
         # Development: use script directory
         # __file__ is inside igo/, so go up one level

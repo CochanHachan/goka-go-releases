@@ -1,12 +1,23 @@
 # -*- coding: utf-8 -*-
 """碁華 定数定義
-自動アップデート対応版"""
+
+CLIENT_UPDATE_CHECK_URL が空のときは起動時の更新チェックを行わない（手動配布向け）。
+"""
 
 # ---------------------------------------------------------------------------
 # 環境切替フラグ（constants_env.py から読み込み）
 # ステージングビルド時は constants_env.py の _ENV を "staging" に変更する
 # ---------------------------------------------------------------------------
-from igo.constants_env import _ENV
+from igo.constants_env import (
+    _ENV,
+    _APP_EDITION,
+    BETA_CHANNEL_VERSION,
+    CLIENT_UPDATE_CHECK_URL,
+)
+
+IS_BETA_EDITION = (_APP_EDITION == "beta")
+# クライアント別データ領域（ローカル SQLite・ui_settings・KataGo キャッシュ等）
+APP_DATA_SUBDIR = "GokaGoTest" if IS_BETA_EDITION else "GokaGo"
 
 # ---------------------------------------------------------------------------
 # 環境別サーバー設定
@@ -32,23 +43,26 @@ if _cfg is None:
 
 APP_NAME         = _cfg["app_name"]
 APP_VERSION      = "1.2.161"
+_bv = (BETA_CHANNEL_VERSION or "").strip()
+if IS_BETA_EDITION and _bv:
+    APP_VERSION = _bv
 APP_BUILD        = "20260418"
 STAGING_LABEL    = _cfg["staging_label"]
 CLOUD_SERVER_URL = _cfg["cloud_server_url"]
 API_BASE_URL     = _cfg["api_base_url"]
 
-_UPDATE_URL_CONFIG = {
-    "production": "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/version.json",
-    # staging は本番version.jsonを参照しない（本番更新ダイアログ誤表示を防ぐ）
-    "staging": "",
-}
-UPDATE_CHECK_URL = _UPDATE_URL_CONFIG.get(_ENV, "")
+# バージョンマニフェストは constants_env の CLIENT_UPDATE_CHECK_URL のみ（空 = チェックしない）
+UPDATE_CHECK_URL = (CLIENT_UPDATE_CHECK_URL or "").strip()
 
 # ---------------------------------------------------------------------------
 # 起動時自己診断: STAGING_LABEL と URL の整合性チェック
 # ---------------------------------------------------------------------------
 def _validate_env():
     """STAGING_LABEL と接続先URLが矛盾していないか検証する。"""
+    if IS_BETA_EDITION and _ENV != "staging":
+        raise RuntimeError(
+            "ビルド設定エラー: _APP_EDITION が beta のときは _ENV を staging にしてください。"
+            "（テスト用クライアントは本番 API/DB に接続しません）")
     _prod_ip = "34.85.118.112"
     _staging_ip = "136.110.101.14"
     _urls = CLOUD_SERVER_URL + " " + API_BASE_URL

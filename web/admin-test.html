@@ -27,12 +27,14 @@
 </head>
 <body>
   <p class="back"><a href="index.html">← トップに戻る</a></p>
+  <p style="max-width:720px;margin:0 0 14px;line-height:1.65;">タブコントロール（<strong>サイズ・位置</strong>／<strong>時間</strong>）を実装した<strong>管理者画面の修正版</strong>は、次の緑枠から <code>goka-admin-staging.zip</code> をダウンロードできます。</p>
   <div class="dl-box">
     <!-- ADMIN_CLIENT_ZIP: build-and-deploy が次の <a> 全体をリリース時に差し替え -->
-    <a href="https://github.com/CochanHachan/goka-go-releases/releases/download/v1.2.161/goka_admin_1.2.161.zip" data-admin-dl class="admin-dl-bundle"><span class="dl-title">管理者の修正版ZIP — ここをクリックしてダウンロード</span><br><span class="dl-url">https://github.com/CochanHachan/goka-go-releases/releases/download/v1.2.161/goka_admin_1.2.161.zip</span></a>
+    <a href="https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip" data-admin-dl class="admin-dl-bundle" title="タブ付き管理者画面の修正版（staging）"><span class="dl-title">タブ付き管理者画面・修正版ZIP — クリックしてダウンロード</span><br><span class="dl-url">https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-admin-staging.zip</span></a>
   </div>
   <h1>管理者画面のダウンロード</h1>
-  <p>対局クライアントの「ダウンロード」と同様、<strong>GitHub Releases の ZIP</strong> から取得します。</p>
+  <p>対局クライアントの修正版（staging）を先に入れる場合は、<a href="https://github.com/CochanHachan/goka-go-releases/releases/download/staging-latest/goka-go-staging.zip">修正版ZIP（対局クライアント）</a> からダウンロードしてください。</p>
+  <p>以下の管理者 ZIP は、対局クライアントの「ダウンロード」と同様、<strong>GitHub Releases</strong> から取得します。</p>
   <h2 style="font-size:1.1rem;margin:20px 0 10px;letter-spacing:0.04em;">修正版（staging）の内容</h2>
   <p>次の ZIP を展開すると、いまの <code>main</code> 向けの管理者クライアント（PyInstaller ビルド）が入ります。</p>
   <ul style="max-width:640px;margin:0 0 14px 1.2em;line-height:1.6;">
@@ -41,5 +43,7 @@
     <li>展開後は <code>igo_admin\igo_admin.exe</code> を実行してください。</li>
   </ul>
   <p class="muted">修正版の取得は、<strong>ページ最上の緑枠内</strong>をクリックしてください（ZIP のダウンロードが始まります）。番号付きリリースでは <code>build-and-deploy</code> がこの枠内のリンク先だけ差し替えます。</p>
+  <h2 style="font-size:1.1rem;margin:28px 0 10px;letter-spacing:0.04em;">手元でビルドして配布する場合</h2>
+  <p>リポジトリのルートで <code>pyinstaller igo_admin.spec --noconfirm</code> を実行し、続けて <code>py -3 tools/package_igo_admin_zip.py</code> で <code>dist/goka-admin-local.zip</code> を生成できます。展開後は <code>igo_admin\igo_admin.exe</code> を実行してください。静的サイトや社内共有に ZIP を置く場合は、上の緑枠のリンク先をその URL に差し替えます。</p>
 </body>
 </html>

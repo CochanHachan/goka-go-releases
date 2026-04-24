@@ -1,0 +1,57 @@
+# =============================================================================
+# Azure Pipelines — テスト版（beta）Windows クライアントをビルドし成果物として保存
+#
+# 登録: Pipelines → 新規 → 「既存の Azure Pipelines YAML」→ ブランチ main、
+#       パス /azure-pipelines-beta-client.yml
+#
+# 手動実行のみ（trigger なし）。実行時にパラメータ betaVersion を指定する。
+# 成果物 ZIP をダウンロードして配布する（クライアントの自動更新は既定で無効）。
+# =============================================================================
+
+trigger: none
+pr: none
+
+parameters:
+  - name: betaVersion
+    displayName: "テスト版に埋め込む APP_VERSION 文字列（例 2.0.1）"
+    type: string
+    default: "2.0.0"
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  PYTHONIOENCODING: utf-8
+
+steps:
+  - checkout: self
+    fetchDepth: 1
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.13"
+
+  - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
+    displayName: "Install PyInstaller and app deps"
+
+  - script: python tools/patch_constants_for_beta.py ${{ parameters.betaVersion }}
+    displayName: "Patch igo/constants_env.py (staging + beta)"
+
+  - script: python tools/download_katago_for_windows_build.py
+    displayName: "Download KataGo (Windows)"
+
+  - script: pyinstaller goka_go_test.spec --noconfirm
+    displayName: "PyInstaller (goka_go_test.spec)"
+
+  - script: python tools/copy_katago_into_dist.py
+    displayName: "Copy katago into dist/goka_go"
+
+  - script: python tools/make_beta_zip.py
+    displayName: "Create dist/goka-go-beta.zip"
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: "$(Build.SourcesDirectory)/dist/goka-go-beta.zip"
+      artifact: "goka-go-beta"
+      publishLocation: "pipeline"
+    displayName: "Publish ZIP artifact"

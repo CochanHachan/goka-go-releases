@@ -184,14 +184,17 @@ bot_accept_timers: Dict[str, asyncio.Task] = {}
 # handle -> pending offer info (タイムアウト時にボットが承諾するための情報)
 pending_offers: Dict[str, dict] = {}
 
-BOT_AUTO_DELAY = 60  # 秒 — ボットが挑戦状を送るまでのデフォルト待機時間
+BOT_AUTO_DELAY = 30  # 秒 — ボットが挑戦状を送るまでのデフォルト待機時間（本番既定）
 # 重要: この値はクライアント側の _hosting_timeout（get_offer_timeout_ms）より
 # 十分短くなければならない。同じかそれ以上だとクライアントが先にキャンセルし、
 # ボットの挑戦状が届かなくなる。
 
 
 def _get_bot_delay() -> int:
-    """管理者画面の bot_offer_delay 設定を秒単位で返す（デフォルト: 60秒）。"""
+    """app_settings.json の bot_offer_delay（秒）を返す。キーが無いときだけ BOT_AUTO_DELAY を使う。
+
+    本番で「30秒にしたのに長い」場合は、多くのケースで JSON に古い bot_offer_delay が残っている。
+    """
     try:
         settings = _load_settings()
         return int(settings.get("bot_offer_delay", BOT_AUTO_DELAY))
@@ -229,6 +232,9 @@ def get_db_connection() -> sqlite3.Connection:
 def init_db():
     """起動時にDBとテーブルを自動作成する。"""
     conn = get_db_connection()
+    # DB 設計メモ（碁華）:
+    # - users は handle_name を業務上の一意キーとしつつ、不変の内部参照用に id を必ず持つ。
+    # - 他テーブルは、業務上すでに安定した一意カラムがあるなら無理に数値 id を増やさない。
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -347,8 +353,20 @@ class UpdateEloRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    logger.info("Goka GO server [%s] starting on port %d (db=%s)",
-               _ENV_LABEL, PORT, DB_PATH)
+    try:
+        _st = _load_settings()
+        _bod = _st.get("bot_offer_delay")
+        logger.info(
+            "Goka GO server [%s] starting on port %d (db=%s); "
+            "bot_offer_delay from app_settings=%r (code default if key missing=%ds); settings file=%s",
+            _ENV_LABEL, PORT, DB_PATH, _bod, BOT_AUTO_DELAY, SETTINGS_PATH,
+        )
+    except Exception as _e:
+        logger.warning("Could not read app_settings at startup: %s", _e)
+        logger.info(
+            "Goka GO server [%s] starting on port %d (db=%s)",
+            _ENV_LABEL, PORT, DB_PATH,
+        )
     yield
     logger.info("Goka GO server [%s] shutting down.", _ENV_LABEL)
 
@@ -620,7 +638,7 @@ def _load_settings() -> dict:
     except Exception:
         return {"theme": "light", "offer_timeout_min": 3,
                 "fischer_main_time": 300, "fischer_increment": 10,
-                "bot_offer_delay": 60}
+                "bot_offer_delay": 30}
 
 
 def _save_settings(settings: dict):
@@ -806,6 +824,11 @@ async def _bot_auto_offer(handle: str):
     """
     try:
         delay = _get_bot_delay()
+        logger.info(
+            "Bot auto-offer (broadcast path): handle=%s sleeping %ds before bot match_offer",
+            handle,
+            delay,
+        )
         await asyncio.sleep(delay)
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
@@ -858,6 +881,11 @@ async def _bot_auto_accept(handle: str):
     """
     try:
         delay = _get_bot_delay()
+        logger.info(
+            "Bot auto-offer (pending human path): handle=%s sleeping %ds before bot match_offer",
+            handle,
+            delay,
+        )
         await asyncio.sleep(delay)
         # まだ接続中かつ対局中でないか確認
         if handle not in connected_users or handle in game_pairs:
@@ -990,7 +1018,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
                 "fischer_increment": msg.get("fischer_increment", 0),
             })
             logger.info("Match offer: %s -> %s", handle, target)
-            # 1分後にボットが自動承諾するタイマー開始
+            # bot_offer_delay 秒後に相手承諾がなければボットが挑戦状を送るタイマー開始
             pending_offers[handle] = {"target": target}
             bot_accept_timers[handle] = asyncio.create_task(
                 _bot_auto_accept(handle)

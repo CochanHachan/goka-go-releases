@@ -9,15 +9,24 @@ import json
 import socket
 import threading
 import time as _time
+import traceback
 import urllib.request
 import urllib.error
 import urllib.parse
+import sys
 from pathlib import Path
 from window_settings import WindowSettings
 from cryptography.fernet import Fernet
 from igo_game import T, get_current_theme_name, THEMES, elo_to_display_rank
 from igo.register_screen import RegisterScreen
 from glossy_pill_button import GlossyButton
+
+
+def _admin_app_base_dir():
+    """igo_config.json / ui_settings.db を置くディレクトリ。PyInstaller では exe と同じフォルダ。"""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
 
 # Notebook 行の高さ（pack だとタブが最小高さに潰れやすいため grid + 固定高さで確保）
 _ADMIN_TAB_AREA_HEIGHT = 252
@@ -102,10 +111,9 @@ class AdminApp:
                 return "break"
         self.root.bind_all("<Return>", _on_enter)
 
-        self._config_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "igo_config.json")
-        _db_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "ui_settings.db")
+        _base = _admin_app_base_dir()
+        self._config_path = os.path.join(_base, "igo_config.json")
+        _db_path = os.path.join(_base, "ui_settings.db")
         self._ws = WindowSettings(_db_path, "admin")
         self._online_users = {}
         self._opponents = {}
@@ -343,10 +351,10 @@ class AdminApp:
                  font=("Yu Gothic UI", 10),
                  fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
 
-        current_bot_delay = 60
+        current_bot_delay = 30
         try:
             if server_settings:
-                current_bot_delay = int(server_settings.get("bot_offer_delay", 60))
+                current_bot_delay = int(server_settings.get("bot_offer_delay", 30))
         except Exception:
             pass
 
@@ -965,5 +973,31 @@ class AdminApp:
         self.root.mainloop()
 
 
+def _run_admin_with_guard():
+    """pythonw 起動時でも例外を可視化し、プロセスを確実に終了する。"""
+    try:
+        AdminApp().run()
+    except Exception:
+        tb = traceback.format_exc()
+        log_path = os.path.join(_admin_app_base_dir(), "igo_admin_error.log")
+        try:
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(tb)
+        except Exception:
+            log_path = ""
+        msg = "予期しないエラーで終了しました。"
+        if log_path:
+            msg += "\n\nログ: {}".format(log_path)
+        else:
+            msg += "\n\n詳細ログの保存に失敗しました。"
+        msg += "\n\n詳細:\n{}".format(tb.splitlines()[-1] if tb else "unknown error")
+        try:
+            messagebox.showerror("管理者画面エラー", msg)
+        except Exception:
+            pass
+        # 例外後にスレッドが残ってもプロセスがバックグラウンドに残らないよう強制終了
+        os._exit(1)
+
+
 if __name__ == "__main__":
-    AdminApp().run()
+    _run_admin_with_guard()
