@@ -1,7 +1,13 @@
 __pycache__/
 *.pyc
 build/
+build_*/
+build_test*/
+build_new/
 dist/
+dist_*/
+dist_test*/
+dist_new/
 dist_release/
 *.db
 *.json
