@@ -1,0 +1,25 @@
+# ============================================================
+# Xserver（Apache）用: FastAPI(server.py) へのリバースプロキシ例
+# ============================================================
+#
+# 配置: goka-igo.com のドキュメントルート（public_html 相当）の .htaccess
+# 前提: server.py が同一サーバー上で 127.0.0.1:8000 で待受
+#
+# 注意:
+# - mod_rewrite / mod_proxy が有効なプランであること（無効ならサポート要確認）
+# - 静的HTMLはそのまま配信し、/api だけをバックエンドへ送る構成
+#
+# 使い方: 内容を .htaccess にコピーし、必要に応じてポート番号を変更
+# ============================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # API（FastAPI）: /api/* → 127.0.0.1:8000/api/*
+    # .htaccess では先頭の / は付かない想定で ^api/ をマッチ
+    RewriteRule ^api/(.*)$ http://127.0.0.1:8000/api/$1 [P,L,QSA]
+
+    # 任意: Swagger UI
+    # RewriteRule ^docs(.*)$ http://127.0.0.1:8000/docs$1 [P,L,QSA]
+    # RewriteRule ^openapi\.json$ http://127.0.0.1:8000/openapi.json [P,L,QSA]
+</IfModule>

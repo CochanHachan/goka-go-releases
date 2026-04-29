@@ -1,0 +1,48 @@
+# =============================================================================
+# Azure Pipelines - PostgreSQL users backup (scheduled)
+# =============================================================================
+
+trigger: none
+pr: none
+
+schedules:
+  - cron: "0 */6 * * *"  # every 6 hours (UTC)
+    displayName: "Users backup every 6 hours"
+    branches:
+      include:
+        - main
+    always: true
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 1
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.12"
+
+  - script: |
+      set -euo pipefail
+      python -m pip install --upgrade pip
+      python -m pip install psycopg2-binary
+      python tools/backup_postgres_users.py
+      ls -la pg_backups
+    displayName: "Create PostgreSQL users backup"
+    env:
+      GOKA_PG_HOST: $(GOKA_PG_HOST)
+      GOKA_PG_PORT: $(GOKA_PG_PORT)
+      GOKA_PG_DB: $(GOKA_PG_DB)
+      GOKA_PG_USER: $(GOKA_PG_USER)
+      GOKA_PG_PASS: $(GOKA_PG_PASS)
+      GOKA_PG_SSLMODE: $(GOKA_PG_SSLMODE)
+      GOKA_PG_BACKUP_DIR: pg_backups
+
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish backup artifact"
+    inputs:
+      PathtoPublish: "pg_backups"
+      ArtifactName: "postgres-users-backup"
+      publishLocation: "Container"

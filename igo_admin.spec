@@ -154,7 +154,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon="goka_go.ico",
+    icon="admin_icon.ico",
 )
 
 coll = COLLECT(

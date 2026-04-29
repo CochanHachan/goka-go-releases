@@ -12,6 +12,8 @@ from igo.lang import L, get_language
 from igo.window_settings import WindowSettings
 from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.config import get_offer_timeout_ms
+from igo.config import get_ui_height_ratio
+from igo.config import get_primary_work_area_rect
 from igo.theme import T
 from igo.elo import elo_to_display_rank
 from igo.enums import format_komi_display, format_time_display
@@ -157,13 +159,20 @@ class MatchOfferDialog:
             parts = size_part.split("x")
             if len(parts) == 2:
                 try:
-                    dw, dh = int(parts[0]), int(parts[1])
+                    dw = int(parts[0])
                 except ValueError:
                     dw, dh = 440, 420
             else:
                 dw, dh = 440, 420
         else:
             dw, dh = 440, 420
+        try:
+            wr = get_primary_work_area_rect()
+            work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
+            dh = int(work_h * get_ui_height_ratio("challenge_accept_height", 0.40))
+            dh = max(420, dh)
+        except Exception:
+            pass
         x = px + (pw - dw) // 2
         y = py + (ph - dh) // 2
         self.win.geometry("{}x{}+{}+{}".format(dw, dh, x, y))

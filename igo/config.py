@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import socket
+import ctypes
 
 from igo.constants import API_BASE_URL, APP_DATA_SUBDIR
 
@@ -75,6 +76,10 @@ def _init_config_if_needed():
                 changed = True
         server_fischer_main = server_settings.get("fischer_main_time")
         server_fischer_inc = server_settings.get("fischer_increment")
+        server_board_h = server_settings.get("board_frame_height")
+        server_match_h = server_settings.get("match_apply_height")
+        server_challenge_h = server_settings.get("challenge_accept_height")
+        server_sakura_h = server_settings.get("sakura_dialog_height")
         if server_fischer_main is not None:
             if cfg.get("fischer_main_time") != server_fischer_main:
                 cfg["fischer_main_time"] = server_fischer_main
@@ -82,6 +87,22 @@ def _init_config_if_needed():
         if server_fischer_inc is not None:
             if cfg.get("fischer_increment") != server_fischer_inc:
                 cfg["fischer_increment"] = server_fischer_inc
+                changed = True
+        if server_board_h is not None:
+            if cfg.get("board_frame_height") != server_board_h:
+                cfg["board_frame_height"] = server_board_h
+                changed = True
+        if server_match_h is not None:
+            if cfg.get("match_apply_height") != server_match_h:
+                cfg["match_apply_height"] = server_match_h
+                changed = True
+        if server_challenge_h is not None:
+            if cfg.get("challenge_accept_height") != server_challenge_h:
+                cfg["challenge_accept_height"] = server_challenge_h
+                changed = True
+        if server_sakura_h is not None:
+            if cfg.get("sakura_dialog_height") != server_sakura_h:
+                cfg["sakura_dialog_height"] = server_sakura_h
                 changed = True
         if changed:
             with open(app_cfg, "w", encoding="utf-8") as f:
@@ -152,4 +173,64 @@ def get_fischer_settings():
     except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
         logger.debug("Failed to read fischer settings, using defaults", exc_info=True)
         return (300, 10)
+
+
+def get_ui_height_ratio(key: str, default_ratio: float) -> float:
+    """Get UI height ratio from config.
+
+    Accepts values like 0.9, 90, "90%". Returns clamped ratio [0.1, 1.0].
+    """
+    ratio = float(default_ratio)
+    try:
+        cfg_path = os.path.join(_get_app_data_dir(), "igo_config.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        raw = str(cfg.get(key, "")).strip()
+        if raw:
+            s = raw.replace(",", "").strip()
+            if s.endswith("%"):
+                s = s[:-1].strip()
+            v = float(s)
+            if v > 1.0:
+                ratio = v / 100.0
+            else:
+                ratio = v
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
+        logger.debug("Failed to read %s, using default", key, exc_info=True)
+    if ratio < 0.1:
+        ratio = 0.1
+    if ratio > 1.0:
+        ratio = 1.0
+    return ratio
+
+
+def get_primary_work_area_rect():
+    """Return (left, top, width, height) of primary work area on Windows."""
+    if sys.platform != "win32":
+        return None
+    try:
+        from ctypes import wintypes
+
+        class RECT(ctypes.Structure):
+            _fields_ = (
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            )
+
+        rect = RECT()
+        SPI_GETWORKAREA = 48
+        ok = ctypes.windll.user32.SystemParametersInfoW(  # type: ignore[attr-defined]
+            SPI_GETWORKAREA, 0, ctypes.byref(rect), 0
+        )
+        if not ok:
+            return None
+        w = int(rect.right - rect.left)
+        h = int(rect.bottom - rect.top)
+        if w < 320 or h < 240:
+            return None
+        return int(rect.left), int(rect.top), w, h
+    except Exception:
+        return None
 

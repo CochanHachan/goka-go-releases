@@ -16,6 +16,8 @@ from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.theme import T
 from igo.elo import elo_to_display_rank
 from igo.config import get_offer_timeout_ms
+from igo.config import get_ui_height_ratio
+from igo.config import get_primary_work_area_rect
 from igo.ui_helpers import _configure_combo_style, _apply_combo_listbox_style
 from igo.enums import (
     TimeControl, parse_main_time_minutes, parse_byo_time_seconds,
@@ -50,14 +52,21 @@ class MatchDialog:
         saved_geom = self._ws.load("geometry")
         dw = 460
         dh = 600
+        try:
+            wr = get_primary_work_area_rect()
+            work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
+            dh = int(work_h * get_ui_height_ratio("match_apply_height", 0.40))
+            dh = max(420, dh)
+        except Exception:
+            dh = 600
         if saved_geom and isinstance(saved_geom, str):
             size_part = saved_geom.split("+")[0]
             parts = size_part.split("x")
             if len(parts) == 2:
                 try:
-                    dw, dh = int(parts[0]), int(parts[1])
+                    dw = int(parts[0])
                 except ValueError:
-                    dw, dh = 460, 600
+                    dw = 460
         # Center on parent window
         self.win.update_idletasks()
         pw = parent_root.winfo_width()

@@ -60,6 +60,8 @@ from igo.constants import (
 from igo.config import (
     _get_app_data_dir, _get_install_dir, _init_config_if_needed,
     get_offer_timeout_ms,
+    get_ui_height_ratio,
+    get_primary_work_area_rect,
 )
 from igo.elo import (
     elo_to_rank, elo_to_display_rank, calculate_elo_update,
@@ -999,7 +1001,7 @@ class App:
             sw = max(1, self.root.winfo_screenwidth())
             sh = max(1, self.root.winfo_screenheight())
         fw = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_WIDTH_FRACTION)))
-        fh = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION)))
+        fh = get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))
         w = int(sw * fw)
         h = int(sh * fh)
         min_w = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
@@ -1017,6 +1019,29 @@ class App:
         user_key = self._user_screen_name(screen_name)
         ws = WindowSettings(self._ws._db_path, user_key)
         ws.restore_window(self.root, default_geometry=defaults.get(screen_name, "500x400"))
+        if screen_name == "game":
+            # 管理者設定の高さ比率を常に反映（保存済みジオメトリがあっても高さを更新）
+            work_rect = get_primary_work_area_rect()
+            if work_rect:
+                work_left, work_top, _, sh = work_rect
+            else:
+                work_left, work_top = 0, 0
+                sh = max(1, self.root.winfo_screenheight())
+            fh = get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))
+            target_h = max(320, int(sh * fh))
+            try:
+                self.root.update_idletasks()
+                cur_w = max(320, int(self.root.winfo_width()))
+                cur_x = max(work_left, int(self.root.winfo_x()))
+                # 100%時は作業領域上端に合わせてはみ出しを防ぐ
+                if fh >= 0.999:
+                    cur_y = work_top
+                    target_h = sh
+                else:
+                    cur_y = max(work_top, int(self.root.winfo_y()))
+                self.root.geometry("{}x{}+{}+{}".format(cur_w, target_h, cur_x, cur_y))
+            except Exception:
+                pass
         self._current_screen = screen_name
 
     def _switch_frame(self, frame):
@@ -1393,8 +1418,13 @@ class App:
         new_elo = calculate_elo_update(my_elo, opp_elo, my_score)
         new_rank = elo_to_rank(new_elo)
         new_display = elo_to_display_rank(new_elo)
-        # Update ELO on server (non-blocking)
-        self._api_update_elo(user["handle_name"], new_elo)
+        # Update ELO and match stats on server (non-blocking)
+        outcome = "draw"
+        if my_score >= 0.999:
+            outcome = "win"
+        elif my_score <= 0.001:
+            outcome = "loss"
+        self._api_update_elo(user["handle_name"], new_elo, outcome=outcome, count_match=True)
         # Update in-memory
         if self.current_user:
             self.current_user["elo_rating"] = new_elo
@@ -1637,7 +1667,7 @@ class App:
 
     # --- Cloud mode methods ---
 
-    def _api_update_elo(self, handle, new_elo):
+    def _api_update_elo(self, handle, new_elo, outcome=None, count_match=True):
         """Update ELO rating on the GCP server (non-blocking)."""
         if not self._auth_token:
             return
@@ -1648,6 +1678,8 @@ class App:
                 _data = _json.dumps({
                     "elo": float(new_elo),
                     "token": self._auth_token,
+                    "outcome": outcome,
+                    "count_match": bool(count_match),
                 }).encode("utf-8")
                 _path = "/api/user/{}/elo".format(_urlparse.quote(handle, safe=""))
                 _req = _urlreq.Request(

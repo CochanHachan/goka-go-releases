@@ -23,4 +23,4 @@ _ENV = "production"
 _APP_EDITION = "release"
 BETA_CHANNEL_VERSION = ""
 # 既定は自動更新なし（Azure 等で ZIP を手配する運用向け）
-CLIENT_UPDATE_CHECK_URL = ""
+CLIENT_UPDATE_CHECK_URL = "https://goka-igo.com/version.json"

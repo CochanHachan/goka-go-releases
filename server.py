@@ -14,6 +14,7 @@ REST API (FastAPI) + WebSocket 中継サーバー
 import asyncio
 import base64
 import copy
+import datetime
 import hashlib
 import json
 import logging
@@ -60,6 +61,22 @@ DB_PATH = Path(os.environ.get("GOKA_DB_PATH",
                str(Path(__file__).parent / "igo_users.db")))
 PORT = int(os.environ.get("GOKA_PORT", "8000"))
 _ENV_LABEL = os.environ.get("GOKA_ENV", "production")
+DB_BACKEND = os.environ.get("GOKA_DB_BACKEND", "sqlite").strip().lower()
+if DB_BACKEND not in ("sqlite", "postgres"):
+    raise RuntimeError("GOKA_DB_BACKEND must be 'sqlite' or 'postgres'")
+
+PG_HOST = os.environ.get("GOKA_PG_HOST", "").strip()
+PG_PORT = int(os.environ.get("GOKA_PG_PORT", "5432"))
+PG_DB = os.environ.get("GOKA_PG_DB", "").strip()
+PG_USER = os.environ.get("GOKA_PG_USER", "").strip()
+PG_PASS = os.environ.get("GOKA_PG_PASS", "")
+PG_SSLMODE = os.environ.get("GOKA_PG_SSLMODE", "require").strip() or "require"
+
+
+def _db_runtime_label() -> str:
+    if DB_BACKEND == "sqlite":
+        return str(DB_PATH)
+    return "postgres://{}:{}/{}?sslmode={}".format(PG_HOST, PG_PORT, PG_DB, PG_SSLMODE)
 
 # ---------------------------------------------------------------------------
 # AIボット定義
@@ -223,10 +240,86 @@ def _find_closest_bot(elo: float, lang: str = "ja") -> Optional[str]:
 # ---------------------------------------------------------------------------
 # データベース初期化
 # ---------------------------------------------------------------------------
-def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+class _DBResult:
+    def __init__(self, cursor, backend: str):
+        self._cursor = cursor
+        self._backend = backend
+        self._columns = [d[0] for d in (cursor.description or [])]
+
+    def _to_row(self, row):
+        if row is None:
+            return None
+        if self._backend == "sqlite":
+            return row
+        if isinstance(row, dict):
+            return row
+        return {self._columns[i]: row[i] for i in range(len(self._columns))}
+
+    def fetchone(self):
+        return self._to_row(self._cursor.fetchone())
+
+    def fetchall(self):
+        return [self._to_row(r) for r in self._cursor.fetchall()]
+
+
+class _DBConnection:
+    def __init__(self, conn, backend: str):
+        self._conn = conn
+        self._backend = backend
+
+    def execute(self, sql: str, params=()):
+        cur = self._conn.cursor()
+        if self._backend == "postgres":
+            sql = sql.replace("?", "%s")
+        cur.execute(sql, params or ())
+        return _DBResult(cur, self._backend)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+
+def _is_duplicate_column_error(exc: Exception) -> bool:
+    code = getattr(exc, "pgcode", "")
+    if code == "42701":
+        return True
+    msg = str(exc).lower()
+    return "duplicate column name" in msg or "already exists" in msg
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    code = getattr(exc, "pgcode", "")
+    if code == "23505":
+        return True
+    msg = str(exc).lower()
+    return "unique constraint failed" in msg or "duplicate key value violates unique constraint" in msg
+
+
+def get_db_connection() -> _DBConnection:
+    if DB_BACKEND == "sqlite":
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        return _DBConnection(conn, "sqlite")
+
+    try:
+        import psycopg2
+    except ImportError as e:
+        raise RuntimeError("PostgreSQL backend requires psycopg2-binary") from e
+
+    if not (PG_HOST and PG_DB and PG_USER):
+        raise RuntimeError("PostgreSQL backend requires GOKA_PG_HOST/GOKA_PG_DB/GOKA_PG_USER")
+
+    conn = psycopg2.connect(
+        host=PG_HOST,
+        port=PG_PORT,
+        dbname=PG_DB,
+        user=PG_USER,
+        password=PG_PASS,
+        sslmode=PG_SSLMODE,
+    )
+    return _DBConnection(conn, "postgres")
 
 
 def init_db():
@@ -235,34 +328,99 @@ def init_db():
     # DB 設計メモ（碁華）:
     # - users は handle_name を業務上の一意キーとしつつ、不変の内部参照用に id を必ず持つ。
     # - 他テーブルは、業務上すでに安定した一意カラムがあるなら無理に数値 id を増やさない。
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            real_name       TEXT    NOT NULL,
-            handle_name     TEXT    NOT NULL UNIQUE,
-            password_hash   TEXT    NOT NULL,
-            salt            TEXT    NOT NULL,
-            password_enc    TEXT    NOT NULL DEFAULT '',
-            elo             REAL    NOT NULL DEFAULT 0,
-            rank            TEXT    NOT NULL DEFAULT '30級',
-            language        TEXT    NOT NULL DEFAULT 'ja',
-            email           TEXT    NOT NULL DEFAULT '',
-            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    if DB_BACKEND == "sqlite":
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                real_name       TEXT    NOT NULL,
+                handle_name     TEXT    NOT NULL UNIQUE,
+                password_hash   TEXT    NOT NULL,
+                salt            TEXT    NOT NULL,
+                password_enc    TEXT    NOT NULL DEFAULT '',
+                elo             REAL    NOT NULL DEFAULT 0,
+                rank            TEXT    NOT NULL DEFAULT '30級',
+                language        TEXT    NOT NULL DEFAULT 'ja',
+                email           TEXT    NOT NULL DEFAULT '',
+                login_count     INTEGER NOT NULL DEFAULT 0,
+                match_count     INTEGER NOT NULL DEFAULT 0,
+                win_count       INTEGER NOT NULL DEFAULT 0,
+                loss_count      INTEGER NOT NULL DEFAULT 0,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    else:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id              BIGSERIAL PRIMARY KEY,
+                real_name       TEXT    NOT NULL,
+                handle_name     TEXT    NOT NULL UNIQUE,
+                password_hash   TEXT    NOT NULL,
+                salt            TEXT    NOT NULL,
+                password_enc    TEXT    NOT NULL DEFAULT '',
+                elo             DOUBLE PRECISION NOT NULL DEFAULT 0,
+                rank            TEXT    NOT NULL DEFAULT '30級',
+                language        TEXT    NOT NULL DEFAULT 'ja',
+                email           TEXT    NOT NULL DEFAULT '',
+                login_count     INTEGER NOT NULL DEFAULT 0,
+                match_count     INTEGER NOT NULL DEFAULT 0,
+                win_count       INTEGER NOT NULL DEFAULT 0,
+                loss_count      INTEGER NOT NULL DEFAULT 0,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
     # password_enc カラムが無い既存DBに追加
     try:
         conn.execute("ALTER TABLE users ADD COLUMN password_enc TEXT NOT NULL DEFAULT ''")
         conn.commit()
         logger.info("Added password_enc column to users table")
-    except sqlite3.OperationalError:
+    except Exception as e:
+        if not _is_duplicate_column_error(e):
+            raise
         pass  # 既にカラムが存在する場合
     # email カラムが無い既存DBに追加
     try:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
         conn.commit()
         logger.info("Added email column to users table")
-    except sqlite3.OperationalError:
+    except Exception as e:
+        if not _is_duplicate_column_error(e):
+            raise
+        pass  # 既にカラムが存在する場合
+    # login_count カラムが無い既存DBに追加
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN login_count INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        logger.info("Added login_count column to users table")
+    except Exception as e:
+        if not _is_duplicate_column_error(e):
+            raise
+        pass  # 既にカラムが存在する場合
+    # match_count カラムが無い既存DBに追加
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN match_count INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        logger.info("Added match_count column to users table")
+    except Exception as e:
+        if not _is_duplicate_column_error(e):
+            raise
+        pass  # 既にカラムが存在する場合
+    # win_count カラムが無い既存DBに追加
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN win_count INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        logger.info("Added win_count column to users table")
+    except Exception as e:
+        if not _is_duplicate_column_error(e):
+            raise
+        pass  # 既にカラムが存在する場合
+    # loss_count カラムが無い既存DBに追加
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN loss_count INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        logger.info("Added loss_count column to users table")
+    except Exception as e:
+        if not _is_duplicate_column_error(e):
+            raise
         pass  # 既にカラムが存在する場合
     conn.commit()
 
@@ -294,7 +452,10 @@ def init_db():
         logger.warning("Password hash auto-repair skipped: %s", e)
 
     conn.close()
-    logger.info("Database initialized: %s", DB_PATH)
+    if DB_BACKEND == "sqlite":
+        logger.info("Database initialized (sqlite): %s", DB_PATH)
+    else:
+        logger.info("Database initialized (postgres): host=%s db=%s sslmode=%s", PG_HOST, PG_DB, PG_SSLMODE)
 
 
 # ---------------------------------------------------------------------------
@@ -345,6 +506,8 @@ class LoginRequest(BaseModel):
 class UpdateEloRequest(BaseModel):
     elo: float
     token: str
+    outcome: Optional[str] = None  # "win" | "loss" | "draw"
+    count_match: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -359,13 +522,13 @@ async def lifespan(app: FastAPI):
         logger.info(
             "Goka GO server [%s] starting on port %d (db=%s); "
             "bot_offer_delay from app_settings=%r (code default if key missing=%ds); settings file=%s",
-            _ENV_LABEL, PORT, DB_PATH, _bod, BOT_AUTO_DELAY, SETTINGS_PATH,
+            _ENV_LABEL, PORT, _db_runtime_label(), _bod, BOT_AUTO_DELAY, SETTINGS_PATH,
         )
     except Exception as _e:
         logger.warning("Could not read app_settings at startup: %s", _e)
         logger.info(
             "Goka GO server [%s] starting on port %d (db=%s)",
-            _ENV_LABEL, PORT, DB_PATH,
+            _ENV_LABEL, PORT, _db_runtime_label(),
         )
     yield
     logger.info("Goka GO server [%s] shutting down.", _ENV_LABEL)
@@ -409,8 +572,10 @@ async def register(req: RegisterRequest):
         conn.commit()
         logger.info("Registered new user: %s", req.handle_name)
         return {"success": True, "message": "登録しました"}
-    except sqlite3.IntegrityError:
-        return {"success": False, "message": "そのハンドルネームはすでに使用されています"}
+    except Exception as e:
+        if _is_unique_violation(e):
+            return {"success": False, "message": "そのハンドルネームはすでに使用されています"}
+        raise
     finally:
         conn.close()
 
@@ -468,6 +633,16 @@ async def login(req: LoginRequest):
 
     token = generate_token()
     active_tokens[token] = req.handle_name
+    try:
+        conn3 = get_db_connection()
+        conn3.execute(
+            "UPDATE users SET login_count = COALESCE(login_count, 0) + 1 WHERE handle_name = ?",
+            (req.handle_name,),
+        )
+        conn3.commit()
+        conn3.close()
+    except Exception as e:
+        logger.warning("Failed to increment login_count: %s (%s)", req.handle_name, e)
     logger.info("Login: %s", req.handle_name)
 
     return {
@@ -489,7 +664,9 @@ async def get_users():
     conn = get_db_connection()
     try:
         rows = conn.execute(
-            "SELECT id, handle_name, real_name, elo, rank, password_enc, email, created_at FROM users ORDER BY elo DESC"
+            "SELECT id, handle_name, real_name, elo, rank, password_enc, email, "
+            "login_count, match_count, win_count, loss_count, created_at "
+            "FROM users ORDER BY elo DESC"
         ).fetchall()
     finally:
         conn.close()
@@ -506,6 +683,10 @@ async def get_users():
             "rank": row["rank"],
             "password_enc": pw_enc,
             "email": row["email"] if row["email"] else "",
+            "login_count": int(row["login_count"] if row["login_count"] is not None else 0),
+            "match_count": int(row["match_count"] if row["match_count"] is not None else 0),
+            "win_count": int(row["win_count"] if row["win_count"] is not None else 0),
+            "loss_count": int(row["loss_count"] if row["loss_count"] is not None else 0),
             "created_at": row["created_at"],
             "online": hn in connected_users,
             "status": user_status.get(hn, ""),
@@ -528,10 +709,39 @@ async def update_elo(handle_name: str, req: UpdateEloRequest):
         if row is None:
             raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
 
-        conn.execute(
-            "UPDATE users SET elo = ? WHERE handle_name = ?",
-            (req.elo, handle_name)
-        )
+        if not req.count_match:
+            conn.execute(
+                "UPDATE users SET elo = ? WHERE handle_name = ?",
+                (req.elo, handle_name)
+            )
+        else:
+            outcome = (req.outcome or "").strip().lower()
+            if outcome == "win":
+                conn.execute(
+                    "UPDATE users "
+                    "SET elo = ?, "
+                    "match_count = COALESCE(match_count, 0) + 1, "
+                    "win_count = COALESCE(win_count, 0) + 1 "
+                    "WHERE handle_name = ?",
+                    (req.elo, handle_name)
+                )
+            elif outcome == "loss":
+                conn.execute(
+                    "UPDATE users "
+                    "SET elo = ?, "
+                    "match_count = COALESCE(match_count, 0) + 1, "
+                    "loss_count = COALESCE(loss_count, 0) + 1 "
+                    "WHERE handle_name = ?",
+                    (req.elo, handle_name)
+                )
+            else:
+                conn.execute(
+                    "UPDATE users "
+                    "SET elo = ?, "
+                    "match_count = COALESCE(match_count, 0) + 1 "
+                    "WHERE handle_name = ?",
+                    (req.elo, handle_name)
+                )
         conn.commit()
     finally:
         conn.close()
@@ -638,7 +848,11 @@ def _load_settings() -> dict:
     except Exception:
         return {"theme": "light", "offer_timeout_min": 3,
                 "fischer_main_time": 300, "fischer_increment": 10,
-                "bot_offer_delay": 30}
+                "bot_offer_delay": 30,
+                "board_frame_height": 0.78,
+                "match_apply_height": 0.40,
+                "challenge_accept_height": 0.40,
+                "sakura_dialog_height": 0.36}
 
 
 def _save_settings(settings: dict):
@@ -652,6 +866,10 @@ class UpdateSettingsRequest(BaseModel):
     fischer_main_time: Optional[int] = None
     fischer_increment: Optional[int] = None
     bot_offer_delay: Optional[int] = None
+    board_frame_height: Optional[float] = None
+    match_apply_height: Optional[float] = None
+    challenge_accept_height: Optional[float] = None
+    sakura_dialog_height: Optional[float] = None
 
 
 @app.get("/api/settings")
@@ -665,7 +883,7 @@ async def get_runtime_info():
     """管理者画面向け: 接続先の環境とDB識別情報を返す。"""
     return {
         "env": _ENV_LABEL,
-        "db_path": str(DB_PATH),
+        "db_path": _db_runtime_label(),
         "settings_path": str(SETTINGS_PATH),
         "port": PORT,
     }
@@ -685,6 +903,14 @@ async def update_settings(req: UpdateSettingsRequest):
         settings["fischer_increment"] = req.fischer_increment
     if req.bot_offer_delay is not None:
         settings["bot_offer_delay"] = max(10, min(600, req.bot_offer_delay))
+    if req.board_frame_height is not None:
+        settings["board_frame_height"] = max(0.10, min(1.00, float(req.board_frame_height)))
+    if req.match_apply_height is not None:
+        settings["match_apply_height"] = max(0.10, min(1.00, float(req.match_apply_height)))
+    if req.challenge_accept_height is not None:
+        settings["challenge_accept_height"] = max(0.10, min(1.00, float(req.challenge_accept_height)))
+    if req.sakura_dialog_height is not None:
+        settings["sakura_dialog_height"] = max(0.10, min(1.00, float(req.sakura_dialog_height)))
     _save_settings(settings)
     logger.info("Settings updated: %s", settings)
     return {"success": True, "settings": settings}
@@ -1414,25 +1640,44 @@ def _check_admin_token(request: Request) -> bool:
 
 
 def _backup_db(tag: str = "manual") -> str:
-    """SQLite DB を時刻付きファイルへバックアップし、古い世代を削除する。"""
+    """DBを時刻付きファイルへバックアップし、古い世代を削除する。"""
     ts = time.strftime("%Y%m%d-%H%M%S")
     os.makedirs(DB_BACKUP_DIR, exist_ok=True)
-    dst = os.path.join(DB_BACKUP_DIR, f"igo_users-{ts}-{tag}.db")
-
-    src_conn = sqlite3.connect(str(DB_PATH))
-    dst_conn = sqlite3.connect(dst)
-    try:
-        src_conn.backup(dst_conn)
-    finally:
-        dst_conn.close()
-        src_conn.close()
+    if DB_BACKEND == "sqlite":
+        dst = os.path.join(DB_BACKUP_DIR, f"igo_users-{ts}-{tag}.db")
+        src_conn = sqlite3.connect(str(DB_PATH))
+        dst_conn = sqlite3.connect(dst)
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+            src_conn.close()
+    else:
+        dst = os.path.join(DB_BACKUP_DIR, f"gokago-users-{ts}-{tag}.json")
+        conn = get_db_connection()
+        try:
+            rows = conn.execute(
+                "SELECT id, real_name, handle_name, password_hash, salt, password_enc, elo, rank, language, email, created_at FROM users ORDER BY id"
+            ).fetchall()
+        finally:
+            conn.close()
+        serializable = []
+        for r in rows:
+            row = dict(r)
+            created = row.get("created_at")
+            if isinstance(created, (datetime.datetime, datetime.date)):
+                row["created_at"] = created.isoformat(sep=" ")
+            serializable.append(row)
+        with open(dst, "w", encoding="utf-8") as f:
+            json.dump({"backend": "postgres", "rows": serializable}, f, ensure_ascii=False, indent=2)
 
     try:
         backups = sorted(
             [
                 os.path.join(DB_BACKUP_DIR, f)
                 for f in os.listdir(DB_BACKUP_DIR)
-                if f.startswith("igo_users-") and f.endswith(".db")
+                if (f.startswith("igo_users-") and f.endswith(".db"))
+                or (f.startswith("gokago-users-") and f.endswith(".json"))
             ],
             key=os.path.getmtime
         )
@@ -1633,7 +1878,7 @@ async def admin_backup(request: Request):
     try:
         backup_path = await asyncio.to_thread(_backup_db, "manual")
         return {"status": "ok", "db_backup": backup_path}
-    except (OSError, sqlite3.Error) as e:
+    except Exception as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
             status_code=500
@@ -1694,7 +1939,7 @@ async def admin_reset_test_passwords(
             "updated_handles": targets,
             "db_backup": backup_path
         }
-    except (OSError, sqlite3.Error) as e:
+    except Exception as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
             status_code=500
@@ -1745,7 +1990,7 @@ async def admin_set_user_password(request: Request, body: AdminSetUserPasswordRe
         conn.close()
         logger.warning("Admin set user password: %s", handle)
         return {"status": "ok", "handle_name": handle, "db_backup": backup_path}
-    except (OSError, sqlite3.Error) as e:
+    except Exception as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
             status_code=500

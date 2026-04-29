@@ -16,12 +16,15 @@ import urllib.parse
 import re
 import sys
 import unicodedata
+import tempfile
+import subprocess
 from pathlib import Path
 from window_settings import WindowSettings
 from cryptography.fernet import Fernet
 from igo_game import T, get_current_theme_name, THEMES, elo_to_display_rank
 from igo.register_screen import RegisterScreen
 from glossy_pill_button import GlossyButton
+from igo.constants import APP_VERSION
 
 
 def _admin_app_base_dir():
@@ -32,6 +35,9 @@ def _admin_app_base_dir():
 
 # Notebook 行の高さ（pack だとタブが最小高さに潰れやすいため grid + 固定高さで確保）
 _ADMIN_TAB_AREA_HEIGHT = 252
+_ADMIN_UPDATE_CHECK_URL = "https://goka-igo.com/version-admin.json"
+_ADMIN_UPDATE_TITLE = "管理者ツール更新"
+_ADMIN_UPDATE_APP_VERSION = APP_VERSION
 
 # ---------------------------------------------------------------------------
 # パスワード暗号化キー（管理者PCのみに保存）
@@ -245,6 +251,53 @@ def _duration_seconds_from_text(text: str, default_seconds: int = 0) -> int:
         return default_seconds
 
 
+def _seconds_to_japanese_hms_text(total_seconds: int) -> str:
+    """秒数を「○時間○分○秒」へ変換する。"""
+    sec = max(0, int(total_seconds))
+    h = sec // 3600
+    rem = sec % 3600
+    m = rem // 60
+    s = rem % 60
+    return _convert_time_string_vba_style("{}.{}.{}".format(h, m, s))
+
+
+def _height_ratio_from_text(
+    value,
+    default_ratio: float,
+    *,
+    min_percent: int = 10,
+    max_percent: int = 100,
+) -> float:
+    """高さ入力（90 / 90% / 0.9）を比率(0.0-1.0)に正規化する。"""
+    raw = unicodedata.normalize("NFKC", str(value or "")).strip()
+    if not raw:
+        ratio = default_ratio
+    else:
+        if raw.endswith("%"):
+            raw = raw[:-1].strip()
+        try:
+            num = float(_normalize_num_text(raw))
+            if num > 1.0:
+                ratio = num / 100.0
+            else:
+                ratio = num
+        except Exception:
+            ratio = default_ratio
+    min_ratio = min_percent / 100.0
+    max_ratio = max_percent / 100.0
+    if ratio < min_ratio:
+        ratio = min_ratio
+    if ratio > max_ratio:
+        ratio = max_ratio
+    return ratio
+
+
+def _height_ratio_to_percent_text(ratio: float) -> str:
+    """比率(0.0-1.0)を表示用パーセント文字列へ変換する。"""
+    pct = int(round(max(0.0, min(1.0, float(ratio))) * 100))
+    return "{}%".format(pct)
+
+
 class AdminApp:
     def __init__(self):
         self.root = tk.Tk()
@@ -277,9 +330,78 @@ class AdminApp:
         self._build_main()
         self._ws.restore_window(self.root, default_geometry="1000x900")
         self._start_heartbeat_listener()
+        self._check_for_update_background()
         self._refresh()
         self._auto_refresh()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _check_for_update_background(self):
+        """管理者ツールの起動時更新チェック（PyInstaller実行時のみ）。"""
+        if not getattr(sys, "frozen", False):
+            return
+        if not _ADMIN_UPDATE_CHECK_URL:
+            return
+
+        def _is_newer(remote, current):
+            def _v(s):
+                try:
+                    return tuple(int(x) for x in str(s).strip().split("."))
+                except Exception:
+                    return ()
+            return _v(remote) > _v(current)
+
+        def _worker():
+            try:
+                req = urllib.request.Request(_ADMIN_UPDATE_CHECK_URL)
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                latest = str(data.get("version", "")).strip()
+                dl_url = str(data.get("download_url", "")).strip()
+                notes = str(data.get("release_notes", "")).strip()
+                if not latest or not dl_url:
+                    return
+                if not _is_newer(latest, _ADMIN_UPDATE_APP_VERSION):
+                    return
+                self.root.after(0, lambda: self._prompt_admin_update(latest, dl_url, notes))
+            except Exception:
+                # 更新チェック失敗は通常起動を優先
+                return
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _prompt_admin_update(self, latest: str, download_url: str, notes: str):
+        msg = (
+            "管理者ツールの新しいバージョンがあります。\n\n"
+            "現在: {}\n"
+            "最新: {}\n\n"
+            "{}\n\n"
+            "今すぐ更新しますか？"
+        ).format(_ADMIN_UPDATE_APP_VERSION, latest, notes or "更新内容あり")
+        if not messagebox.askyesno(_ADMIN_UPDATE_TITLE, msg):
+            return
+        self._download_and_launch_admin_update(download_url)
+
+    def _download_and_launch_admin_update(self, download_url: str):
+        try:
+            suffix = ".exe"
+            lower = download_url.lower()
+            if lower.endswith(".zip"):
+                suffix = ".zip"
+            dst = os.path.join(tempfile.gettempdir(), "goka_admin_update" + suffix)
+            urllib.request.urlretrieve(download_url, dst)
+            if dst.lower().endswith(".exe"):
+                if hasattr(os, "startfile"):
+                    os.startfile(dst)  # type: ignore[attr-defined]
+                else:
+                    subprocess.Popen([dst])
+                self.root.destroy()
+                os._exit(0)
+            messagebox.showinfo(
+                _ADMIN_UPDATE_TITLE,
+                "更新ファイルをダウンロードしました: {}\n手動で適用してください。".format(dst),
+            )
+        except Exception as e:
+            messagebox.showerror(_ADMIN_UPDATE_TITLE, "更新に失敗しました:\n{}".format(e))
 
     def _start_heartbeat_listener(self):
         """Listen for UDP heartbeat broadcasts from game clients on port 19940."""
@@ -403,10 +525,10 @@ class AdminApp:
         tree_frame.pack(fill="both", expand=True, padx=1, pady=1)
 
         self._admin_headers = ["ID", "ハンドルネーム", "氏名", "パスワード",
-                               "棋力", "Elo", "ステータス", "対戦相手", "メール", "登録日"]
+                               "棋力", "Elo", "ログイン回数", "対局回数", "ステータス", "対戦相手", "メール", "登録日"]
         self.tree = Sheet(tree_frame,
             headers=self._admin_headers, data=[],
-            show_x_scrollbar=False, show_y_scrollbar=True,
+            show_x_scrollbar=True, show_y_scrollbar=True,
             show_row_index=False)
         self.tree.pack(fill="both", expand=True)
         self.tree.set_options(
@@ -432,10 +554,11 @@ class AdminApp:
             "rc_insert_column", "rc_delete_column",
             "copy", "cut", "paste", "undo", "delete")
         self._admin_col_widths_set = False
-        for i, w in enumerate([40, 130, 120, 110, 100, 70, 80, 100, 60, 160]):
+        for i, w in enumerate([40, 130, 120, 110, 100, 70, 90, 90, 110, 100, 180, 160]):
             self.tree.column_width(column=i, width=w)
         self._highlighted_row = None
-        self._sort_column = None
+        # 初期表示は ID 列で昇順に固定（IDとアカウント対応を追いやすくする）
+        self._sort_column = 0
         self._sort_ascending = True
         self.tree.extra_bindings("cell_select", self._on_cell_select)
         self.tree.CH.bind("<Button-1>", self._on_header_mouse_down, add="+")
@@ -486,13 +609,7 @@ class AdminApp:
         self._fischer_inc_var = tk.StringVar(value=str(current_fischer_inc))
         self._bot_delay_var = tk.StringVar(value=str(current_bot_delay))
 
-        cfg = {}
-        try:
-            if os.path.exists(self._config_path):
-                with open(self._config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-        except Exception:
-            cfg = {}
+        cfg = self._load_config_safely()
 
         time_row = tk.Frame(self._admin_tab_time, bg=_tab_bg)
         time_row.pack(fill="x", padx=18, pady=16)
@@ -544,15 +661,15 @@ class AdminApp:
         self._time_convert_result_label.pack(anchor="w", pady=(2, 0))
 
         def _refresh_time_preview(*_args):
-            wait_m = _to_int(self._timeout_var.get(), 3, min_value=0, max_value=600)
-            bot_s = _to_int(self._bot_delay_var.get(), 30, min_value=0, max_value=36000)
-            fish_m = _to_int(self._fischer_main_var.get(), 5, min_value=0, max_value=600)
-            fish_inc = _to_int(self._fischer_inc_var.get(), 10, min_value=0, max_value=36000)
+            wait_s = _duration_seconds_from_text(self._timeout_var.get(), default_seconds=180)
+            bot_s = _duration_seconds_from_text(self._bot_delay_var.get(), default_seconds=30)
+            fish_main_s = _duration_seconds_from_text(self._fischer_main_var.get(), default_seconds=300)
+            fish_inc = _duration_seconds_from_text(self._fischer_inc_var.get(), default_seconds=10)
             lines = [
-                "申請待時間: {}".format(_convert_time_string_vba_style("0.{}.0".format(wait_m))),
-                "ロボ出現時間: {}".format(_convert_time_string_vba_style("0.0.{}".format(bot_s))),
-                "フィッシャー持ち時間: {}".format(_convert_time_string_vba_style("0.{}.0".format(fish_m))),
-                "フィッシャー加算時間: {}".format(_convert_time_string_vba_style("0.0.{}".format(fish_inc))),
+                "申請待時間: {}".format(_seconds_to_japanese_hms_text(wait_s)),
+                "ロボ出現時間: {}".format(_seconds_to_japanese_hms_text(bot_s)),
+                "フィッシャー持ち時間: {}".format(_seconds_to_japanese_hms_text(fish_main_s)),
+                "フィッシャー加算時間: {}".format(_seconds_to_japanese_hms_text(fish_inc)),
             ]
             self._time_preview_label.config(text="\n".join(lines))
             src = self._time_convert_input_var.get()
@@ -569,20 +686,18 @@ class AdminApp:
         self._time_convert_input_var.trace_add("write", _refresh_time_preview)
         _refresh_time_preview()
 
-        # Access互換: テキストボックスがフォーカスを失う直前に数値文字を正規化
-        def _normalize_int_var_on_focusout(var, default_value, min_value, max_value, unit="sec"):
-            sec = _duration_seconds_from_text(var.get(), default_seconds=default_value)
-            if unit == "min":
-                n = max(0, sec // 60)
-            else:
-                n = max(0, sec)
-            # フォーカスアウト時は変換結果を優先し、保存時に最終クランプする
-            var.set(str(n))
+        # Access互換: フォーカスアウト時に必ず時間文字へ正規化して表示を変える
+        def _normalize_time_var_on_focusout(var):
+            raw = str(var.get() or "").strip()
+            if not raw:
+                return
+            sec = _duration_seconds_from_text(raw, default_seconds=0)
+            var.set(_seconds_to_japanese_hms_text(sec))
 
-        timeout_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._timeout_var, 180, 1, 10, unit="min"))
-        bot_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._bot_delay_var, 30, 10, 600, unit="sec"))
-        fmain_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._fischer_main_var, 300, 1, 30, unit="min"))
-        finc_ent.bind("<FocusOut>", lambda _e: _normalize_int_var_on_focusout(self._fischer_inc_var, 10, 1, 300, unit="sec"))
+        timeout_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._timeout_var))
+        bot_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._bot_delay_var))
+        fmain_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._fischer_main_var))
+        finc_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._fischer_inc_var))
 
         # H.M.S 入力はフォーカスアウト時に「正規化H.M.S」に補正し、変換結果を即反映
         def _on_hms_focusout(_e):
@@ -649,13 +764,17 @@ class AdminApp:
                  fg=T("text_primary"), bg=_tab_bg).pack(anchor="w", pady=(0, 6))
 
         self._board_frame_height_var = tk.StringVar(
-            value=str(_to_float(cfg.get("board_frame_height", 0.78), 0.78, min_value=0.10, max_value=1.00)))
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("board_frame_height", 0.78), 0.78)))
         self._match_apply_height_var = tk.StringVar(
-            value=str(_to_float(cfg.get("match_apply_height", 0.40), 0.40, min_value=0.10, max_value=1.00)))
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("match_apply_height", 0.40), 0.40)))
         self._challenge_accept_height_var = tk.StringVar(
-            value=str(_to_float(cfg.get("challenge_accept_height", 0.40), 0.40, min_value=0.10, max_value=1.00)))
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("challenge_accept_height", 0.40), 0.40)))
         self._sakura_dialog_height_var = tk.StringVar(
-            value=str(_to_float(cfg.get("sakura_dialog_height", 0.36), 0.36, min_value=0.10, max_value=1.00)))
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("sakura_dialog_height", 0.36), 0.36)))
 
         def _size_line(parent, label, var):
             row = tk.Frame(parent, bg=_tab_bg)
@@ -663,13 +782,24 @@ class AdminApp:
             tk.Label(row, text=label, width=18, anchor="w",
                      font=("Yu Gothic UI", 10),
                      fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 10))
-            tk.Entry(row, textvariable=var, width=8,
-                     font=("Yu Gothic UI", 10)).pack(side="left")
+            ent = tk.Entry(row, textvariable=var, width=8,
+                           font=("Yu Gothic UI", 10))
+            ent.pack(side="left")
+            return ent
 
-        _size_line(size_frame, "基盤フレームの高さ", self._board_frame_height_var)
-        _size_line(size_frame, "対局申込画面の高さ", self._match_apply_height_var)
-        _size_line(size_frame, "挑戦状受付画面の高さ", self._challenge_accept_height_var)
-        _size_line(size_frame, "桜吹雪ダイアログの高さ", self._sakura_dialog_height_var)
+        board_ent = _size_line(size_frame, "基盤フレームの高さ", self._board_frame_height_var)
+        match_ent = _size_line(size_frame, "対局申込画面の高さ", self._match_apply_height_var)
+        challenge_ent = _size_line(size_frame, "挑戦状受付画面の高さ", self._challenge_accept_height_var)
+        sakura_ent = _size_line(size_frame, "桜吹雪ダイアログの高さ", self._sakura_dialog_height_var)
+
+        def _normalize_height_percent_on_focusout(var, default_ratio):
+            ratio = _height_ratio_from_text(var.get(), default_ratio)
+            var.set(_height_ratio_to_percent_text(ratio))
+
+        board_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._board_frame_height_var, 0.78))
+        match_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._match_apply_height_var, 0.40))
+        challenge_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._challenge_accept_height_var, 0.40))
+        sakura_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._sakura_dialog_height_var, 0.36))
 
         # --- テーマ設定（サイズ・位置タブ）---
         theme_frame = tk.LabelFrame(self._admin_tab_size_pos, text="テーマ",
@@ -839,57 +969,43 @@ class AdminApp:
             messagebox.showerror("再起動エラー", str(e))
 
     def _load_config_safely(self):
-        cfg = {}
-        try:
-            if os.path.exists(self._config_path):
-                with open(self._config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-        except Exception:
-            cfg = {}
-        return cfg
+        cfg = self._ws.load("admin_config", {})
+        return cfg if isinstance(cfg, dict) else {}
 
     def _save_config_safely(self, cfg):
         try:
-            with open(self._config_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False)
+            self._ws.save("admin_config", cfg)
         except Exception:
             pass
 
     def _apply_theme(self):
         new_theme = self._theme_var.get()
         self._api_put("/api/settings", {"theme": new_theme})
-        try:
-            cfg = {}
-            if os.path.exists(self._config_path):
-                with open(self._config_path, "r", encoding="utf-8") as f:
-                    cfg = json.load(f)
-            cfg["theme"] = new_theme
-            with open(self._config_path, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False)
-        except Exception:
-            pass
+        cfg = self._load_config_safely()
+        cfg["theme"] = new_theme
+        self._save_config_safely(cfg)
 
     def _apply_timeout(self):
-        minutes = _to_int(self._timeout_var.get(), 3, min_value=1, max_value=10)
-        self._timeout_var.set(str(minutes))
+        seconds = _duration_seconds_from_text(self._timeout_var.get(), default_seconds=180)
+        minutes = _to_int(seconds // 60, 3, min_value=1, max_value=10)
         self._api_put("/api/settings", {"offer_timeout_min": minutes})
         cfg = self._load_config_safely()
         cfg["offer_timeout_min"] = minutes
         self._save_config_safely(cfg)
 
     def _apply_bot_delay(self):
-        seconds = _to_int(self._bot_delay_var.get(), 30, min_value=10, max_value=600)
-        self._bot_delay_var.set(str(seconds))
+        raw_seconds = _duration_seconds_from_text(self._bot_delay_var.get(), default_seconds=30)
+        seconds = _to_int(raw_seconds, 30, min_value=10, max_value=600)
         self._api_put("/api/settings", {"bot_offer_delay": seconds})
         cfg = self._load_config_safely()
         cfg["bot_offer_delay"] = seconds
         self._save_config_safely(cfg)
 
     def _apply_fischer(self):
-        main_min = _to_int(self._fischer_main_var.get(), 5, min_value=1, max_value=30)
-        inc_sec = _to_int(self._fischer_inc_var.get(), 10, min_value=1, max_value=300)
-        self._fischer_main_var.set(str(main_min))
-        self._fischer_inc_var.set(str(inc_sec))
+        main_raw_seconds = _duration_seconds_from_text(self._fischer_main_var.get(), default_seconds=300)
+        main_min = _to_int(main_raw_seconds // 60, 5, min_value=1, max_value=30)
+        inc_raw_seconds = _duration_seconds_from_text(self._fischer_inc_var.get(), default_seconds=10)
+        inc_sec = _to_int(inc_raw_seconds, 10, min_value=1, max_value=300)
         main_sec = main_min * 60
         self._api_put("/api/settings", {"fischer_main_time": main_sec, "fischer_increment": inc_sec})
         cfg = self._load_config_safely()
@@ -915,19 +1031,25 @@ class AdminApp:
 
     def _apply_size_position_defaults(self):
         cfg = self._load_config_safely()
-        board_h = _to_float(self._board_frame_height_var.get(), 0.78, min_value=0.10, max_value=1.00)
-        match_h = _to_float(self._match_apply_height_var.get(), 0.40, min_value=0.10, max_value=1.00)
-        challenge_h = _to_float(self._challenge_accept_height_var.get(), 0.40, min_value=0.10, max_value=1.00)
-        sakura_h = _to_float(self._sakura_dialog_height_var.get(), 0.36, min_value=0.10, max_value=1.00)
-        self._board_frame_height_var.set(str(board_h))
-        self._match_apply_height_var.set(str(match_h))
-        self._challenge_accept_height_var.set(str(challenge_h))
-        self._sakura_dialog_height_var.set(str(sakura_h))
+        board_h = _height_ratio_from_text(self._board_frame_height_var.get(), 0.78)
+        match_h = _height_ratio_from_text(self._match_apply_height_var.get(), 0.40)
+        challenge_h = _height_ratio_from_text(self._challenge_accept_height_var.get(), 0.40)
+        sakura_h = _height_ratio_from_text(self._sakura_dialog_height_var.get(), 0.36)
+        self._board_frame_height_var.set(_height_ratio_to_percent_text(board_h))
+        self._match_apply_height_var.set(_height_ratio_to_percent_text(match_h))
+        self._challenge_accept_height_var.set(_height_ratio_to_percent_text(challenge_h))
+        self._sakura_dialog_height_var.set(_height_ratio_to_percent_text(sakura_h))
         cfg["board_frame_height"] = board_h
         cfg["match_apply_height"] = match_h
         cfg["challenge_accept_height"] = challenge_h
         cfg["sakura_dialog_height"] = sakura_h
         self._save_config_safely(cfg)
+        self._api_put("/api/settings", {
+            "board_frame_height": board_h,
+            "match_apply_height": match_h,
+            "challenge_accept_height": challenge_h,
+            "sakura_dialog_height": sakura_h,
+        })
 
     # =================================================================
     # テーブル操作
@@ -1049,7 +1171,7 @@ class AdminApp:
                 return
             new_elo = _to_int(elo_txt, 0, min_value=0, max_value=5000)
             self._api_put("/api/user/{}/elo".format(handle),
-                          {"elo": new_elo, "token": "admin"})
+                          {"elo": new_elo, "token": "admin", "count_match": False})
             dlg.destroy()
             self._refresh()
 
@@ -1222,14 +1344,18 @@ class AdminApp:
             user_id = u.get("id", "")
             opponent = u.get("opponent", "")
             email = u.get("email", "")
+            login_count = _to_int(u.get("login_count", 0), 0, min_value=0)
+            match_count = _to_int(u.get("match_count", 0), 0, min_value=0)
             rows.append([
                 user_id, handle, u.get("real_name", ""),
-                pw_plain, display_rank, f"{elo_int:,}", status_text, opponent, email, created
+                pw_plain, display_rank, f"{elo_int:,}", login_count, match_count,
+                status_text, opponent, email, created
             ])
-        for bot_name, bot_info in self.AI_BOTS.items():
+        # 実ユーザーIDと衝突しにくいよう、ボットは 900000 番台の正数IDを割り当てる
+        for bot_idx, (bot_name, bot_info) in enumerate(self.AI_BOTS.items(), start=1):
             rows.append([
-                "", bot_name, "AI",
-                "", bot_info["rank"], f"{bot_info['elo']:,}", "オンライン", "", "", ""
+                900000 + bot_idx, bot_name, "AI",
+                "", bot_info["rank"], f"{bot_info['elo']:,}", 0, 0, "オンライン", "", "", ""
             ])
             online_count += 1
 
@@ -1243,13 +1369,19 @@ class AdminApp:
                     selected_handle = data[sel.row][1]
             self.tree.set_sheet_data(rows, redraw=False, reset_col_positions=False)
             try:
-                self.tree.align_columns(columns=[0, 5], align="e")
+                self.tree.align_columns(columns=[0, 5, 6, 7], align="e")
             except Exception:
                 pass
             if not self._admin_col_widths_set:
                 ncols = len(self._admin_headers)
-                defaults = [40, 130, 120, 110, 100, 70, 110, 100, 180, 160]
+                defaults = [40, 130, 120, 110, 100, 70, 90, 90, 110, 100, 180, 160]
                 self._ws.restore_column_widths(self.tree, ncols, defaults)
+                # 過去設定に極端な幅が保存されているケースの保険
+                try:
+                    if self.tree.column_width(column=10) < 100:
+                        self.tree.column_width(column=10, width=180)
+                except Exception:
+                    pass
                 self._admin_col_widths_set = True
             if self._sort_column is not None:
                 data = self.tree.get_sheet_data()
