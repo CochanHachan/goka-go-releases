@@ -516,6 +516,7 @@ class UpdateEloRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _settings_store_self_check()
     try:
         _st = _load_settings()
         _bod = _st.get("bot_offer_delay")
@@ -837,8 +838,26 @@ async def get_online():
 # ---------------------------------------------------------------------------
 # グローバル設定 API
 # ---------------------------------------------------------------------------
-SETTINGS_PATH = Path(os.environ.get("GOKA_SETTINGS_PATH",
-                     str(Path(__file__).parent / "app_settings.json")))
+SETTINGS_PATH = Path(
+    os.environ.get(
+        "GOKA_SETTINGS_PATH",
+        str(Path(__file__).resolve().parent / "app_settings.json"),
+    )
+).expanduser()
+
+
+def _default_settings() -> dict:
+    return {
+        "theme": "light",
+        "offer_timeout_min": 3,
+        "fischer_main_time": 300,
+        "fischer_increment": 10,
+        "bot_offer_delay": 30,
+        "board_frame_height": 0.78,
+        "match_apply_height": 0.40,
+        "challenge_accept_height": 0.40,
+        "sakura_dialog_height": 0.36,
+    }
 
 
 def _load_settings() -> dict:
@@ -846,18 +865,57 @@ def _load_settings() -> dict:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
-        return {"theme": "light", "offer_timeout_min": 3,
-                "fischer_main_time": 300, "fischer_increment": 10,
-                "bot_offer_delay": 30,
-                "board_frame_height": 0.78,
-                "match_apply_height": 0.40,
-                "challenge_accept_height": 0.40,
-                "sakura_dialog_height": 0.36}
+        return _default_settings()
 
 
-def _save_settings(settings: dict):
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(settings, f, ensure_ascii=False, indent=2)
+def _save_settings(settings: dict) -> None:
+    """設定をディスクへ永続化（同一ディレクトリへ原子置換）。"""
+    path = SETTINGS_PATH.resolve()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.exception("settings directory not writable: %s", path.parent)
+        raise
+    payload = json.dumps(settings, ensure_ascii=False, indent=2)
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            if tmp.is_file():
+                tmp.unlink()
+        except OSError:
+            pass
+        logger.exception("failed to write settings file: %s", path)
+        raise
+
+
+def _settings_store_self_check() -> None:
+    """起動時: 保存先パスと書き込み可否をログに残す（再起動後の設定消失の切り分け用）。"""
+    path = SETTINGS_PATH.resolve()
+    logger.info("settings store path (resolved)=%s", path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        probe = path.with_name(".goka_settings_write_probe")
+        with open(probe, "w", encoding="utf-8") as f:
+            f.write("ok")
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            probe.unlink()
+        except FileNotFoundError:
+            pass
+        logger.info("settings store directory is writable: %s", path.parent)
+    except OSError as e:
+        logger.error(
+            "settings store is NOT writable (admin PUT /api/settings will fail): %s (%s)",
+            path.parent,
+            e,
+        )
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -881,10 +939,18 @@ async def get_settings():
 @app.get("/api/runtime-info")
 async def get_runtime_info():
     """管理者画面向け: 接続先の環境とDB識別情報を返す。"""
+    _rp = SETTINGS_PATH.resolve()
+    _ok = False
+    try:
+        _ok = os.access(_rp.parent, os.W_OK)
+    except Exception:
+        pass
     return {
         "env": _ENV_LABEL,
         "db_path": _db_runtime_label(),
         "settings_path": str(SETTINGS_PATH),
+        "settings_path_resolved": str(_rp),
+        "settings_parent_writable": _ok,
         "port": PORT,
     }
 
@@ -911,7 +977,13 @@ async def update_settings(req: UpdateSettingsRequest):
         settings["challenge_accept_height"] = max(0.10, min(1.00, float(req.challenge_accept_height)))
     if req.sakura_dialog_height is not None:
         settings["sakura_dialog_height"] = max(0.10, min(1.00, float(req.sakura_dialog_height)))
-    _save_settings(settings)
+    try:
+        _save_settings(settings)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail="settings persist failed: {}".format(e),
+        ) from e
     logger.info("Settings updated: %s", settings)
     return {"success": True, "settings": settings}
 
