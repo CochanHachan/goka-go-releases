@@ -24,14 +24,14 @@ APP_DATA_SUBDIR = "GokaGoTest" if IS_BETA_EDITION else "GokaGo"
 # ---------------------------------------------------------------------------
 _SERVER_CONFIG = {
     "production": {
-        "cloud_server_url": "ws://34.85.118.112:8000",
-        "api_base_url":     "http://34.85.118.112:8000",
+        "cloud_server_url": "ws://goka-igo.com:8000",
+        "api_base_url":     "http://goka-igo.com:8000",
         "staging_label":    "",
         "app_name":         "碁華 Goka GO",
     },
     "staging": {
-        "cloud_server_url": "ws://136.110.101.14:8000",
-        "api_base_url":     "http://136.110.101.14:8000",
+        "cloud_server_url": "ws://staging.goka-igo.com:8001",
+        "api_base_url":     "http://staging.goka-igo.com:8001",
         "staging_label":    "[STAGING] ",
         "app_name":         "碁華 Goka GO [STAGING]",
     },
@@ -63,18 +63,18 @@ def _validate_env():
         raise RuntimeError(
             "ビルド設定エラー: _APP_EDITION が beta のときは _ENV を staging にしてください。"
             "（テスト用クライアントは本番 API/DB に接続しません）")
-    _prod_ip = "34.85.118.112"
-    _staging_ip = "136.110.101.14"
+    _prod_host = "goka-igo.com"
+    _staging_host = "staging.goka-igo.com"
     _urls = CLOUD_SERVER_URL + " " + API_BASE_URL
 
-    if STAGING_LABEL and _prod_ip in _urls:
+    if STAGING_LABEL and _prod_host in _urls and _staging_host not in _urls:
         raise RuntimeError(
             "環境設定エラー: STAGING_LABEL が設定されていますが、"
-            "URLが本番サーバー({})を指しています。".format(_prod_ip))
-    if not STAGING_LABEL and _staging_ip in _urls:
+            "URLが本番サーバー({})を指しています。".format(_prod_host))
+    if not STAGING_LABEL and _staging_host in _urls:
         raise RuntimeError(
             "環境設定エラー: STAGING_LABEL が空ですが、"
-            "URLがステージングサーバー({})を指しています。".format(_staging_ip))
+            "URLがステージングサーバー({})を指しています。".format(_staging_host))
 
     # CLOUD_SERVER_URL と API_BASE_URL のホストが一致するか
     import re
