@@ -90,6 +90,10 @@ def migrate_users(pg_conn, sqlite_path: str):
         password_hash = row["password_hash"]
         salt = row["salt"]
         password_enc = row["password_enc"] if "password_enc" in col_names else ""
+        if not password_enc and "password_plain" in col_names:
+            plain = row["password_plain"]
+            if plain:
+                password_enc = "B64:" + base64.b64encode(plain.encode("utf-8")).decode("ascii")
         elo = row["elo"] if "elo" in col_names else (row["elo_rating"] if "elo_rating" in col_names else 0)
         rank = row["rank"] if "rank" in col_names else "30級"
         language = row["language"] if "language" in col_names else "ja"
