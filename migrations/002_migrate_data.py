@@ -95,6 +95,7 @@ def migrate_users(pg_conn, sqlite_path: str):
         language = row["language"] if "language" in col_names else "ja"
         created_at = row["created_at"] if "created_at" in col_names else None
 
+        pg_cur.execute("SAVEPOINT sp_user")
         try:
             # 1) users テーブル
             pg_cur.execute("""
@@ -106,6 +107,7 @@ def migrate_users(pg_conn, sqlite_path: str):
 
             result = pg_cur.fetchone()
             if result is None:
+                pg_cur.execute("RELEASE SAVEPOINT sp_user")
                 logger.info("  [既存] %s — スキップ", handle)
                 continue
             user_id = result[0]
@@ -131,12 +133,13 @@ def migrate_users(pg_conn, sqlite_path: str):
                 ON CONFLICT (user_id) DO NOTHING
             """, (user_id, language))
 
+            pg_cur.execute("RELEASE SAVEPOINT sp_user")
             migrated += 1
             logger.info("  [OK] %s (id=%d, rank=%s)", handle, user_id, rank)
 
         except Exception as e:
             logger.error("  [ERR] %s — %s", handle, e)
-            pg_conn.rollback()
+            pg_cur.execute("ROLLBACK TO SAVEPOINT sp_user")
             continue
 
     pg_conn.commit()
@@ -246,6 +249,7 @@ def migrate_ui_settings(pg_conn, ui_db_path: str):
         except (json.JSONDecodeError, TypeError):
             setting_value = raw_value  # そのまま文字列として格納
 
+        pg_cur.execute("SAVEPOINT sp_ui")
         try:
             pg_cur.execute("""
                 INSERT INTO user_ui_settings (user_id, screen_name, setting_key, setting_value, updated_at)
@@ -253,10 +257,11 @@ def migrate_ui_settings(pg_conn, ui_db_path: str):
                 ON CONFLICT (user_id, screen_name, setting_key)
                 DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
             """, (default_user_id, screen_name, setting_key, json.dumps(setting_value, ensure_ascii=False)))
+            pg_cur.execute("RELEASE SAVEPOINT sp_ui")
             migrated += 1
         except Exception as e:
             logger.error("  [ERR] %s/%s — %s", screen_name, setting_key, e)
-            pg_conn.rollback()
+            pg_cur.execute("ROLLBACK TO SAVEPOINT sp_ui")
 
     pg_conn.commit()
     sq_conn.close()
@@ -294,6 +299,7 @@ def migrate_game_records(pg_conn, sqlite_path: str):
     migrated = 0
 
     for row in rows:
+        pg_cur.execute("SAVEPOINT sp_game")
         try:
             played_at = row["played_at"]
             black_name = row["black_name"]
@@ -355,11 +361,12 @@ def migrate_game_records(pg_conn, sqlite_path: str):
                 ON CONFLICT DO NOTHING
             """, (game_id, sgf_text, played_at))
 
+            pg_cur.execute("RELEASE SAVEPOINT sp_game")
             migrated += 1
 
         except Exception as e:
             logger.error("  [ERR] record id=%s — %s", row["id"], e)
-            pg_conn.rollback()
+            pg_cur.execute("ROLLBACK TO SAVEPOINT sp_game")
 
     pg_conn.commit()
     sq_conn.close()
