@@ -665,13 +665,13 @@ _SETTINGS_COLUMNS = ("theme", "offer_timeout_min", "fischer_main_time",
 
 def _load_settings() -> dict:
     """app_settings テーブルから設定を読み込む。"""
+    conn = None
+    cur = None
     try:
         conn = get_db_connection()
         cur = _dict_cursor(conn)
         cur.execute("SELECT * FROM app_settings WHERE id = 1")
         row = cur.fetchone()
-        cur.close()
-        conn.close()
         if row:
             result = {}
             for key in _SETTINGS_COLUMNS:
@@ -681,6 +681,11 @@ def _load_settings() -> dict:
         return dict(_DEFAULT_SETTINGS)
     except Exception:
         return dict(_DEFAULT_SETTINGS)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 def _save_settings(settings: dict):

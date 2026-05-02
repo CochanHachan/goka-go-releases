@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   offer_timeout_min       INTEGER NOT NULL DEFAULT 3 CHECK (offer_timeout_min BETWEEN 1 AND 120),
   fischer_main_time       INTEGER NOT NULL DEFAULT 300 CHECK (fischer_main_time BETWEEN 60 AND 7200),
   fischer_increment       INTEGER NOT NULL DEFAULT 10 CHECK (fischer_increment BETWEEN 1 AND 300),
-  bot_offer_delay         INTEGER NOT NULL DEFAULT 30 CHECK (bot_offer_delay BETWEEN 10 AND 600),
+  bot_offer_delay         INTEGER NOT NULL DEFAULT 60 CHECK (bot_offer_delay BETWEEN 10 AND 600),
   board_frame_height      NUMERIC(5,4) NOT NULL DEFAULT 0.78 CHECK (board_frame_height BETWEEN 0.10 AND 1.00),
   match_apply_height      NUMERIC(5,4) NOT NULL DEFAULT 0.40 CHECK (match_apply_height BETWEEN 0.10 AND 1.00),
   challenge_accept_height NUMERIC(5,4) NOT NULL DEFAULT 0.40 CHECK (challenge_accept_height BETWEEN 0.10 AND 1.00),
