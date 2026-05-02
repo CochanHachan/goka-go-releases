@@ -38,10 +38,10 @@ CREATE TABLE IF NOT EXISTS spectator_sessions (
   game_id             BIGINT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   joined_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  left_at             TIMESTAMPTZ NULL,
-  UNIQUE (game_id, user_id)
+  left_at             TIMESTAMPTZ NULL
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_spectator_active ON spectator_sessions(game_id, user_id) WHERE left_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_spectator_sessions_game_id ON spectator_sessions(game_id);
 CREATE INDEX IF NOT EXISTS idx_spectator_sessions_user_id ON spectator_sessions(user_id);
 
