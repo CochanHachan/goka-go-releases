@@ -4,7 +4,8 @@
 -- 説明: 観戦機能に必要なテーブルを追加する。
 --   - live_game_state: 進行中対局のリアルタイム状態
 --   - spectator_sessions: 観戦セッション管理
---   - saved_spectator_records: 観戦棋譜の保存
+-- 棋譜保存はローカルファイルシステム（SGF）に保存する方式のため、
+-- DBテーブルは不要。
 -- 実行: psql -d goka -f migrations/003_spectator_tables.sql
 -- ============================================================
 
@@ -43,21 +44,5 @@ CREATE TABLE IF NOT EXISTS spectator_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_spectator_sessions_game_id ON spectator_sessions(game_id);
 CREATE INDEX IF NOT EXISTS idx_spectator_sessions_user_id ON spectator_sessions(user_id);
-
--- ============================================================
--- 14) saved_spectator_records（観戦棋譜の保存）
--- ユーザーが観戦した対局の棋譜を保存する。
--- ============================================================
-CREATE TABLE IF NOT EXISTS saved_spectator_records (
-  id                  BIGSERIAL PRIMARY KEY,
-  user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  game_id             BIGINT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-  sgf_text            TEXT NOT NULL DEFAULT '',
-  memo                TEXT NOT NULL DEFAULT '',
-  saved_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (user_id, game_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_saved_spectator_records_user_id ON saved_spectator_records(user_id);
 
 COMMIT;
