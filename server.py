@@ -20,7 +20,6 @@ import logging
 import os
 import secrets
 import shutil
-import sqlite3
 import subprocess
 import sys
 import time
@@ -28,6 +27,13 @@ import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Optional
+
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    print("psycopg2 が必要です: pip install psycopg2-binary")
+    raise
 
 try:
     import uvicorn
@@ -56,8 +62,7 @@ logger = logging.getLogger("goka_server")
 # ---------------------------------------------------------------------------
 # 定数（環境変数で上書き可能 — ステージング環境用）
 # ---------------------------------------------------------------------------
-DB_PATH = Path(os.environ.get("GOKA_DB_PATH",
-               str(Path(__file__).parent / "igo_users.db")))
+PG_DSN = os.environ.get("GOKA_PG_DSN", "dbname=goka")
 PORT = int(os.environ.get("GOKA_PORT", "8000"))
 _ENV_LABEL = os.environ.get("GOKA_ENV", "production")
 
@@ -220,52 +225,31 @@ def _find_closest_bot(elo: float, lang: str = "ja") -> Optional[str]:
 # ---------------------------------------------------------------------------
 # データベース初期化
 # ---------------------------------------------------------------------------
-def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
+def get_db_connection():
+    """PostgreSQL 接続を返す。RealDictCursor を使用してカラム名でアクセス可能にする。"""
+    conn = psycopg2.connect(PG_DSN)
     return conn
 
 
+def _dict_cursor(conn):
+    """RealDictCursor を返す。"""
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+
 def init_db():
-    """起動時にDBとテーブルを自動作成する。"""
+    """起動時にDB接続を確認し、password_hash/salt の不整合を自動修復する。
+    テーブルは 001_initial_schema.sql で作成済みの前提。
+    """
     conn = get_db_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            real_name       TEXT    NOT NULL,
-            handle_name     TEXT    NOT NULL UNIQUE,
-            password_hash   TEXT    NOT NULL,
-            salt            TEXT    NOT NULL,
-            password_enc    TEXT    NOT NULL DEFAULT '',
-            elo             REAL    NOT NULL DEFAULT 0,
-            rank            TEXT    NOT NULL DEFAULT '30級',
-            language        TEXT    NOT NULL DEFAULT 'ja',
-            email           TEXT    NOT NULL DEFAULT '',
-            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    # password_enc カラムが無い既存DBに追加
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN password_enc TEXT NOT NULL DEFAULT ''")
-        conn.commit()
-        logger.info("Added password_enc column to users table")
-    except sqlite3.OperationalError:
-        pass  # 既にカラムが存在する場合
-    # email カラムが無い既存DBに追加
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
-        conn.commit()
-        logger.info("Added email column to users table")
-    except sqlite3.OperationalError:
-        pass  # 既にカラムが存在する場合
-    conn.commit()
+    cur = _dict_cursor(conn)
 
     # 既存データ移行: password_enc(B64) を正として password_hash/salt の不整合を自動修復
-    # （正しいパスワード入力でもログイン不可になる状態をサーバー側で回収）
     try:
-        rows = conn.execute(
-            "SELECT handle_name, password_hash, salt, password_enc FROM users"
-        ).fetchall()
+        cur.execute(
+            "SELECT u.handle_name, a.password_hash, a.salt, a.password_enc "
+            "FROM users u JOIN user_auth a ON u.id = a.user_id"
+        )
+        rows = cur.fetchall()
         repaired = 0
         for row in rows:
             plain = _b64_decode_password(row["password_enc"])
@@ -276,19 +260,25 @@ def init_db():
                 continue
             new_salt = secrets.token_hex(16)
             new_hash = hash_password(plain, new_salt)
-            conn.execute(
-                "UPDATE users SET salt = ?, password_hash = ? WHERE handle_name = ?",
+            cur.execute(
+                "UPDATE user_auth SET salt = %s, password_hash = %s "
+                "FROM users WHERE user_auth.user_id = users.id AND users.handle_name = %s",
                 (new_salt, new_hash, row["handle_name"])
             )
             repaired += 1
         if repaired:
             conn.commit()
             logger.warning("Repaired password hash mismatch users: %d", repaired)
+        else:
+            conn.rollback()
     except Exception as e:
+        conn.rollback()
         logger.warning("Password hash auto-repair skipped: %s", e)
+    finally:
+        cur.close()
+        conn.close()
 
-    conn.close()
-    logger.info("Database initialized: %s", DB_PATH)
+    logger.info("Database initialized: PostgreSQL (%s)", PG_DSN.split("@")[-1] if "@" in PG_DSN else PG_DSN)
 
 
 # ---------------------------------------------------------------------------
@@ -347,8 +337,8 @@ class UpdateEloRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    logger.info("Goka GO server [%s] starting on port %d (db=%s)",
-               _ENV_LABEL, PORT, DB_PATH)
+    logger.info("Goka GO server [%s] starting on port %d (pg=%s)",
+               _ENV_LABEL, PORT, PG_DSN)
     yield
     logger.info("Goka GO server [%s] shutting down.", _ENV_LABEL)
 
@@ -380,20 +370,34 @@ async def register(req: RegisterRequest):
     pw_enc = _b64_encode_password(req.password)
 
     conn = get_db_connection()
+    cur = _dict_cursor(conn)
     try:
-        # ELO 初期値: クライアントから送られたeloを優先、なければrankから推定
         elo = req.elo if req.elo is not None else _rank_to_initial_elo(req.rank)
-        conn.execute(
-            "INSERT INTO users (real_name, handle_name, password_hash, salt, password_enc, elo, rank, email) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (req.real_name, req.handle_name, pw_hash, salt, pw_enc, elo, req.rank, req.email)
+        cur.execute(
+            "INSERT INTO users (real_name, handle_name, email) VALUES (%s, %s, %s) RETURNING id",
+            (req.real_name, req.handle_name, req.email)
+        )
+        user_id = cur.fetchone()["id"]
+        cur.execute(
+            "INSERT INTO user_auth (user_id, password_hash, salt, password_enc) VALUES (%s, %s, %s, %s)",
+            (user_id, pw_hash, salt, pw_enc)
+        )
+        cur.execute(
+            "INSERT INTO user_stats (user_id, elo, rank) VALUES (%s, %s, %s)",
+            (user_id, elo, req.rank)
+        )
+        cur.execute(
+            "INSERT INTO user_preferences (user_id, language) VALUES (%s, %s)",
+            (user_id, "ja")
         )
         conn.commit()
         logger.info("Registered new user: %s", req.handle_name)
         return {"success": True, "message": "登録しました"}
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        conn.rollback()
         return {"success": False, "message": "そのハンドルネームはすでに使用されています"}
     finally:
+        cur.close()
         conn.close()
 
 
@@ -401,11 +405,22 @@ async def register(req: RegisterRequest):
 async def login(req: LoginRequest):
     """ログイン。成功時にトークンを返す。"""
     conn = get_db_connection()
+    cur = _dict_cursor(conn)
     try:
-        row = conn.execute(
-            "SELECT * FROM users WHERE handle_name = ?", (req.handle_name,)
-        ).fetchone()
+        cur.execute(
+            "SELECT u.id, u.handle_name, u.real_name, "
+            "a.password_hash, a.salt, a.password_enc, "
+            "s.elo, s.rank, p.language "
+            "FROM users u "
+            "JOIN user_auth a ON u.id = a.user_id "
+            "LEFT JOIN user_stats s ON u.id = s.user_id "
+            "LEFT JOIN user_preferences p ON u.id = p.user_id "
+            "WHERE u.handle_name = %s",
+            (req.handle_name,)
+        )
+        row = cur.fetchone()
     finally:
+        cur.close()
         conn.close()
 
     if row is None:
@@ -413,7 +428,6 @@ async def login(req: LoginRequest):
 
     expected = hash_password(req.password, row["salt"])
     if expected != row["password_hash"]:
-        # サーバー側回収: password_enc(B64) と一致する場合はその場で hash/salt を修復
         plain = _b64_decode_password(row["password_enc"] if row["password_enc"] else "")
         if not plain or plain != req.password:
             return {"success": False, "token": "", "user": None, "message": "パスワードが正しくありません"}
@@ -421,11 +435,14 @@ async def login(req: LoginRequest):
             new_salt = secrets.token_hex(16)
             new_hash = hash_password(req.password, new_salt)
             conn_fix = get_db_connection()
-            conn_fix.execute(
-                "UPDATE users SET salt = ?, password_hash = ? WHERE handle_name = ?",
+            cur_fix = conn_fix.cursor()
+            cur_fix.execute(
+                "UPDATE user_auth SET salt = %s, password_hash = %s "
+                "FROM users WHERE user_auth.user_id = users.id AND users.handle_name = %s",
                 (new_salt, new_hash, req.handle_name)
             )
             conn_fix.commit()
+            cur_fix.close()
             conn_fix.close()
             logger.warning("Recovered login hash mismatch: %s", req.handle_name)
             row = dict(row)
@@ -435,14 +452,18 @@ async def login(req: LoginRequest):
             logger.warning("Failed to recover login hash mismatch: %s (%s)", req.handle_name, e)
             return {"success": False, "token": "", "user": None, "message": "パスワードが正しくありません"}
 
-    # 既存ユーザーの暗号化パスワードが未設定なら追記（移行用）
     if not (row["password_enc"] if row["password_enc"] else ""):
         try:
             pw_enc = _b64_encode_password(req.password)
             conn2 = get_db_connection()
-            conn2.execute("UPDATE users SET password_enc = ? WHERE handle_name = ?",
-                          (pw_enc, req.handle_name))
+            cur2 = conn2.cursor()
+            cur2.execute(
+                "UPDATE user_auth SET password_enc = %s "
+                "FROM users WHERE user_auth.user_id = users.id AND users.handle_name = %s",
+                (pw_enc, req.handle_name)
+            )
             conn2.commit()
+            cur2.close()
             conn2.close()
             logger.info("Migrated password_enc for: %s", req.handle_name)
         except Exception as e:
@@ -458,8 +479,8 @@ async def login(req: LoginRequest):
         "user": {
             "handle_name": row["handle_name"],
             "real_name": row["real_name"],
-            "elo": row["elo"],
-            "rank": row["rank"],
+            "elo": row["elo"] if row["elo"] else 0,
+            "rank": row["rank"] if row["rank"] else "30級",
             "language": row["language"] if row["language"] else "ja",
         }
     }
@@ -469,11 +490,19 @@ async def login(req: LoginRequest):
 async def get_users():
     """全ユーザー一覧を返す。"""
     conn = get_db_connection()
+    cur = _dict_cursor(conn)
     try:
-        rows = conn.execute(
-            "SELECT id, handle_name, real_name, elo, rank, password_enc, email, created_at FROM users ORDER BY elo DESC"
-        ).fetchall()
+        cur.execute(
+            "SELECT u.id, u.handle_name, u.real_name, u.email, u.created_at, "
+            "s.elo, s.rank, a.password_enc "
+            "FROM users u "
+            "LEFT JOIN user_stats s ON u.id = s.user_id "
+            "LEFT JOIN user_auth a ON u.id = a.user_id "
+            "ORDER BY s.elo DESC NULLS LAST"
+        )
+        rows = cur.fetchall()
     finally:
+        cur.close()
         conn.close()
 
     result = []
@@ -484,11 +513,11 @@ async def get_users():
             "id": row["id"],
             "handle_name": hn,
             "real_name": row["real_name"],
-            "elo": row["elo"],
-            "rank": row["rank"],
+            "elo": row["elo"] if row["elo"] else 0,
+            "rank": row["rank"] if row["rank"] else "30級",
             "password_enc": pw_enc,
             "email": row["email"] if row["email"] else "",
-            "created_at": row["created_at"],
+            "created_at": str(row["created_at"]) if row["created_at"] else "",
             "online": hn in connected_users,
             "status": user_status.get(hn, ""),
             "opponent": game_pairs.get(hn, ""),
@@ -503,19 +532,21 @@ async def update_elo(handle_name: str, req: UpdateEloRequest):
         raise HTTPException(status_code=401, detail="無効なトークンです")
 
     conn = get_db_connection()
+    cur = _dict_cursor(conn)
     try:
-        row = conn.execute(
-            "SELECT id FROM users WHERE handle_name = ?", (handle_name,)
-        ).fetchone()
+        cur.execute("SELECT id FROM users WHERE handle_name = %s", (handle_name,))
+        row = cur.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
 
-        conn.execute(
-            "UPDATE users SET elo = ? WHERE handle_name = ?",
+        cur.execute(
+            "UPDATE user_stats SET elo = %s "
+            "FROM users WHERE user_stats.user_id = users.id AND users.handle_name = %s",
             (req.elo, handle_name)
         )
         conn.commit()
     finally:
+        cur.close()
         conn.close()
 
     logger.info("ELO updated: %s -> %.1f", handle_name, req.elo)
@@ -535,11 +566,16 @@ async def update_user_language(req: UpdateLanguageRequest):
     if req.language not in ("ja", "en", "zh", "ko"):
         return {"success": False, "message": "Invalid language code"}
     conn = get_db_connection()
+    cur = conn.cursor()
     try:
-        conn.execute("UPDATE users SET language = ? WHERE handle_name = ?",
-                     (req.language, req.handle_name))
+        cur.execute(
+            "UPDATE user_preferences SET language = %s "
+            "FROM users WHERE user_preferences.user_id = users.id AND users.handle_name = %s",
+            (req.language, req.handle_name)
+        )
         conn.commit()
     finally:
+        cur.close()
         conn.close()
     # WebSocket接続中ユーザーのメモリ情報も即時反映
     if req.handle_name in ws_user_info:
@@ -566,28 +602,34 @@ class AdminSetUserPasswordRequest(BaseModel):
 async def update_password_enc(req: UpdatePasswordEncRequest):
     """管理者が暗号化パスワードを更新する（base64→Fernet移行用）。"""
     conn = get_db_connection()
+    cur = conn.cursor()
     try:
-        conn.execute("UPDATE users SET password_enc = ? WHERE handle_name = ?",
-                     (req.password_enc, req.handle_name))
+        cur.execute(
+            "UPDATE user_auth SET password_enc = %s "
+            "FROM users WHERE user_auth.user_id = users.id AND users.handle_name = %s",
+            (req.password_enc, req.handle_name)
+        )
         conn.commit()
     finally:
+        cur.close()
         conn.close()
     return {"success": True}
 
 
 @app.delete("/api/user/{handle_name}")
 async def delete_user(handle_name: str):
-    """ユーザーを削除する。"""
+    """ユーザーを削除する。CASCADE で関連テーブルも連動削除される。"""
     conn = get_db_connection()
+    cur = _dict_cursor(conn)
     try:
-        row = conn.execute(
-            "SELECT id FROM users WHERE handle_name = ?", (handle_name,)
-        ).fetchone()
+        cur.execute("SELECT id FROM users WHERE handle_name = %s", (handle_name,))
+        row = cur.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="ユーザーが見つかりません")
-        conn.execute("DELETE FROM users WHERE handle_name = ?", (handle_name,))
+        cur.execute("DELETE FROM users WHERE handle_name = %s", (handle_name,))
         conn.commit()
     finally:
+        cur.close()
         conn.close()
     logger.info("User deleted: %s", handle_name)
     return {"success": True}
@@ -607,25 +649,62 @@ async def get_online():
 
 
 # ---------------------------------------------------------------------------
-# グローバル設定 API
+# グローバル設定 API (app_settings テーブル)
 # ---------------------------------------------------------------------------
-SETTINGS_PATH = Path(os.environ.get("GOKA_SETTINGS_PATH",
-                     str(Path(__file__).parent / "app_settings.json")))
+_DEFAULT_SETTINGS = {
+    "theme": "light",
+    "offer_timeout_min": 3,
+    "fischer_main_time": 300,
+    "fischer_increment": 10,
+    "bot_offer_delay": 60,
+}
+
+_SETTINGS_COLUMNS = ("theme", "offer_timeout_min", "fischer_main_time",
+                      "fischer_increment", "bot_offer_delay")
 
 
 def _load_settings() -> dict:
+    """app_settings テーブルから設定を読み込む。"""
     try:
-        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+        conn = get_db_connection()
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT * FROM app_settings WHERE id = 1")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row:
+            result = {}
+            for key in _SETTINGS_COLUMNS:
+                val = row.get(key)
+                result[key] = val if val is not None else _DEFAULT_SETTINGS.get(key)
+            return result
+        return dict(_DEFAULT_SETTINGS)
     except Exception:
-        return {"theme": "light", "offer_timeout_min": 3,
-                "fischer_main_time": 300, "fischer_increment": 10,
-                "bot_offer_delay": 60}
+        return dict(_DEFAULT_SETTINGS)
 
 
 def _save_settings(settings: dict):
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(settings, f, ensure_ascii=False, indent=2)
+    """app_settings テーブルの個別カラムを更新する。"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        set_parts = []
+        values = []
+        for col in _SETTINGS_COLUMNS:
+            if col in settings:
+                set_parts.append(f"{col} = %s")
+                values.append(settings[col])
+        if set_parts:
+            set_parts.append("updated_at = NOW()")
+            values.append(1)  # WHERE id = %s
+            cur.execute(
+                f"UPDATE app_settings SET {', '.join(set_parts)} WHERE id = %s",
+                values
+            )
+            conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -1260,15 +1339,22 @@ async def websocket_endpoint(websocket: WebSocket, handle_name: str, token: str)
 
     # DBからユーザー情報を取得（同期処理なのでイベントループを譲らない）
     conn = get_db_connection()
+    cur = _dict_cursor(conn)
     try:
-        row = conn.execute(
-            "SELECT elo, rank, language FROM users WHERE handle_name = ?",
+        cur.execute(
+            "SELECT s.elo, s.rank, p.language "
+            "FROM users u "
+            "LEFT JOIN user_stats s ON u.id = s.user_id "
+            "LEFT JOIN user_preferences p ON u.id = p.user_id "
+            "WHERE u.handle_name = %s",
             (handle_name,)
-        ).fetchone()
-        elo = row["elo"] if row else 0
-        rank = row["rank"] if row else ""
+        )
+        row = cur.fetchone()
+        elo = row["elo"] if row and row["elo"] else 0
+        rank = row["rank"] if row and row["rank"] else ""
         language = _normalize_lang(row["language"] if row and row["language"] else "ja")
     finally:
+        cur.close()
         conn.close()
 
     # 既存接続があれば切断（新しい接続を先に登録 → login_ok 送信 → old_ws close の順）
@@ -1375,25 +1461,24 @@ def _check_admin_token(request: Request) -> bool:
 
 
 def _backup_db(tag: str = "manual") -> str:
-    """SQLite DB を時刻付きファイルへバックアップし、古い世代を削除する。"""
+    """PostgreSQL DB を pg_dump で時刻付きファイルへバックアップし、古い世代を削除する。"""
     ts = time.strftime("%Y%m%d-%H%M%S")
     os.makedirs(DB_BACKUP_DIR, exist_ok=True)
-    dst = os.path.join(DB_BACKUP_DIR, f"igo_users-{ts}-{tag}.db")
+    dst = os.path.join(DB_BACKUP_DIR, f"goka-{ts}-{tag}.sql")
 
-    src_conn = sqlite3.connect(str(DB_PATH))
-    dst_conn = sqlite3.connect(dst)
-    try:
-        src_conn.backup(dst_conn)
-    finally:
-        dst_conn.close()
-        src_conn.close()
+    result = subprocess.run(
+        ["pg_dump", "--no-owner", "--no-acl", "-f", dst, PG_DSN],
+        capture_output=True, text=True, timeout=120
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"pg_dump failed: {result.stderr}")
 
     try:
         backups = sorted(
             [
                 os.path.join(DB_BACKUP_DIR, f)
                 for f in os.listdir(DB_BACKUP_DIR)
-                if f.startswith("igo_users-") and f.endswith(".db")
+                if f.startswith("goka-") and f.endswith(".sql")
             ],
             key=os.path.getmtime
         )
@@ -1594,7 +1679,7 @@ async def admin_backup(request: Request):
     try:
         backup_path = await asyncio.to_thread(_backup_db, "manual")
         return {"status": "ok", "db_backup": backup_path}
-    except (OSError, sqlite3.Error) as e:
+    except (OSError, RuntimeError) as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
             status_code=500
@@ -1618,17 +1703,17 @@ async def admin_reset_test_passwords(
 
     try:
         conn = get_db_connection()
-        rows = conn.execute(
-            """
-            SELECT handle_name
-            FROM users
-            WHERE email IS NULL OR TRIM(email) = ''
-            ORDER BY id
-            """
-        ).fetchall()
+        cur = _dict_cursor(conn)
+        cur.execute(
+            "SELECT handle_name FROM users "
+            "WHERE email IS NULL OR TRIM(email) = '' "
+            "ORDER BY id"
+        )
+        rows = cur.fetchall()
         targets = [r["handle_name"] for r in rows]
 
         if body.dry_run:
+            cur.close()
             conn.close()
             return {"status": "dry_run", "target_count": len(targets), "targets": targets}
 
@@ -1638,12 +1723,14 @@ async def admin_reset_test_passwords(
         for handle in targets:
             salt = secrets.token_hex(16)
             pw_hash = hash_password(new_password, salt)
-            conn.execute(
-                "UPDATE users SET salt = ?, password_hash = ?, password_enc = ? WHERE handle_name = ?",
+            cur.execute(
+                "UPDATE user_auth SET salt = %s, password_hash = %s, password_enc = %s "
+                "FROM users WHERE user_auth.user_id = users.id AND users.handle_name = %s",
                 (salt, pw_hash, pw_enc, handle)
             )
             updated += 1
         conn.commit()
+        cur.close()
         conn.close()
         logger.warning(
             "Admin reset test passwords executed: count=%d, backup=%s",
@@ -1655,7 +1742,7 @@ async def admin_reset_test_passwords(
             "updated_handles": targets,
             "db_backup": backup_path
         }
-    except (OSError, sqlite3.Error) as e:
+    except (OSError, RuntimeError, psycopg2.Error) as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
             status_code=500
@@ -1683,11 +1770,11 @@ async def admin_set_user_password(request: Request, body: AdminSetUserPasswordRe
 
     try:
         conn = get_db_connection()
-        row = conn.execute(
-            "SELECT id FROM users WHERE handle_name = ?",
-            (handle,)
-        ).fetchone()
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT id FROM users WHERE handle_name = %s", (handle,))
+        row = cur.fetchone()
         if row is None:
+            cur.close()
             conn.close()
             return JSONResponse(
                 content={"status": "error", "detail": "user not found"},
@@ -1698,15 +1785,17 @@ async def admin_set_user_password(request: Request, body: AdminSetUserPasswordRe
         salt = secrets.token_hex(16)
         pw_hash = hash_password(password, salt)
         pw_enc = _b64_encode_password(password)
-        conn.execute(
-            "UPDATE users SET salt = ?, password_hash = ?, password_enc = ? WHERE handle_name = ?",
+        cur.execute(
+            "UPDATE user_auth SET salt = %s, password_hash = %s, password_enc = %s "
+            "FROM users WHERE user_auth.user_id = users.id AND users.handle_name = %s",
             (salt, pw_hash, pw_enc, handle)
         )
         conn.commit()
+        cur.close()
         conn.close()
         logger.warning("Admin set user password: %s", handle)
         return {"status": "ok", "handle_name": handle, "db_backup": backup_path}
-    except (OSError, sqlite3.Error) as e:
+    except (OSError, RuntimeError, psycopg2.Error) as e:
         return JSONResponse(
             content={"status": "error", "detail": str(e)},
             status_code=500
@@ -1963,8 +2052,7 @@ async def admin_setup_staging(request: Request):
 
     staging_port = 8001
     staging_dir = REPO_DIR + "-staging"
-    staging_db = os.path.join(staging_dir, "igo_users_staging.db")
-    staging_settings = os.path.join(staging_dir, "app_settings_staging.json")
+    staging_pg_dsn = os.environ.get("GOKA_STAGING_PG_DSN", "dbname=goka_staging")
     log_lines: list = []
 
     def _log(msg: str) -> None:
@@ -2098,8 +2186,7 @@ async def admin_setup_staging(request: Request):
         staging_env = {
             **os.environ,
             "GOKA_PORT": str(staging_port),
-            "GOKA_DB_PATH": staging_db,
-            "GOKA_SETTINGS_PATH": staging_settings,
+            "GOKA_PG_DSN": staging_pg_dsn,
             "GOKA_ENV": "staging",
             "GOKA_GIT_BRANCH": "main",
             "GOKA_REPO_DIR": staging_dir,
@@ -2170,8 +2257,7 @@ Type=simple
 User={os.environ.get('USER', 'user')}
 WorkingDirectory={staging_dir}
 Environment=GOKA_PORT={staging_port}
-Environment=GOKA_DB_PATH={staging_db}
-Environment=GOKA_SETTINGS_PATH={staging_settings}
+Environment=GOKA_PG_DSN={staging_pg_dsn}
 Environment=GOKA_ENV=staging
 Environment=GOKA_GIT_BRANCH=main
 Environment=GOKA_REPO_DIR={staging_dir}
