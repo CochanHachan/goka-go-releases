@@ -296,6 +296,15 @@ def migrate_game_records(pg_conn, sqlite_path: str):
     logger.info("game_records: %d 件を移行開始", len(rows))
 
     pg_cur = pg_conn.cursor()
+
+    # 冪等性ガード: 既に移行済みデータがあればスキップ
+    pg_cur.execute("SELECT COUNT(*) FROM games WHERE source = 'migrated'")
+    existing = pg_cur.fetchone()[0]
+    if existing > 0:
+        logger.warning("game_records: 移行済みデータが %d 件存在します — スキップ（重複防止）", existing)
+        sq_conn.close()
+        return 0
+
     migrated = 0
 
     for row in rows:
