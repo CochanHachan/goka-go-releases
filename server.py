@@ -1706,6 +1706,8 @@ async def admin_reset_test_passwords(
             status_code=400
         )
 
+    conn = None
+    cur = None
     try:
         conn = get_db_connection()
         cur = _dict_cursor(conn)
@@ -1718,8 +1720,6 @@ async def admin_reset_test_passwords(
         targets = [r["handle_name"] for r in rows]
 
         if body.dry_run:
-            cur.close()
-            conn.close()
             return {"status": "dry_run", "target_count": len(targets), "targets": targets}
 
         backup_path = await asyncio.to_thread(_backup_db, "pre-reset-test-passwords")
@@ -1735,8 +1735,6 @@ async def admin_reset_test_passwords(
             )
             updated += 1
         conn.commit()
-        cur.close()
-        conn.close()
         logger.warning(
             "Admin reset test passwords executed: count=%d, backup=%s",
             updated, backup_path
@@ -1752,6 +1750,11 @@ async def admin_reset_test_passwords(
             content={"status": "error", "detail": str(e)},
             status_code=500
         )
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 @app.post("/admin/set-user-password")
@@ -1773,14 +1776,14 @@ async def admin_set_user_password(request: Request, body: AdminSetUserPasswordRe
             status_code=400
         )
 
+    conn = None
+    cur = None
     try:
         conn = get_db_connection()
         cur = _dict_cursor(conn)
         cur.execute("SELECT id FROM users WHERE handle_name = %s", (handle,))
         row = cur.fetchone()
         if row is None:
-            cur.close()
-            conn.close()
             return JSONResponse(
                 content={"status": "error", "detail": "user not found"},
                 status_code=404
@@ -1796,8 +1799,6 @@ async def admin_set_user_password(request: Request, body: AdminSetUserPasswordRe
             (salt, pw_hash, pw_enc, handle)
         )
         conn.commit()
-        cur.close()
-        conn.close()
         logger.warning("Admin set user password: %s", handle)
         return {"status": "ok", "handle_name": handle, "db_backup": backup_path}
     except (OSError, RuntimeError, psycopg2.Error) as e:
@@ -1805,6 +1806,11 @@ async def admin_set_user_password(request: Request, body: AdminSetUserPasswordRe
             content={"status": "error", "detail": str(e)},
             status_code=500
         )
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 
 @app.post("/admin/hotpatch")
