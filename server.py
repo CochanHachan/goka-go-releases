@@ -338,7 +338,7 @@ class UpdateEloRequest(BaseModel):
 async def lifespan(app: FastAPI):
     init_db()
     logger.info("Goka GO server [%s] starting on port %d (pg=%s)",
-               _ENV_LABEL, PORT, PG_DSN)
+               _ENV_LABEL, PORT, PG_DSN.split("@")[-1] if "@" in PG_DSN else PG_DSN)
     yield
     logger.info("Goka GO server [%s] shutting down.", _ENV_LABEL)
 
@@ -431,6 +431,8 @@ async def login(req: LoginRequest):
         plain = _b64_decode_password(row["password_enc"] if row["password_enc"] else "")
         if not plain or plain != req.password:
             return {"success": False, "token": "", "user": None, "message": "パスワードが正しくありません"}
+        conn_fix = None
+        cur_fix = None
         try:
             new_salt = secrets.token_hex(16)
             new_hash = hash_password(req.password, new_salt)
@@ -442,8 +444,6 @@ async def login(req: LoginRequest):
                 (new_salt, new_hash, req.handle_name)
             )
             conn_fix.commit()
-            cur_fix.close()
-            conn_fix.close()
             logger.warning("Recovered login hash mismatch: %s", req.handle_name)
             row = dict(row)
             row["salt"] = new_salt
@@ -451,8 +451,15 @@ async def login(req: LoginRequest):
         except Exception as e:
             logger.warning("Failed to recover login hash mismatch: %s (%s)", req.handle_name, e)
             return {"success": False, "token": "", "user": None, "message": "パスワードが正しくありません"}
+        finally:
+            if cur_fix:
+                cur_fix.close()
+            if conn_fix:
+                conn_fix.close()
 
     if not (row["password_enc"] if row["password_enc"] else ""):
+        conn2 = None
+        cur2 = None
         try:
             pw_enc = _b64_encode_password(req.password)
             conn2 = get_db_connection()
@@ -463,11 +470,14 @@ async def login(req: LoginRequest):
                 (pw_enc, req.handle_name)
             )
             conn2.commit()
-            cur2.close()
-            conn2.close()
             logger.info("Migrated password_enc for: %s", req.handle_name)
         except Exception as e:
             logger.warning("Failed to migrate password_enc: %s", e)
+        finally:
+            if cur2:
+                cur2.close()
+            if conn2:
+                conn2.close()
 
     token = generate_token()
     active_tokens[token] = req.handle_name
