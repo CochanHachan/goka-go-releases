@@ -906,9 +906,8 @@ class App:
                 zip_size = os.path.getsize(zip_path)
                 _log("Downloaded: {} bytes".format(zip_size))
 
-                # 「解凍中」を表示して短く待つ
                 self.root.after(0, lambda: prog["set_status"]("解凍中"))
-                _t.sleep(0.8)
+                _t.sleep(0.3)
 
                 extract_dir = os.path.join(tmp_dir, "extracted")
                 os.makedirs(extract_dir, exist_ok=True)
@@ -940,16 +939,15 @@ class App:
                             os.path.basename(app_exe), extract_dir))
                 _log("Source exe OK: {}".format(src_exe))
 
-                # 「インストール中」を表示して短く待つ
                 self.root.after(0, lambda: prog["set_status"]("インストール中"))
-                _t.sleep(0.8)
+                _t.sleep(0.3)
 
                 # 「アップデートは正常に終了しました。」を表示して短く待つ
                 if "show_complete" in prog:
                     self.root.after(0, lambda: prog["show_complete"]())
                 else:
                     self.root.after(0, lambda: prog["set_status"]("アップデート完了"))
-                _t.sleep(0.8)
+                _t.sleep(0.3)
 
                 bat_path = os.path.join(tmp_dir, "goka_update.bat")
                 _log_file = os.path.join(
@@ -1081,8 +1079,9 @@ class App:
                 startupinfo=si,
                 creationflags=subprocess.CREATE_NO_WINDOW)
             if _log:
-                _log("batch launched, destroying root")
-            self.root.destroy()
+                _log("batch launched, exiting process")
+            # root.destroy() だとプロセス終了が遅い → os._exit で即座に終了
+            os._exit(0)
         except (OSError, subprocess.SubprocessError) as e:
             if _log:
                 import traceback

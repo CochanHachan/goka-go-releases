@@ -209,11 +209,31 @@ jobs:
           create_zip("dist/goka_go", "dist/goka_go_staging.zip")
           create_zip("dist/igo_admin", "dist/igo_admin_staging.zip")
 
+          # Auto-update用の軽量ZIP（KataGo除外、~50MB）
+          import zipfile
+          full_zip = "dist/goka_go_staging.zip"
+          update_zip = "dist/goka_go_update.zip"
+          with zipfile.ZipFile(full_zip, "r") as src, zipfile.ZipFile(update_zip, "w", zipfile.ZIP_DEFLATED) as dst:
+              for item in src.infolist():
+                  if "/katago/" in item.filename:
+                      continue
+                  dst.writestr(item, src.read(item.filename))
+          full_mb = os.path.getsize(full_zip) / 1024 / 1024
+          update_mb = os.path.getsize(update_zip) / 1024 / 1024
+          print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
+
       - name: Upload staging client ZIP
         uses: actions/upload-artifact@v4
         with:
           name: goka-go-staging-zip
           path: dist/goka_go_staging.zip
+          retention-days: 7
+
+      - name: Upload update ZIP (no KataGo)
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-go-update-zip
+          path: dist/goka_go_update.zip
           retention-days: 7
 
       - name: Upload staging admin ZIP
@@ -240,6 +260,12 @@ jobs:
           name: goka-admin-staging-zip
           path: out/admin
 
+      - name: Download update ZIP artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: goka-go-update-zip
+          path: out/update
+
       - name: Download installer artifact
         uses: actions/download-artifact@v4
         with:
@@ -251,6 +277,7 @@ jobs:
         run: |
           cp out/client/*.zip goka-go-staging.zip
           cp out/admin/*.zip goka-admin-staging.zip
+          cp out/update/*.zip goka-go-update.zip
           cp out/installer/*.exe GokaGoTest_Setup.exe
 
       - name: Publish or update staging-latest release
@@ -266,6 +293,7 @@ jobs:
             Auto merge to main: `${{ github.event.inputs.auto_merge_to_main }}`
           files: |
             goka-go-staging.zip
+            goka-go-update.zip
             goka-admin-staging.zip
             GokaGoTest_Setup.exe
         env:
