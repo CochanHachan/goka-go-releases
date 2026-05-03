@@ -1,0 +1,231 @@
+# =============================================================================
+# Azure Pipelines — ステージング EXE ビルド + FTP 配信
+#
+# GitHub Actions "One Click Staging EXE" の Azure Pipelines 移植版。
+# main プッシュまたは手動実行で、テスト用クライアント・管理パネル・
+# インストーラー・自動アップデート用軽量 ZIP をビルドし、
+# Xserver (goka-igo.com) へ FTPS で配信する。
+#
+# 必須パイプライン変数（シークレット推奨）:
+#   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
+# 任意:
+#   GOKA_FTP_REMOTE … 例: public_html
+#   GOKA_FTP_TLS    … 1=FTPS（既定）, 0=平文
+#
+# 登録: Pipelines → 新規 → 既存の YAML → /azure-pipelines-staging-exe.yml
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr: none
+
+parameters:
+  - name: sourceBranch
+    displayName: "ビルド元ブランチ（未指定時は main）"
+    type: string
+    default: "main"
+
+variables:
+  PUBLIC_BASE: "https://goka-igo.com"
+  STAGING_PREFIX: "staging"
+
+stages:
+  # ── Stage 1: Windows ビルド ──
+  - stage: Build
+    displayName: "Build Staging Client"
+    jobs:
+      - job: WindowsBuild
+        pool:
+          vmImage: windows-latest
+        variables:
+          PYTHONIOENCODING: utf-8
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.13"
+
+          - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
+            displayName: "Install build dependencies"
+
+          # ── ステージング環境へ切替 ──
+          - script: |
+              python -c "
+              path = 'igo/constants_env.py'
+              txt = open(path, encoding='utf-8').read()
+              assert '_ENV = \"production\"' in txt, 'constants_env.py: _ENV not found'
+              txt = txt.replace('_ENV = \"production\"', '_ENV = \"staging\"')
+              open(path, 'w', encoding='utf-8').write(txt)
+              print(txt)
+              "
+            displayName: "Switch to staging environment"
+
+          # ── download_url を goka-igo.com に更新 ──
+          - script: |
+              python -c "
+              path = 'version_staging.json'
+              import json, os
+              if os.path.exists(path):
+                  d = json.load(open(path, encoding='utf-8'))
+                  d['download_url'] = 'https://goka-igo.com/staging/releases/goka-go-update.zip'
+                  d['admin_download_url'] = 'https://goka-igo.com/staging/releases/goka-admin-staging.zip'
+                  json.dump(d, open(path, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
+                  print('Updated version_staging.json:', json.dumps(d, indent=2))
+              "
+            displayName: "Update download URLs for goka-igo.com"
+
+          # ── 不足アセット作成 ──
+          - script: |
+              python -c "
+              import os, shutil, json
+              if not os.path.exists('goka_go_test.ico'):
+                  shutil.copy2('goka_go.ico', 'goka_go_test.ico')
+              if not os.path.exists('igo_config.json'):
+                  with open('igo_config.json', 'w', encoding='utf-8') as f:
+                      json.dump({'theme': 'light', 'language': 'ja'}, f, ensure_ascii=False, indent=2)
+              "
+            displayName: "Create missing assets"
+
+          # ── KataGo ダウンロード ──
+          - script: python tools/download_katago_for_windows_build.py
+            displayName: "Download KataGo"
+
+          # ── PyInstaller ビルド ──
+          - script: pyinstaller goka_go.spec --noconfirm
+            displayName: "PyInstaller goka_go"
+
+          - script: pyinstaller igo_admin.spec --noconfirm
+            displayName: "PyInstaller igo_admin"
+
+          # ── KataGo を dist にコピー ──
+          - script: python tools/copy_katago_into_dist.py
+            displayName: "Copy KataGo into dist"
+
+          # ── Inno Setup インストーラー ──
+          - powershell: |
+              choco install innosetup -y --no-progress
+              $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+              $issFile = "installer/GokaGoTest_Setup.iss"
+              (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+              & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+              Write-Host "Installer built: version $version"
+            displayName: "Build Inno Setup installer"
+
+          # ── ZIP 作成（フル + 軽量アップデート用） ──
+          - script: |
+              python -c "
+              import os, shutil, zipfile
+
+              def create_zip(src_dir, dst_zip):
+                  base_dir = os.path.dirname(os.path.abspath(src_dir))
+                  base_name = os.path.join(os.path.dirname(os.path.abspath(dst_zip)), '_tmp_archive')
+                  shutil.make_archive(base_name, 'zip', root_dir=base_dir, base_dir=os.path.basename(src_dir))
+                  os.replace(base_name + '.zip', dst_zip)
+
+              os.makedirs('$(Build.ArtifactStagingDirectory)/staging', exist_ok=True)
+              create_zip('dist/goka_go', '$(Build.ArtifactStagingDirectory)/staging/goka-go-staging.zip')
+              create_zip('dist/igo_admin', '$(Build.ArtifactStagingDirectory)/staging/goka-admin-staging.zip')
+
+              # 軽量 ZIP（KataGo 除外）
+              full_zip = '$(Build.ArtifactStagingDirectory)/staging/goka-go-staging.zip'
+              update_zip = '$(Build.ArtifactStagingDirectory)/staging/goka-go-update.zip'
+              with zipfile.ZipFile(full_zip, 'r') as src, zipfile.ZipFile(update_zip, 'w', zipfile.ZIP_DEFLATED) as dst:
+                  for item in src.infolist():
+                      if '/katago/' in item.filename:
+                          continue
+                      dst.writestr(item, src.read(item.filename))
+              full_mb = os.path.getsize(full_zip) / 1024 / 1024
+              update_mb = os.path.getsize(update_zip) / 1024 / 1024
+              print(f'Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB')
+              "
+            displayName: "Create staging ZIPs (full + lightweight)"
+
+          # ── インストーラーコピー ──
+          - script: |
+              python -c "
+              import glob, shutil, os
+              exes = glob.glob('dist/installer/GokaGoTest_Setup_*.exe')
+              if exes:
+                  shutil.copy2(exes[0], '$(Build.ArtifactStagingDirectory)/staging/GokaGoTest_Setup.exe')
+                  print(f'Installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB')
+              "
+            displayName: "Copy installer to staging directory"
+
+          # ── version_staging.json コピー ──
+          - script: |
+              copy version_staging.json "$(Build.ArtifactStagingDirectory)\staging\version_staging.json"
+            displayName: "Copy version_staging.json"
+
+          # ── アーティファクト公開 ──
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)/staging"
+              artifact: "staging-build"
+              publishLocation: "pipeline"
+            displayName: "Publish staging artifacts"
+
+  # ── Stage 2: FTP 配信（ステージング） ──
+  - stage: Deploy
+    displayName: "Deploy staging to goka-igo.com"
+    dependsOn: Build
+    jobs:
+      - job: FtpDeploy
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.12"
+
+          - task: DownloadPipelineArtifact@2
+            inputs:
+              artifactName: "staging-build"
+              targetPath: "$(Pipeline.Workspace)/staging"
+
+          # ── FTPS でステージング領域にアップロード ──
+          - script: |
+              set -e
+              python tools/deploy_web_ftp.py \
+                --local-dir "$(Pipeline.Workspace)/staging" \
+                --remote-subdir "staging/releases" \
+                --include "*.zip" --include "*.exe"
+            displayName: "FTPS upload ZIPs + installer"
+            env:
+              GOKA_FTP_HOST: $(FTP_SERVER)
+              GOKA_FTP_USER: $(FTP_USERNAME)
+              GOKA_FTP_PASS: $(FTP_PASSWORD)
+              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+
+          # ── version_staging.json を配信 ──
+          - script: |
+              set -e
+              python tools/deploy_web_ftp.py \
+                --local-dir "$(Pipeline.Workspace)/staging" \
+                --remote-subdir "staging" \
+                --include "version_staging.json"
+            displayName: "FTPS upload version_staging.json"
+            env:
+              GOKA_FTP_HOST: $(FTP_SERVER)
+              GOKA_FTP_USER: $(FTP_USERNAME)
+              GOKA_FTP_PASS: $(FTP_PASSWORD)
+              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+
+          # ── 配信確認 ──
+          - script: |
+              set -e
+              echo "Checking staging version..."
+              curl -fsS "$(PUBLIC_BASE)/staging/version_staging.json" | head -c 500
+              echo
+              echo "Checking update ZIP availability..."
+              curl -sI "$(PUBLIC_BASE)/staging/releases/goka-go-update.zip" | head -3
+            displayName: "Smoke test deployed files"
