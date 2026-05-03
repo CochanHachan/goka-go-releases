@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
-"""web/ 以下を FTP(S) でリモートへ再帰アップロードする。
+"""web/ を FTP(S) でサーバーの public_html 直下に再帰アップロードする。
 
-GitHub Actions に依存しない。Azure Pipelines およびローカル（Windows / Linux）で利用可能。
-
-必須環境変数:
-  GOKA_FTP_HOST   FTP サーバー名
-  GOKA_FTP_USER   FTP ユーザー名
-  GOKA_FTP_PASS   FTP パスワード
+環境変数（必須）:
+  GOKA_FTP_HOST   例: sv1234.xserver.jp（サーバーパネル「FTP設定」に記載）
+  GOKA_FTP_USER   FTPアカウント
+  GOKA_FTP_PASS   FTPパスワード
 
 任意:
-  GOKA_FTP_REMOTE  リモート側の相対パス（先頭末尾スラッシュなし、例: public_html）
-                     未設定または空のときは、ログイン直後のルートからの相対「なし」
-                     （サブ FTP の chroot 直下にそのまま載せる運用向け）
-  GOKA_FTP_TLS     1（既定）= FTPS（明示 TLS）、0 = 平文 FTP
+  GOKA_FTP_REMOTE   先頭スラッシュなし。デフォルト: public_html
+  GOKA_FTP_TLS      1（デフォルト）= FTPS、0 = 平文FTP
 
-Azure Pipelines では azure-pipelines.yml 側で FTP_SERVER 等を GOKA_FTP_* にマップして渡す。
-
-ローカル例（PowerShell）:
+PowerShell 例:
+  cd ...\\goka-go-releases
   $env:GOKA_FTP_HOST="svxxxx.xserver.jp"
-  $env:GOKA_FTP_USER="..."
+  $env:GOKA_FTP_USER="your_ftp_user"
   $env:GOKA_FTP_PASS="..."
   py -3 tools/deploy_web_ftp.py
 """
@@ -33,27 +28,21 @@ def main() -> int:
     host = os.environ.get("GOKA_FTP_HOST", "").strip()
     user = os.environ.get("GOKA_FTP_USER", "").strip()
     password = os.environ.get("GOKA_FTP_PASS", "")
-    raw_remote = os.environ.get("GOKA_FTP_REMOTE", "")
-    remote_base = raw_remote.strip().strip("/")
+    remote_base = os.environ.get("GOKA_FTP_REMOTE", "public_html").strip().strip("/")
     use_tls = os.environ.get("GOKA_FTP_TLS", "1").strip() != "0"
 
     if not host or not user or not password:
-        print(
-            "ERROR: Set GOKA_FTP_HOST, GOKA_FTP_USER, GOKA_FTP_PASS",
-            file=sys.stderr,
-        )
+        print("ERROR: Set GOKA_FTP_HOST, GOKA_FTP_USER, GOKA_FTP_PASS", file=sys.stderr)
         return 1
 
     if use_tls:
         from ftplib import FTP_TLS, error_perm
-
         ftp = FTP_TLS()
         ftp.connect(host, 21, timeout=90)
         ftp.login(user, password)
         ftp.prot_p()
     else:
         from ftplib import FTP, error_perm
-
         ftp = FTP()
         ftp.connect(host, 21, timeout=90)
         ftp.login(user, password)
@@ -64,11 +53,11 @@ def main() -> int:
         print("ERROR: web/ not found:", web, file=sys.stderr)
         return 1
 
-    base_parts = [p for p in remote_base.split("/") if p]
-
     def cwd_from_root(parts: list[str]) -> None:
         ftp.cwd("/")
         for p in parts:
+            if not p:
+                continue
             try:
                 ftp.cwd(p)
             except error_perm:
@@ -77,6 +66,8 @@ def main() -> int:
                 except error_perm:
                     pass
                 ftp.cwd(p)
+
+    base_parts = [p for p in remote_base.split("/") if p]
 
     try:
         uploaded = 0

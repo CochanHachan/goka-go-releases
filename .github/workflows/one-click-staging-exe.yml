@@ -93,20 +93,26 @@ jobs:
       - name: Switch to staging environment
         shell: python
         run: |
-          import sys
+          path = "igo/constants_env.py"
+          txt = open(path, encoding="utf-8").read()
+          assert '_ENV = "production"' in txt, "constants_env.py: _ENV not found"
+          txt = txt.replace('_ENV = "production"', '_ENV = "staging"')
+          open(path, "w", encoding="utf-8").write(txt)
+          print(txt)
 
-          env_file = "igo/constants_env.py"
-          search = '_ENV = "production"'
-          replace = '_ENV = "staging"'
-
-          with open(env_file, "r", encoding="utf-8") as f:
-              content = f.read()
-          if search not in content:
-              print(f"ERROR: '{search}' not found in {env_file}")
-              sys.exit(1)
-
-          with open(env_file, "w", encoding="utf-8") as f:
-              f.write(content.replace(search, replace, 1))
+      - name: Create missing assets for Inno Setup
+        shell: python
+        run: |
+          import os, shutil, json
+          # goka_go_test.ico: fallback to goka_go.ico
+          if not os.path.exists("goka_go_test.ico"):
+              print("goka_go_test.ico not found, copying goka_go.ico as fallback")
+              shutil.copy2("goka_go.ico", "goka_go_test.ico")
+          # igo_config.json: create default if missing
+          if not os.path.exists("igo_config.json"):
+              print("igo_config.json not found, creating default")
+              with open("igo_config.json", "w", encoding="utf-8") as f:
+                  json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
 
       - name: Download KataGo
         shell: python
@@ -163,6 +169,26 @@ jobs:
           dst = os.path.join("dist", "goka_go", "katago")
           shutil.copytree(src, dst, dirs_exist_ok=True)
 
+      - name: Build Inno Setup test installer
+        shell: pwsh
+        run: |
+          # Install Inno Setup
+          choco install innosetup -y --no-progress
+          # Update version in ISS file to match constants.py
+          $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+          $issFile = "installer/GokaGoTest_Setup.iss"
+          (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+          # Compile installer
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+          Write-Host "Installer built: version $version"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-go-test-installer
+          path: dist/installer/GokaGoTest_Setup_*.exe
+          retention-days: 7
+
       - name: Create staging ZIPs
         shell: python
         run: |
@@ -183,11 +209,31 @@ jobs:
           create_zip("dist/goka_go", "dist/goka_go_staging.zip")
           create_zip("dist/igo_admin", "dist/igo_admin_staging.zip")
 
+          # Auto-update用の軽量ZIP（KataGo除外、~50MB）
+          import zipfile
+          full_zip = "dist/goka_go_staging.zip"
+          update_zip = "dist/goka_go_update.zip"
+          with zipfile.ZipFile(full_zip, "r") as src, zipfile.ZipFile(update_zip, "w", zipfile.ZIP_DEFLATED) as dst:
+              for item in src.infolist():
+                  if "/katago/" in item.filename:
+                      continue
+                  dst.writestr(item, src.read(item.filename))
+          full_mb = os.path.getsize(full_zip) / 1024 / 1024
+          update_mb = os.path.getsize(update_zip) / 1024 / 1024
+          print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
+
       - name: Upload staging client ZIP
         uses: actions/upload-artifact@v4
         with:
           name: goka-go-staging-zip
           path: dist/goka_go_staging.zip
+          retention-days: 7
+
+      - name: Upload update ZIP (no KataGo)
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-go-update-zip
+          path: dist/goka_go_update.zip
           retention-days: 7
 
       - name: Upload staging admin ZIP
@@ -214,11 +260,25 @@ jobs:
           name: goka-admin-staging-zip
           path: out/admin
 
+      - name: Download update ZIP artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: goka-go-update-zip
+          path: out/update
+
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: goka-go-test-installer
+          path: out/installer
+
       - name: Normalize filenames
         shell: bash
         run: |
           cp out/client/*.zip goka-go-staging.zip
           cp out/admin/*.zip goka-admin-staging.zip
+          cp out/update/*.zip goka-go-update.zip
+          cp out/installer/*.exe GokaGoTest_Setup.exe
 
       - name: Publish or update staging-latest release
         uses: softprops/action-gh-release@v2
@@ -233,7 +293,9 @@ jobs:
             Auto merge to main: `${{ github.event.inputs.auto_merge_to_main }}`
           files: |
             goka-go-staging.zip
+            goka-go-update.zip
             goka-admin-staging.zip
+            GokaGoTest_Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -242,5 +304,6 @@ jobs:
         run: |
           REPO="${{ github.repository }}"
           echo "## Fixed download URLs" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Client: https://github.com/${REPO}/releases/download/staging-latest/goka-go-staging.zip" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Admin: https://github.com/${REPO}/releases/download/staging-latest/goka-admin-staging.zip" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Client ZIP: https://github.com/${REPO}/releases/download/staging-latest/goka-go-staging.zip" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Admin ZIP: https://github.com/${REPO}/releases/download/staging-latest/goka-admin-staging.zip" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Test Installer: https://github.com/${REPO}/releases/download/staging-latest/GokaGoTest_Setup.exe" >> "$GITHUB_STEP_SUMMARY"
