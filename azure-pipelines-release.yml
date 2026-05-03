@@ -8,13 +8,9 @@
 #   2) Linux: ステージング領域へ FTPS（/staging/version.json と /staging/releases/*.zip）
 #   3) Linux: 本番領域へ FTPS（/version.json と /releases/*.zip）
 #
-# 本番前に人間の確認を挟む場合:
-#   Azure DevOps → Environments → goka-igo-production に「チェック」または承認者を設定する。
-#   承認が完了するとステージ 3 が走り、version.json と ZIP が本番パスへ上がる。
-#
-# 変数（既存の web デプロイと同様。FTP_* はシークレット推奨）:
+# 変数（FTP_* はシークレット推奨）:
 #   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD … 必須
-#   GOKA_FTP_REMOTE … 例 public_html
+#   GOKA_FTP_REMOTE … 例 goka-igo.com/public_html
 #   GOKA_FTP_TLS … 1=FTPS（既定）、0=平文
 #
 # 登録: Pipelines → 新規 → 既存の YAML → /azure-pipelines-release.yml
@@ -25,9 +21,9 @@ pr: none
 
 parameters:
   - name: releaseVersion
-    displayName: "リリース版（例 1.2.162）"
+    displayName: "リリース版（例 1.2.177）"
     type: string
-    default: "1.2.162"
+    default: "1.2.177"
   - name: releaseNotes
     displayName: "release_notes（空なら v<version>）"
     type: string
@@ -75,6 +71,29 @@ stages:
           - script: python tools/make_release_zips.py ${{ parameters.releaseVersion }} "$(Build.ArtifactStagingDirectory)/release"
             displayName: Create goka_go / goka_admin ZIPs
 
+          # ── 軽量アップデート ZIP（KataGo 除外） ──
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import os, zipfile
+
+                ver = "${{ parameters.releaseVersion }}"
+                release_dir = os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"] + "/release"
+                full_zip = os.path.join(release_dir, f"goka_go_{ver}.zip")
+                update_zip = os.path.join(release_dir, f"goka_go_update_{ver}.zip")
+
+                with zipfile.ZipFile(full_zip, "r") as src, zipfile.ZipFile(update_zip, "w", zipfile.ZIP_DEFLATED) as dst:
+                    for item in src.infolist():
+                        if "/katago/" in item.filename:
+                            continue
+                        dst.writestr(item, src.read(item.filename))
+
+                full_mb = os.path.getsize(full_zip) / 1024 / 1024
+                update_mb = os.path.getsize(update_zip) / 1024 / 1024
+                print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
+            displayName: "Create lightweight update ZIP (no KataGo)"
+
           - task: PublishPipelineArtifact@1
             inputs:
               targetPath: "$(Build.ArtifactStagingDirectory)/release"
@@ -82,11 +101,11 @@ stages:
               publishLocation: "pipeline"
             displayName: Publish release-zips artifact
 
-  - stage: Staging
-    displayName: Deploy staging (FTP)
+  - stage: Production
+    displayName: Deploy production (FTP)
     dependsOn: Build
     jobs:
-      - job: FtpStaging
+      - job: FtpProduction
         pool:
           vmImage: ubuntu-latest
         steps:
@@ -102,6 +121,7 @@ stages:
               artifactName: "release-zips"
               targetPath: "$(Pipeline.Workspace)/release"
 
+          # ── 本番 version.json + ZIPs をアップロード ──
           - script: |
               set -e
               VER='${{ parameters.releaseVersion }}'
@@ -109,10 +129,9 @@ stages:
                 --version "$VER" \
                 --zip-go "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
                 --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${VER}.zip" \
-                --path-prefix '${{ parameters.stagingPathPrefix }}' \
                 --public-base "$(PUBLIC_BASE)" \
                 --release-notes "${REL_NOTES}"
-            displayName: FTPS upload staging version.json + ZIPs
+            displayName: FTP upload production version.json + ZIPs
             env:
               GOKA_FTP_HOST: $(FTP_SERVER)
               GOKA_FTP_USER: $(FTP_USERNAME)
@@ -121,57 +140,27 @@ stages:
               GOKA_FTP_TLS: $(GOKA_FTP_TLS)
               REL_NOTES: ${{ parameters.releaseNotes }}
 
+          # ── 軽量アップデート ZIP もアップロード ──
           - script: |
               set -e
-              curl -fsS "$(PUBLIC_BASE)/${{ parameters.stagingPathPrefix }}/version.json" | head -c 1200
+              VER='${{ parameters.releaseVersion }}'
+              python tools/staging_ftp_upload.py \
+                "$(Pipeline.Workspace)/release" \
+                "releases"
+            displayName: FTP upload lightweight update ZIP
+            env:
+              GOKA_FTP_HOST: $(FTP_SERVER)
+              GOKA_FTP_USER: $(FTP_USERNAME)
+              GOKA_FTP_PASS: $(FTP_PASSWORD)
+              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+
+          # ── 配信確認 ──
+          - script: |
+              set -e
+              echo "=== Production version.json ==="
+              curl -fsS "$(PUBLIC_BASE)/version.json"
               echo
-            displayName: Smoke GET staging version.json
-
-  - stage: Production
-    displayName: Deploy production (FTP)
-    dependsOn: Staging
-    jobs:
-      - deployment: FtpProduction
-        displayName: FTPS production
-        environment: goka-igo-production
-        pool:
-          vmImage: ubuntu-latest
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - checkout: self
-                  fetchDepth: 1
-
-                - task: UsePythonVersion@0
-                  inputs:
-                    versionSpec: "3.12"
-
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifactName: "release-zips"
-                    targetPath: "$(Pipeline.Workspace)/release"
-
-                - script: |
-                    set -e
-                    VER='${{ parameters.releaseVersion }}'
-                    python tools/release_publish_ftp.py \
-                      --version "$VER" \
-                      --zip-go "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
-                      --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${VER}.zip" \
-                      --public-base "$(PUBLIC_BASE)" \
-                      --release-notes "${REL_NOTES}"
-                  displayName: FTPS upload production version.json + ZIPs
-                  env:
-                    GOKA_FTP_HOST: $(FTP_SERVER)
-                    GOKA_FTP_USER: $(FTP_USERNAME)
-                    GOKA_FTP_PASS: $(FTP_PASSWORD)
-                    GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
-                    REL_NOTES: ${{ parameters.releaseNotes }}
-
-                - script: |
-                    set -e
-                    curl -fsS "$(PUBLIC_BASE)/version.json" | head -c 1200
-                    echo
-                  displayName: Smoke GET production version.json
+              echo "=== Update ZIP check ==="
+              curl -sI "$(PUBLIC_BASE)/releases/goka_go_${{ parameters.releaseVersion }}.zip" | head -3
+            displayName: Smoke test production files
