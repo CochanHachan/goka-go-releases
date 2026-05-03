@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -65,6 +66,11 @@ logger = logging.getLogger("goka_server")
 PG_DSN = os.environ.get("GOKA_PG_DSN", "dbname=goka")
 PORT = int(os.environ.get("GOKA_PORT", "8000"))
 _ENV_LABEL = os.environ.get("GOKA_ENV", "production")
+
+def _mask_dsn(dsn: str) -> str:
+    if "@" in dsn:
+        return dsn.split("@")[-1]
+    return re.sub(r'password=\S+', 'password=***', dsn)
 
 # ---------------------------------------------------------------------------
 # AIボット定義
@@ -278,7 +284,7 @@ def init_db():
         cur.close()
         conn.close()
 
-    logger.info("Database initialized: PostgreSQL (%s)", PG_DSN.split("@")[-1] if "@" in PG_DSN else PG_DSN)
+    logger.info("Database initialized: PostgreSQL (%s)", _mask_dsn(PG_DSN))
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +344,7 @@ class UpdateEloRequest(BaseModel):
 async def lifespan(app: FastAPI):
     init_db()
     logger.info("Goka GO server [%s] starting on port %d (pg=%s)",
-               _ENV_LABEL, PORT, PG_DSN.split("@")[-1] if "@" in PG_DSN else PG_DSN)
+               _ENV_LABEL, PORT, _mask_dsn(PG_DSN))
     yield
     logger.info("Goka GO server [%s] shutting down.", _ENV_LABEL)
 
