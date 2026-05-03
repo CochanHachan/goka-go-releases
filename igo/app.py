@@ -635,10 +635,10 @@ class App:
             except OSError:
                 pass  # log write failure is non-critical
 
-        # ── アップデート直後の再起動時は同期的にスキップ（高速化） ──
+        # ── アップデート直後の再起動時はスキップ ──
         _marker = self._read_marker()
-        if _marker.get("version") and _marker.get("version") == APP_VERSION:
-            _write_log("Just updated to v{}, skipping check".format(APP_VERSION))
+        if _marker.get("just_updated"):
+            _write_log("Just updated (marker), skipping check")
             self._delete_marker()
             self.show_login()
             return
@@ -1022,6 +1022,8 @@ class App:
                     bf.write('echo [%time%] === Update batch end === >> "%LOGFILE%"\n')
 
                 _log("Batch: {}".format(bat_path))
+                # 再起動後にバージョンチェックをスキップするマーカー
+                self._write_marker({"just_updated": True, "version": latest})
                 self.root.after(0, lambda: self._launch_update(
                     prog, bat_path, _log))
             except (OSError, zipfile.BadZipFile, RuntimeError) as e:
