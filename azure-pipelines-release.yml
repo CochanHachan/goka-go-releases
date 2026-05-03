@@ -56,6 +56,18 @@ stages:
           - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
             displayName: Install build dependencies
 
+          # ── 不足アセット生成 ──
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import os, json
+                if not os.path.exists("igo_config.json"):
+                    with open("igo_config.json", "w", encoding="utf-8") as f:
+                        json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
+                    print("Created default igo_config.json")
+            displayName: "Create missing assets"
+
           - script: pyinstaller goka_go.spec --noconfirm
             displayName: PyInstaller goka_go.spec
 
