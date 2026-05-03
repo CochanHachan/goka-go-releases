@@ -8,16 +8,16 @@ _CONFIG = {
     "production": {
         "app_name":          "碁華 Goka GO",
         "staging_label":     "",
-        "cloud_server_url":  "ws://34.85.118.112:8000",
-        "api_base_url":      "http://34.85.118.112:8000",
+        "cloud_server_url":  "ws://20.48.18.153:8000",
+        "api_base_url":      "http://20.48.18.153:8000",
         "update_check_url":  "https://goka-igo.com/version.json",
         "data_dir_name":     "GokaGo",
     },
     "staging": {
         "app_name":          "碁華 Goka GO（テスト）",
         "staging_label":     "[テスト] ",
-        "cloud_server_url":  "ws://136.110.101.14:8000",
-        "api_base_url":      "http://136.110.101.14:8000",
+        "cloud_server_url":  "ws://20.48.18.153:8001",
+        "api_base_url":      "http://20.48.18.153:8001",
         "update_check_url":  "http://20.48.18.153:8000/api/version-check",
         "data_dir_name":     "GokaGoTest",
     },
@@ -28,7 +28,7 @@ if _c is None:
     raise RuntimeError("Unknown _ENV={!r}".format(_ENV))
 
 APP_NAME          = _c["app_name"]
-APP_VERSION       = "1.2.175"
+APP_VERSION       = "1.2.176"
 APP_BUILD         = "20260418"
 STAGING_LABEL     = _c["staging_label"]
 CLOUD_SERVER_URL  = _c["cloud_server_url"]
