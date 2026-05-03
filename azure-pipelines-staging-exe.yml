@@ -54,41 +54,44 @@ stages:
             displayName: "Install build dependencies"
 
           # ── ステージング環境へ切替 ──
-          - script: |
-              python -c "
-              path = 'igo/constants_env.py'
-              txt = open(path, encoding='utf-8').read()
-              assert '_ENV = \"production\"' in txt, 'constants_env.py: _ENV not found'
-              txt = txt.replace('_ENV = \"production\"', '_ENV = \"staging\"')
-              open(path, 'w', encoding='utf-8').write(txt)
-              print(txt)
-              "
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                path = "igo/constants_env.py"
+                txt = open(path, encoding="utf-8").read()
+                assert '_ENV = "production"' in txt, "constants_env.py: _ENV not found"
+                txt = txt.replace('_ENV = "production"', '_ENV = "staging"')
+                open(path, "w", encoding="utf-8").write(txt)
+                print(txt)
             displayName: "Switch to staging environment"
 
           # ── download_url を goka-igo.com に更新 ──
-          - script: |
-              python -c "
-              path = 'version_staging.json'
-              import json, os
-              if os.path.exists(path):
-                  d = json.load(open(path, encoding='utf-8'))
-                  d['download_url'] = 'https://goka-igo.com/staging/releases/goka-go-update.zip'
-                  d['admin_download_url'] = 'https://goka-igo.com/staging/releases/goka-admin-staging.zip'
-                  json.dump(d, open(path, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
-                  print('Updated version_staging.json:', json.dumps(d, indent=2))
-              "
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import json, os
+                path = "version_staging.json"
+                if os.path.exists(path):
+                    d = json.load(open(path, encoding="utf-8"))
+                    d["download_url"] = "https://goka-igo.com/staging/releases/goka-go-update.zip"
+                    d["admin_download_url"] = "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
+                    json.dump(d, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+                    print("Updated version_staging.json:", json.dumps(d, indent=2))
             displayName: "Update download URLs for goka-igo.com"
 
           # ── 不足アセット作成 ──
-          - script: |
-              python -c "
-              import os, shutil, json
-              if not os.path.exists('goka_go_test.ico'):
-                  shutil.copy2('goka_go.ico', 'goka_go_test.ico')
-              if not os.path.exists('igo_config.json'):
-                  with open('igo_config.json', 'w', encoding='utf-8') as f:
-                      json.dump({'theme': 'light', 'language': 'ja'}, f, ensure_ascii=False, indent=2)
-              "
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import os, shutil, json
+                if not os.path.exists("goka_go_test.ico"):
+                    shutil.copy2("goka_go.ico", "goka_go_test.ico")
+                if not os.path.exists("igo_config.json"):
+                    with open("igo_config.json", "w", encoding="utf-8") as f:
+                        json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
             displayName: "Create missing assets"
 
           # ── KataGo ダウンロード ──
@@ -117,48 +120,52 @@ stages:
             displayName: "Build Inno Setup installer"
 
           # ── ZIP 作成（フル + 軽量アップデート用） ──
-          - script: |
-              python -c "
-              import os, shutil, zipfile
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import os, shutil, zipfile
 
-              def create_zip(src_dir, dst_zip):
-                  base_dir = os.path.dirname(os.path.abspath(src_dir))
-                  base_name = os.path.join(os.path.dirname(os.path.abspath(dst_zip)), '_tmp_archive')
-                  shutil.make_archive(base_name, 'zip', root_dir=base_dir, base_dir=os.path.basename(src_dir))
-                  os.replace(base_name + '.zip', dst_zip)
+                def create_zip(src_dir, dst_zip):
+                    base_dir = os.path.dirname(os.path.abspath(src_dir))
+                    base_name = os.path.join(os.path.dirname(os.path.abspath(dst_zip)), "_tmp_archive")
+                    shutil.make_archive(base_name, "zip", root_dir=base_dir, base_dir=os.path.basename(src_dir))
+                    os.replace(base_name + ".zip", dst_zip)
 
-              os.makedirs('$(Build.ArtifactStagingDirectory)/staging', exist_ok=True)
-              create_zip('dist/goka_go', '$(Build.ArtifactStagingDirectory)/staging/goka-go-staging.zip')
-              create_zip('dist/igo_admin', '$(Build.ArtifactStagingDirectory)/staging/goka-admin-staging.zip')
+                staging_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "staging")
+                os.makedirs(staging_dir, exist_ok=True)
+                create_zip("dist/goka_go", os.path.join(staging_dir, "goka-go-staging.zip"))
+                create_zip("dist/igo_admin", os.path.join(staging_dir, "goka-admin-staging.zip"))
 
-              # 軽量 ZIP（KataGo 除外）
-              full_zip = '$(Build.ArtifactStagingDirectory)/staging/goka-go-staging.zip'
-              update_zip = '$(Build.ArtifactStagingDirectory)/staging/goka-go-update.zip'
-              with zipfile.ZipFile(full_zip, 'r') as src, zipfile.ZipFile(update_zip, 'w', zipfile.ZIP_DEFLATED) as dst:
-                  for item in src.infolist():
-                      if '/katago/' in item.filename:
-                          continue
-                      dst.writestr(item, src.read(item.filename))
-              full_mb = os.path.getsize(full_zip) / 1024 / 1024
-              update_mb = os.path.getsize(update_zip) / 1024 / 1024
-              print(f'Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB')
-              "
+                full_zip = os.path.join(staging_dir, "goka-go-staging.zip")
+                update_zip = os.path.join(staging_dir, "goka-go-update.zip")
+                with zipfile.ZipFile(full_zip, "r") as src, zipfile.ZipFile(update_zip, "w", zipfile.ZIP_DEFLATED) as dst:
+                    for item in src.infolist():
+                        if "/katago/" in item.filename:
+                            continue
+                        dst.writestr(item, src.read(item.filename))
+                full_mb = os.path.getsize(full_zip) / 1024 / 1024
+                update_mb = os.path.getsize(update_zip) / 1024 / 1024
+                print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
             displayName: "Create staging ZIPs (full + lightweight)"
 
           # ── インストーラーコピー ──
-          - script: |
-              python -c "
-              import glob, shutil, os
-              exes = glob.glob('dist/installer/GokaGoTest_Setup_*.exe')
-              if exes:
-                  shutil.copy2(exes[0], '$(Build.ArtifactStagingDirectory)/staging/GokaGoTest_Setup.exe')
-                  print(f'Installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB')
-              "
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import glob, shutil, os
+                staging_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "staging")
+                exes = glob.glob("dist/installer/GokaGoTest_Setup_*.exe")
+                if exes:
+                    shutil.copy2(exes[0], os.path.join(staging_dir, "GokaGoTest_Setup.exe"))
+                    print(f"Installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB")
             displayName: "Copy installer to staging directory"
 
           # ── version_staging.json コピー ──
-          - script: |
-              copy version_staging.json "$(Build.ArtifactStagingDirectory)\staging\version_staging.json"
+          - powershell: |
+              $staging = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY "staging"
+              Copy-Item "version_staging.json" "$staging\version_staging.json"
             displayName: "Copy version_staging.json"
 
           # ── アーティファクト公開 ──
