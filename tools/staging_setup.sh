@@ -19,8 +19,7 @@ set -e
 PROD_REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STAGING_REPO_DIR="${PROD_REPO_DIR}-staging"
 STAGING_PORT=8001
-STAGING_DB="${STAGING_REPO_DIR}/igo_users_staging.db"
-STAGING_SETTINGS="${STAGING_REPO_DIR}/app_settings_staging.json"
+STAGING_PG_DSN="${GOKA_STAGING_PG_DSN:-dbname=goka_staging}"
 SERVICE_NAME="goka-staging"
 RUN_USER="${SUDO_USER:-$(whoami)}"
 
@@ -57,8 +56,7 @@ Type=simple
 User=${RUN_USER}
 WorkingDirectory=${STAGING_REPO_DIR}
 Environment=GOKA_PORT=${STAGING_PORT}
-Environment=GOKA_DB_PATH=${STAGING_DB}
-Environment=GOKA_SETTINGS_PATH=${STAGING_SETTINGS}
+Environment=GOKA_PG_DSN=${STAGING_PG_DSN}
 Environment=GOKA_ENV=staging
 Environment=GOKA_GIT_BRANCH=main
 Environment=GOKA_REPO_DIR=${STAGING_REPO_DIR}
