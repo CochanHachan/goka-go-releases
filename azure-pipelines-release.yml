@@ -94,12 +94,31 @@ stages:
                 print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
             displayName: "Create lightweight update ZIP (no KataGo)"
 
+          # ── 本番用 Inno Setup インストーラー ──
+          - powershell: |
+              choco install innosetup -y --no-progress
+              $version = '${{ parameters.releaseVersion }}'
+              $issFile = "installer/GokaGo_Setup.iss"
+              (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+              & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+              Write-Host "Production installer built: version $version"
+
+              # Copy installer to release artifacts
+              $exes = Get-ChildItem "dist/installer/GokaGo_Setup_*.exe"
+              if ($exes.Count -gt 0) {
+                  $dest = "$(Build.ArtifactStagingDirectory)/release"
+                  Copy-Item $exes[0].FullName "$dest/GokaGo_Setup.exe"
+                  $sizeMB = [math]::Round($exes[0].Length / 1MB, 1)
+                  Write-Host "Installer: $sizeMB MB -> $dest/GokaGo_Setup.exe"
+              }
+            displayName: "Build Inno Setup production installer"
+
           - task: PublishPipelineArtifact@1
             inputs:
               targetPath: "$(Build.ArtifactStagingDirectory)/release"
               artifact: "release-zips"
               publishLocation: "pipeline"
-            displayName: Publish release-zips artifact
+            displayName: Publish release artifacts
 
   - stage: Production
     displayName: Deploy production (FTP)
@@ -155,12 +174,26 @@ stages:
               GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
               GOKA_FTP_TLS: $(GOKA_FTP_TLS)
 
+          # ── Web ページを FTP アップロード（HPダウンロードリンク更新） ──
+          - script: |
+              set -e
+              python tools/deploy_web_ftp.py
+            displayName: FTP upload web pages (HP)
+            env:
+              GOKA_FTP_HOST: $(FTP_SERVER)
+              GOKA_FTP_USER: $(FTP_USERNAME)
+              GOKA_FTP_PASS: $(FTP_PASSWORD)
+              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+
           # ── 配信確認 ──
           - script: |
               set -e
               echo "=== Production version.json ==="
               curl -fsS "$(PUBLIC_BASE)/version.json"
               echo
+              echo "=== Installer check ==="
+              curl -sI "$(PUBLIC_BASE)/releases/GokaGo_Setup.exe" | head -3
               echo "=== Update ZIP check ==="
               curl -sI "$(PUBLIC_BASE)/releases/goka_go_${{ parameters.releaseVersion }}.zip" | head -3
             displayName: Smoke test production files
