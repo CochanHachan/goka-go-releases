@@ -122,13 +122,19 @@ jobs:
           print("=== constants_env.py after rewrite ===")
           print(content)
 
-      - name: Create test icon (fallback to goka_go.ico if goka_go_test.ico missing)
+      - name: Create missing assets for Inno Setup
         shell: python
         run: |
-          import os, shutil
+          import os, shutil, json
+          # goka_go_test.ico: fallback to goka_go.ico
           if not os.path.exists("goka_go_test.ico"):
               print("goka_go_test.ico not found, copying goka_go.ico as fallback")
               shutil.copy2("goka_go.ico", "goka_go_test.ico")
+          # igo_config.json: create default if missing
+          if not os.path.exists("igo_config.json"):
+              print("igo_config.json not found, creating default")
+              with open("igo_config.json", "w", encoding="utf-8") as f:
+                  json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
 
       - name: Download KataGo
         shell: python
