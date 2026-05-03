@@ -197,29 +197,13 @@ stages:
               artifactName: "staging-build"
               targetPath: "$(Pipeline.Workspace)/staging"
 
-          # ── FTPS でステージング領域にアップロード ──
+          # ── FTP でステージング ZIPs + インストーラーをアップロード ──
           - script: |
               set -e
-              python tools/deploy_web_ftp.py \
-                --local-dir "$(Pipeline.Workspace)/staging" \
-                --remote-subdir "staging/releases" \
-                --include "*.zip" --include "*.exe"
-            displayName: "FTPS upload ZIPs + installer"
-            env:
-              GOKA_FTP_HOST: $(FTP_SERVER)
-              GOKA_FTP_USER: $(FTP_USERNAME)
-              GOKA_FTP_PASS: $(FTP_PASSWORD)
-              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
-
-          # ── version_staging.json を配信 ──
-          - script: |
-              set -e
-              python tools/deploy_web_ftp.py \
-                --local-dir "$(Pipeline.Workspace)/staging" \
-                --remote-subdir "staging" \
-                --include "version_staging.json"
-            displayName: "FTPS upload version_staging.json"
+              python tools/staging_ftp_upload.py \
+                "$(Pipeline.Workspace)/staging" \
+                "staging/releases"
+            displayName: "FTP upload ZIPs + installer"
             env:
               GOKA_FTP_HOST: $(FTP_SERVER)
               GOKA_FTP_USER: $(FTP_USERNAME)
