@@ -627,9 +627,11 @@ class App:
         _log_path = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
 
         def _write_log(msg):
+            import datetime as _dt
             try:
+                _ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 with open(_log_path, "a", encoding="utf-8") as _f:
-                    _f.write("{}\n".format(msg))
+                    _f.write("[{}] {}\n".format(_ts, msg))
             except OSError:
                 pass  # log write failure is non-critical
 
@@ -648,11 +650,21 @@ class App:
 
         def _fetch_version_json():
             """version.json を取得。SSL検証 → 失敗時はSSL検証なしでリトライ。"""
-            import urllib.request, ssl
+            import urllib.request, ssl, time as _t
+            # キャッシュバスティング: タイムスタンプ付きURLでキャッシュを回避
+            _url = UPDATE_CHECK_URL
+            _sep = "&" if "?" in _url else "?"
+            _url = "{}{}cb={}".format(_url, _sep, int(_t.time()))
+            _write_log("Fetching: {}".format(_url))
+            _headers = {
+                "Cache-Control": "no-cache, no-store",
+                "Pragma": "no-cache",
+            }
             # 1回目: SSL検証あり
             try:
                 ctx = ssl.create_default_context()
-                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx) as r:
+                _req = urllib.request.Request(_url, headers=_headers)
+                with urllib.request.urlopen(_req, timeout=5, context=ctx) as r:
                     return json.loads(r.read().decode("utf-8"))
             except (OSError, urllib.error.URLError) as e1:
                 _write_log("SSL verified request failed: {}".format(e1))
@@ -661,7 +673,8 @@ class App:
             ctx2 = ssl.create_default_context()
             ctx2.check_hostname = False
             ctx2.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx2) as r:
+            _req2 = urllib.request.Request(_url, headers=_headers)
+            with urllib.request.urlopen(_req2, timeout=5, context=ctx2) as r:
                 return json.loads(r.read().decode("utf-8"))
 
         def _worker():
