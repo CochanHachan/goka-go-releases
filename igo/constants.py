@@ -16,8 +16,8 @@ _CONFIG = {
     "staging": {
         "app_name":          "碁華 Goka GO（テスト）",
         "staging_label":     "[テスト] ",
-        "cloud_server_url":  "ws://20.48.18.153:8000",
-        "api_base_url":      "http://20.48.18.153:8000",
+        "cloud_server_url":  "ws://136.110.101.14:8000",
+        "api_base_url":      "http://136.110.101.14:8000",
         "update_check_url":  "http://20.48.18.153:8000/api/version-check",
         "data_dir_name":     "GokaGoTest",
     },
