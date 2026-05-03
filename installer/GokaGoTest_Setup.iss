@@ -1,16 +1,17 @@
 ; =====================================================
-; 碁華 (Goka GO) テスト版インストーラー
-; Inno Setup 6.x 用スクリプト
+; 碁華 Goka GO — テスト用クライアント（beta ビルド向け）
+; 本番 GokaGo_Setup.iss とは別 AppId・別インストール先。
+; アイコン: テスト版専用 goka_go_test.ico（インストーラ・ショートカット用）。
+; goka_go_test.ico が無い場合は goka_go.ico をフォールバックで使用。
 ; =====================================================
 
 #define AppName      "碁華 Goka GO（テスト）"
-#define AppVersion   "1.2.170"
+#define AppVersion   "2.0.0"
 #define AppPublisher "CochanHachan"
 #define AppURL       "https://goka-igo.com"
 #define AppExeName   "goka_go.exe"
 
 [Setup]
-; テスト版専用 AppId（本番とは別管理）
 AppId={{B2C3D4E5-F6A7-8901-BCDE-F12345678901}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -24,7 +25,7 @@ DefaultGroupName={#AppName}
 AllowNoIcons=yes
 OutputDir=..\dist\installer
 OutputBaseFilename=GokaGoTest_Setup_{#AppVersion}
-SetupIconFile=..\goka_go.ico
+SetupIconFile=..\goka_go_test.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -40,25 +41,19 @@ Name: "english";  MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; \
   Description: "{cm:CreateDesktopIcon}"; \
   GroupDescription: "{cm:AdditionalIcons}"; \
-  Flags: checked
+  Flags: unchecked
 
 [Dirs]
-; インストールフォルダとサブディレクトリに書き込み権限を付与（自動アップデートで管理者権限不要にする）
 Name: "{app}"; Permissions: users-modify
 Name: "{app}\katago"; Permissions: users-modify
 
 [Files]
-; ---- アプリ本体 (PyInstaller の出力フォルダをまるごと) ----
 Source: "..\dist\goka_go\*"; \
   DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
-
-; ---- デフォルト設定ファイル (初回起動時に %APPDATA%\GokaGo にコピーされる) ----
 Source: "..\igo_config.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\stone_click.wav"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\goka_go.ico"; DestDir: "{app}"; Flags: ignoreversion
-
-; ---- KataGo 本体 ----
+Source: "..\goka_go_test.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\katago\katago.exe";                    DestDir: "{app}\katago"; Flags: ignoreversion
 Source: "..\katago\libcrypto-3-x64.dll";           DestDir: "{app}\katago"; Flags: ignoreversion
 Source: "..\katago\libssl-3-x64.dll";              DestDir: "{app}\katago"; Flags: ignoreversion
@@ -74,26 +69,20 @@ Source: "..\katago\vcruntime140_1.dll";            DestDir: "{app}\katago"; Flag
 Source: "..\katago\cacert.pem";                    DestDir: "{app}\katago"; Flags: ignoreversion
 Source: "..\katago\default_gtp.cfg";               DestDir: "{app}\katago"; Flags: ignoreversion
 Source: "..\katago\analysis_example.cfg";          DestDir: "{app}\katago"; Flags: ignoreversion
-
-; ---- KataGo モデル ----
 Source: "..\katago\model.bin"; \
   DestDir: "{app}\katago"; \
   Flags: ignoreversion
-
-; ---- KataGo Human SL モデル（humanSLProfile 用）----
 Source: "..\katago\human_model.bin"; \
   DestDir: "{app}\katago"; \
   Flags: ignoreversion
-
-; ---- KataGo チューニングデータ ----
 Source: "..\katago\KataGoData\*"; \
   DestDir: "{app}\katago\KataGoData"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#AppName}";                       Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go.ico"
+Name: "{group}\{#AppName}";                       Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go_test.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}";                 Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}";                 Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go_test.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#AppExeName}"; \
@@ -101,5 +90,4 @@ Filename: "{app}\{#AppExeName}"; \
   Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; アプリが生成する設定ファイルも削除
 Type: filesandordirs; Name: "{app}"

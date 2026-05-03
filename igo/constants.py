@@ -6,7 +6,12 @@
 # 環境切替フラグ（constants_env.py から読み込み）
 # ステージングビルド時は constants_env.py の _ENV を "staging" に変更する
 # ---------------------------------------------------------------------------
-from igo.constants_env import _ENV
+from igo.constants_env import (
+    _ENV,
+    _APP_EDITION,
+    BETA_CHANNEL_VERSION,
+    CLIENT_UPDATE_CHECK_URL,
+)
 
 # ---------------------------------------------------------------------------
 # 環境別サーバー設定
@@ -31,17 +36,22 @@ if _cfg is None:
     raise RuntimeError("Unknown _ENV={!r}. Must be 'production' or 'staging'.".format(_ENV))
 
 APP_NAME         = _cfg["app_name"]
-APP_VERSION      = "1.2.171"
+_BASE_VERSION    = "1.2.171"
+APP_VERSION      = BETA_CHANNEL_VERSION if (_APP_EDITION == "beta" and BETA_CHANNEL_VERSION) else _BASE_VERSION
 APP_BUILD        = "20260418"
 STAGING_LABEL    = _cfg["staging_label"]
 CLOUD_SERVER_URL = _cfg["cloud_server_url"]
 API_BASE_URL     = _cfg["api_base_url"]
 
-_UPDATE_URL_CONFIG = {
-    "production": "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/version.json",
-    "staging": "http://20.48.18.153:8000/api/version-check",
-}
-UPDATE_CHECK_URL = _UPDATE_URL_CONFIG.get(_ENV, "")
+# ---------------------------------------------------------------------------
+# アプリデータディレクトリ名（beta の場合 GokaGoTest で本番と分離）
+# ---------------------------------------------------------------------------
+APP_DATA_DIR_NAME = "GokaGoTest" if _APP_EDITION == "beta" else "GokaGo"
+
+# ---------------------------------------------------------------------------
+# 更新チェックURL（constants_env.py の CLIENT_UPDATE_CHECK_URL を使用）
+# ---------------------------------------------------------------------------
+UPDATE_CHECK_URL = CLIENT_UPDATE_CHECK_URL
 
 # ---------------------------------------------------------------------------
 # 起動時自己診断: STAGING_LABEL と URL の整合性チェック

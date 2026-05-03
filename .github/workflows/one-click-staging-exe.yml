@@ -96,17 +96,39 @@ jobs:
           import sys
 
           env_file = "igo/constants_env.py"
-          search = '_ENV = "production"'
-          replace = '_ENV = "staging"'
+
+          # 4 fields to rewrite for staging / beta build
+          replacements = [
+              ('_ENV = "production"',        '_ENV = "staging"'),
+              ('_APP_EDITION = "release"',   '_APP_EDITION = "beta"'),
+              # BETA_CHANNEL_VERSION は空のまま (constants.py の _BASE_VERSION を使う)
+              ('CLIENT_UPDATE_CHECK_URL = "https://goka-igo.com/version.json"',
+               'CLIENT_UPDATE_CHECK_URL = "http://20.48.18.153:8000/api/version-check"'),
+          ]
 
           with open(env_file, "r", encoding="utf-8") as f:
               content = f.read()
-          if search not in content:
-              print(f"ERROR: '{search}' not found in {env_file}")
-              sys.exit(1)
+
+          for search, replace in replacements:
+              if search not in content:
+                  print(f"ERROR: '{search}' not found in {env_file}")
+                  sys.exit(1)
+              content = content.replace(search, replace, 1)
 
           with open(env_file, "w", encoding="utf-8") as f:
-              f.write(content.replace(search, replace, 1))
+              f.write(content)
+
+          # Verify
+          print("=== constants_env.py after rewrite ===")
+          print(content)
+
+      - name: Create test icon (fallback to goka_go.ico if goka_go_test.ico missing)
+        shell: python
+        run: |
+          import os, shutil
+          if not os.path.exists("goka_go_test.ico"):
+              print("goka_go_test.ico not found, copying goka_go.ico as fallback")
+              shutil.copy2("goka_go.ico", "goka_go_test.ico")
 
       - name: Download KataGo
         shell: python
@@ -168,8 +190,8 @@ jobs:
         run: |
           # Install Inno Setup
           choco install innosetup -y --no-progress
-          # Update version in ISS file to match constants.py
-          $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+          # Update version in ISS file to match constants.py (_BASE_VERSION)
+          $version = (Select-String -Path "igo/constants.py" -Pattern '_BASE_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
           $issFile = "installer/GokaGoTest_Setup.iss"
           (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
           # Compile installer
