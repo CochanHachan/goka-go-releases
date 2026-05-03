@@ -31,7 +31,7 @@ if _cfg is None:
     raise RuntimeError("Unknown _ENV={!r}. Must be 'production' or 'staging'.".format(_ENV))
 
 APP_NAME         = _cfg["app_name"]
-APP_VERSION      = "1.2.167"
+APP_VERSION      = "1.2.168"
 APP_BUILD        = "20260418"
 STAGING_LABEL    = _cfg["staging_label"]
 CLOUD_SERVER_URL = _cfg["cloud_server_url"]
@@ -39,7 +39,7 @@ API_BASE_URL     = _cfg["api_base_url"]
 
 _UPDATE_URL_CONFIG = {
     "production": "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/version.json",
-    "staging": "https://raw.githubusercontent.com/CochanHachan/goka-go-releases/devin/vps-test-build/version_staging.json",
+    "staging": "http://20.48.18.153:8000/api/version-check",
 }
 UPDATE_CHECK_URL = _UPDATE_URL_CONFIG.get(_ENV, "")
 
