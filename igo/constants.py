@@ -19,10 +19,10 @@ _SERVER_CONFIG = {
         "app_name":         "碁華 Goka GO",
     },
     "staging": {
-        "cloud_server_url": "ws://136.110.101.14:8000",
-        "api_base_url":     "http://136.110.101.14:8000",
-        "staging_label":    "[STAGING] ",
-        "app_name":         "碁華 Goka GO [STAGING]",
+        "cloud_server_url": "ws://20.48.18.153:8000",
+        "api_base_url":     "http://20.48.18.153:8000",
+        "staging_label":    "[テスト] ",
+        "app_name":         "碁華 Goka GO（テスト）",
     },
 }
 
@@ -50,7 +50,7 @@ UPDATE_CHECK_URL = _UPDATE_URL_CONFIG.get(_ENV, "")
 def _validate_env():
     """STAGING_LABEL と接続先URLが矛盾していないか検証する。"""
     _prod_ip = "34.85.118.112"
-    _staging_ip = "136.110.101.14"
+    _staging_ip = "20.48.18.153"
     _urls = CLOUD_SERVER_URL + " " + API_BASE_URL
 
     if STAGING_LABEL and _prod_ip in _urls:
