@@ -631,16 +631,18 @@ class App:
         _log_path = os.path.join(os.path.expanduser("~"), "goka_update_log.txt")
 
         def _write_log(msg):
+            import datetime as _dt
             try:
+                _ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 with open(_log_path, "a", encoding="utf-8") as _f:
-                    _f.write("{}\n".format(msg))
+                    _f.write("[{}] {}\n".format(_ts, msg))
             except OSError:
                 pass  # log write failure is non-critical
 
-        # ── アップデート直後の再起動時は同期的にスキップ（高速化） ──
+        # ── アップデート直後の再起動時はスキップ ──
         _marker = self._read_marker()
-        if _marker.get("version") and _marker.get("version") == APP_VERSION:
-            _write_log("Just updated to v{}, skipping check".format(APP_VERSION))
+        if _marker.get("just_updated"):
+            _write_log("Just updated (marker), skipping check")
             self._delete_marker()
             self.show_login()
             return
@@ -652,11 +654,21 @@ class App:
 
         def _fetch_version_json():
             """version.json を取得。SSL検証 → 失敗時はSSL検証なしでリトライ。"""
-            import urllib.request, ssl
+            import urllib.request, ssl, time as _t
+            # キャッシュバスティング: タイムスタンプ付きURLでキャッシュを回避
+            _url = UPDATE_CHECK_URL
+            _sep = "&" if "?" in _url else "?"
+            _url = "{}{}cb={}".format(_url, _sep, int(_t.time()))
+            _write_log("Fetching: {}".format(_url))
+            _headers = {
+                "Cache-Control": "no-cache, no-store",
+                "Pragma": "no-cache",
+            }
             # 1回目: SSL検証あり
             try:
                 ctx = ssl.create_default_context()
-                with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx) as r:
+                _req = urllib.request.Request(_url, headers=_headers)
+                with urllib.request.urlopen(_req, timeout=5, context=ctx) as r:
                     return json.loads(r.read().decode("utf-8"))
             except (OSError, urllib.error.URLError) as e1:
                 _write_log("SSL verified request failed: {}".format(e1))
@@ -665,7 +677,8 @@ class App:
             ctx2 = ssl.create_default_context()
             ctx2.check_hostname = False
             ctx2.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=3, context=ctx2) as r:
+            _req2 = urllib.request.Request(_url, headers=_headers)
+            with urllib.request.urlopen(_req2, timeout=5, context=ctx2) as r:
                 return json.loads(r.read().decode("utf-8"))
 
         def _worker():
@@ -798,9 +811,8 @@ class App:
                 zip_size = os.path.getsize(zip_path)
                 _log("Downloaded: {} bytes".format(zip_size))
 
-                # 「解凍中」を表示して短く待つ
                 self.root.after(0, lambda: prog["set_status"]("解凍中"))
-                _t.sleep(0.8)
+                _t.sleep(0.3)
 
                 extract_dir = os.path.join(tmp_dir, "extracted")
                 os.makedirs(extract_dir, exist_ok=True)
@@ -832,16 +844,15 @@ class App:
                             os.path.basename(app_exe), extract_dir))
                 _log("Source exe OK: {}".format(src_exe))
 
-                # 「インストール中」を表示して短く待つ
                 self.root.after(0, lambda: prog["set_status"]("インストール中"))
-                _t.sleep(0.8)
+                _t.sleep(0.3)
 
                 # 「アップデートは正常に終了しました。」を表示して短く待つ
                 if "show_complete" in prog:
                     self.root.after(0, lambda: prog["show_complete"]())
                 else:
                     self.root.after(0, lambda: prog["set_status"]("アップデート完了"))
-                _t.sleep(0.8)
+                _t.sleep(0.3)
 
                 bat_path = os.path.join(tmp_dir, "goka_update.bat")
                 _log_file = os.path.join(
@@ -914,6 +925,8 @@ class App:
                     bf.write('echo [%time%] === Update batch end === >> "%LOGFILE%"\n')
 
                 _log("Batch: {}".format(bat_path))
+                # 再起動後にバージョンチェックをスキップするマーカー
+                self._write_marker({"just_updated": True, "version": latest})
                 self.root.after(0, lambda: self._launch_update(
                     prog, bat_path, _log))
             except (OSError, zipfile.BadZipFile, RuntimeError) as e:
@@ -971,8 +984,9 @@ class App:
                 startupinfo=si,
                 creationflags=subprocess.CREATE_NO_WINDOW)
             if _log:
-                _log("batch launched, destroying root")
-            self.root.destroy()
+                _log("batch launched, exiting process")
+            # root.destroy() だとプロセス終了が遅い → os._exit で即座に終了
+            os._exit(0)
         except (OSError, subprocess.SubprocessError) as e:
             if _log:
                 import traceback

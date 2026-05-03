@@ -2,6 +2,7 @@
 ; 碁華 Goka GO — テスト用クライアント（beta ビルド向け）
 ; 本番 GokaGo_Setup.iss とは別 AppId・別インストール先。
 ; アイコン: テスト版専用 goka_go_test.ico（インストーラ・ショートカット用）。
+; goka_go_test.ico が無い場合は goka_go.ico をフォールバックで使用。
 ; =====================================================
 
 #define AppName      "碁華 Goka GO（テスト）"

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Last deployed: 2026-04-07 -->
+<!-- Last deployed: 2026-04-30 -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -161,7 +161,7 @@
   /* ===== Slide Indicators ===== */
   .indicators {
     position: fixed;
-    bottom: 118px;
+    bottom: 30px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -215,62 +215,6 @@
     background: rgba(255,255,255,0.35);
     border-color: #fff;
     font-weight: bold;
-  }
-
-  /* ローカル／公開サイトへの案内（固定表示） */
-  .hp-site-link {
-    position: fixed;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 50;
-    font-size: 0.88rem;
-    letter-spacing: 0.04em;
-    text-shadow: 0 1px 8px rgba(0,0,0,0.75);
-    pointer-events: auto;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    max-width: min(96vw, 52rem);
-  }
-  .hp-site-row {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-  }
-  .hp-site-link a.hp-site-main {
-    color: rgba(255, 255, 255, 0.95);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    font-weight: 600;
-  }
-  .hp-site-link a.hp-site-main:hover {
-    color: #fff;
-  }
-  .hp-site-link a.hp-site-public {
-    color: rgba(255, 255, 255, 0.65);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    font-size: 0.82em;
-  }
-  .hp-site-link a.hp-site-public:hover {
-    color: rgba(255, 255, 255, 0.9);
-  }
-  .hp-site-sep {
-    color: rgba(255, 255, 255, 0.35);
-    user-select: none;
-  }
-  .hp-local-hint {
-    font-size: 0.72rem;
-    line-height: 1.45;
-    color: rgba(255, 255, 255, 0.78);
-    text-align: center;
-    margin: 0;
-    padding: 0 10px;
-    text-shadow: 0 1px 6px rgba(0,0,0,0.65);
   }
 
   /* ===== Animations ===== */
@@ -334,7 +278,7 @@
         <a data-key='navHowto' href='howto.html'>遊び方</a>
         <a data-key='navFeatures' href='features.html'>機能紹介</a>
         <a data-key='navSystem' href='sysreq.html'>動作環境</a>
-        <a href="mailto:pcochan@proton.me" data-key="navContact">お問い合わせ</a>
+        <!--email_off--><a href="mailto:pcochan@proton.me" data-key="navContact">お問い合わせ</a><!--/email_off-->
       </nav>
       <div class="master-logo">
         <div class="logo-title">碁華</div>
@@ -403,9 +347,6 @@
       navFeatures: "機能紹介",
       navSystem:   "動作環境",
       navContact:  "お問い合わせ",
-      navLocalHp:  "ローカルでホームページを開く",
-      navPublicHp: "公開URL（ドメイン準備後）",
-      navLocalHint: "ドメイン公開前は、同じフォルダの serve_local_web.ps1 を実行するか、ターミナルで web に移動して py -m http.server 8765 を実行してから、上の「ローカルで」を開いてください。",
       logoSub:     "GOKA GO — 虚空に咲く盤上の華",
     },
     en: {
@@ -417,9 +358,6 @@
       navFeatures: "Features",
       navSystem:   "System Requirements",
       navContact:  "Contact",
-      navLocalHp:  "Open homepage locally",
-      navPublicHp: "Public URL (after DNS)",
-      navLocalHint: "Before the domain is live: run serve_local_web.ps1 in this folder, or cd to web and run py -m http.server 8765, then open the local link above.",
       logoSub:     "GOKA GO — A flower blooming on the board in the void",
     },
     zh: {
@@ -431,9 +369,6 @@
       navFeatures: "功能说明",
       navSystem:   "运行环境",
       navContact:  "联系我们",
-      navLocalHp:  "在本地打开主页",
-      navPublicHp: "公开网址（域名就绪后）",
-      navLocalHint: "域名未上线前：运行本目录下的 serve_local_web.ps1，或在终端进入 web 目录执行 py -m http.server 8765，再点击上方本地链接。",
       logoSub:     "GOKA GO — 虚空中盛开的棋盘之华",
     },
     ko: {
@@ -445,9 +380,6 @@
       navFeatures: "기능 소개",
       navSystem:   "시스템 요구사항",
       navContact:  "문의하기",
-      navLocalHp:  "로컬에서 홈페이지 열기",
-      navPublicHp: "공개 URL(도메인 준비 후)",
-      navLocalHint: "도메인 공개 전: 같은 폴더의 serve_local_web.ps1 실행 또는 터미널에서 web 으로 이동 후 py -m http.server 8765 실행 뒤 위 로컬 링크를 여세요.",
       logoSub:     "GOKA GO — 허공에 피는 바둑판의 꽃",
     },
   };
@@ -476,9 +408,6 @@
       navFeatures: t.navFeatures,
       navSystem:   t.navSystem,
       navContact:  t.navContact,
-      navLocalHp:  t.navLocalHp,
-      navPublicHp: t.navPublicHp,
-      navLocalHint: t.navLocalHint,
     };
     // Update nav link hrefs for language-specific pages
     const suffix = (lang === 'ja') ? '' : '_' + lang;
@@ -487,10 +416,10 @@
       navFeatures: 'features' + suffix + '.html',
       navSystem:   'sysreq' + suffix + '.html',
     };
-    document.querySelectorAll('[data-key]').forEach(el => {
-      const key = el.dataset.key;
-      if (keyMap[key]) el.textContent = keyMap[key];
-      if (el.tagName === 'A' && hrefMap[key]) el.href = hrefMap[key];
+    document.querySelectorAll('.master-nav a[data-key]').forEach(a => {
+      const key = a.dataset.key;
+      if (keyMap[key]) a.textContent = keyMap[key];
+      if (hrefMap[key]) a.href = hrefMap[key];
     });
     document.querySelector('.logo-sub').textContent = t.logoSub;
     document.querySelectorAll('.lang-btn').forEach(btn => {

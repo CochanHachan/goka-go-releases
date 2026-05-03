@@ -10,7 +10,7 @@ import math
 import time as _time
 import queue as _queue
 
-from igo.constants import BLACK, WHITE, EMPTY, APP_DATA_SUBDIR
+from igo.constants import BLACK, WHITE, EMPTY, APP_DATA_DIR_NAME
 from igo.config import _get_install_dir
 
 logger = logging.getLogger(__name__)
@@ -26,10 +26,9 @@ def _katago_home_data_dir():
     """
     if platform.system() == "Windows":
         base = os.environ.get("LOCALAPPDATA", "") or os.path.expanduser("~")
-        data_dir = os.path.join(base, APP_DATA_SUBDIR, "katago")
+        data_dir = os.path.join(base, APP_DATA_DIR_NAME, "katago")
     else:
-        data_dir = os.path.join(
-            os.path.expanduser("~"), ".local", "share", APP_DATA_SUBDIR, "katago")
+        data_dir = os.path.join(os.path.expanduser("~"), ".local", "share", APP_DATA_DIR_NAME, "katago")
     try:
         os.makedirs(data_dir, exist_ok=True)
     except OSError:
@@ -349,17 +348,16 @@ class KataGoGTP:
 def _get_katago_data_dir():
     """Return a writable directory for KataGo data (OpenCL tuning etc.).
 
-    Uses %LOCALAPPDATA%/<APP_DATA_SUBDIR>/katago on Windows,
-    ~/.local/share/<APP_DATA_SUBDIR>/katago on Linux.  Falls back to a temp directory if creation fails.
+    Uses %LOCALAPPDATA%/GokaGo/katago on Windows, ~/.local/share/GokaGo/katago
+    on Linux.  Falls back to a temp directory if creation fails.
     """
     if platform.system() == "Windows":
         base = os.environ.get("LOCALAPPDATA", "")
         if not base:
             base = os.path.expanduser("~")
-        data_dir = os.path.join(base, APP_DATA_SUBDIR, "katago")
+        data_dir = os.path.join(base, APP_DATA_DIR_NAME, "katago")
     else:
-        data_dir = os.path.join(
-            os.path.expanduser("~"), ".local", "share", APP_DATA_SUBDIR, "katago")
+        data_dir = os.path.join(os.path.expanduser("~"), ".local", "share", APP_DATA_DIR_NAME, "katago")
     try:
         os.makedirs(data_dir, exist_ok=True)
         return data_dir
