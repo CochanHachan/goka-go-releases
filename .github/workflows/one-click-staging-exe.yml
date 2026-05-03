@@ -163,6 +163,26 @@ jobs:
           dst = os.path.join("dist", "goka_go", "katago")
           shutil.copytree(src, dst, dirs_exist_ok=True)
 
+      - name: Build Inno Setup test installer
+        shell: pwsh
+        run: |
+          # Install Inno Setup
+          choco install innosetup -y --no-progress
+          # Update version in ISS file to match constants.py
+          $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+          $issFile = "installer/GokaGoTest_Setup.iss"
+          (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+          # Compile installer
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+          Write-Host "Installer built: version $version"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-go-test-installer
+          path: dist/installer/GokaGoTest_Setup_*.exe
+          retention-days: 7
+
       - name: Create staging ZIPs
         shell: python
         run: |
@@ -214,11 +234,18 @@ jobs:
           name: goka-admin-staging-zip
           path: out/admin
 
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: goka-go-test-installer
+          path: out/installer
+
       - name: Normalize filenames
         shell: bash
         run: |
           cp out/client/*.zip goka-go-staging.zip
           cp out/admin/*.zip goka-admin-staging.zip
+          cp out/installer/*.exe GokaGoTest_Setup.exe
 
       - name: Publish or update staging-latest release
         uses: softprops/action-gh-release@v2
@@ -234,6 +261,7 @@ jobs:
           files: |
             goka-go-staging.zip
             goka-admin-staging.zip
+            GokaGoTest_Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -242,5 +270,6 @@ jobs:
         run: |
           REPO="${{ github.repository }}"
           echo "## Fixed download URLs" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Client: https://github.com/${REPO}/releases/download/staging-latest/goka-go-staging.zip" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Admin: https://github.com/${REPO}/releases/download/staging-latest/goka-admin-staging.zip" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Client ZIP: https://github.com/${REPO}/releases/download/staging-latest/goka-go-staging.zip" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Admin ZIP: https://github.com/${REPO}/releases/download/staging-latest/goka-admin-staging.zip" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Test Installer: https://github.com/${REPO}/releases/download/staging-latest/GokaGoTest_Setup.exe" >> "$GITHUB_STEP_SUMMARY"
