@@ -1,99 +1,52 @@
 # -*- coding: utf-8 -*-
-"""碁華 定数定義
-自動アップデート対応版"""
+"""碁華 定数定義 — _ENV だけで全て決まる"""
 
-# ---------------------------------------------------------------------------
-# 環境切替フラグ（constants_env.py から読み込み）
-# ステージングビルド時は constants_env.py の _ENV を "staging" に変更する
-# ---------------------------------------------------------------------------
-from igo.constants_env import (
-    _ENV,
-    _APP_EDITION,
-    BETA_CHANNEL_VERSION,
-    CLIENT_UPDATE_CHECK_URL,
-)
+from igo.constants_env import _ENV
 
-# ---------------------------------------------------------------------------
-# 環境別サーバー設定
-# ---------------------------------------------------------------------------
-_SERVER_CONFIG = {
+# ---- 環境別設定（_ENV から自動導出） --------------------------------
+_CONFIG = {
     "production": {
-        "cloud_server_url": "ws://34.85.118.112:8000",
-        "api_base_url":     "http://34.85.118.112:8000",
-        "staging_label":    "",
-        "app_name":         "碁華 Goka GO",
+        "app_name":          "碁華 Goka GO",
+        "staging_label":     "",
+        "cloud_server_url":  "ws://34.85.118.112:8000",
+        "api_base_url":      "http://34.85.118.112:8000",
+        "update_check_url":  "https://goka-igo.com/version.json",
+        "data_dir_name":     "GokaGo",
     },
     "staging": {
-        "cloud_server_url": "ws://20.48.18.153:8000",
-        "api_base_url":     "http://20.48.18.153:8000",
-        "staging_label":    "[テスト] ",
-        "app_name":         "碁華 Goka GO（テスト）",
+        "app_name":          "碁華 Goka GO（テスト）",
+        "staging_label":     "[テスト] ",
+        "cloud_server_url":  "ws://20.48.18.153:8000",
+        "api_base_url":      "http://20.48.18.153:8000",
+        "update_check_url":  "http://20.48.18.153:8000/api/version-check",
+        "data_dir_name":     "GokaGoTest",
     },
 }
 
-_cfg = _SERVER_CONFIG.get(_ENV)
-if _cfg is None:
-    raise RuntimeError("Unknown _ENV={!r}. Must be 'production' or 'staging'.".format(_ENV))
+_c = _CONFIG.get(_ENV)
+if _c is None:
+    raise RuntimeError("Unknown _ENV={!r}".format(_ENV))
 
-APP_NAME         = _cfg["app_name"]
-_BASE_VERSION    = "1.2.171"
-APP_VERSION      = BETA_CHANNEL_VERSION if (_APP_EDITION == "beta" and BETA_CHANNEL_VERSION) else _BASE_VERSION
-APP_BUILD        = "20260418"
-STAGING_LABEL    = _cfg["staging_label"]
-CLOUD_SERVER_URL = _cfg["cloud_server_url"]
-API_BASE_URL     = _cfg["api_base_url"]
+APP_NAME          = _c["app_name"]
+APP_VERSION       = "1.2.171"
+APP_BUILD         = "20260418"
+STAGING_LABEL     = _c["staging_label"]
+CLOUD_SERVER_URL  = _c["cloud_server_url"]
+API_BASE_URL      = _c["api_base_url"]
+UPDATE_CHECK_URL  = _c["update_check_url"]
+APP_DATA_DIR_NAME = _c["data_dir_name"]
 
-# ---------------------------------------------------------------------------
-# アプリデータディレクトリ名（beta の場合 GokaGoTest で本番と分離）
-# ---------------------------------------------------------------------------
-APP_DATA_DIR_NAME = "GokaGoTest" if _APP_EDITION == "beta" else "GokaGo"
-
-# ---------------------------------------------------------------------------
-# 更新チェックURL（constants_env.py の CLIENT_UPDATE_CHECK_URL を使用）
-# ---------------------------------------------------------------------------
-UPDATE_CHECK_URL = CLIENT_UPDATE_CHECK_URL
-
-# ---------------------------------------------------------------------------
-# 起動時自己診断: STAGING_LABEL と URL の整合性チェック
-# ---------------------------------------------------------------------------
-def _validate_env():
-    """STAGING_LABEL と接続先URLが矛盾していないか検証する。"""
-    _prod_ip = "34.85.118.112"
-    _staging_ip = "20.48.18.153"
-    _urls = CLOUD_SERVER_URL + " " + API_BASE_URL
-
-    if STAGING_LABEL and _prod_ip in _urls:
-        raise RuntimeError(
-            "環境設定エラー: STAGING_LABEL が設定されていますが、"
-            "URLが本番サーバー({})を指しています。".format(_prod_ip))
-    if not STAGING_LABEL and _staging_ip in _urls:
-        raise RuntimeError(
-            "環境設定エラー: STAGING_LABEL が空ですが、"
-            "URLがステージングサーバー({})を指しています。".format(_staging_ip))
-
-    # CLOUD_SERVER_URL と API_BASE_URL のホストが一致するか
-    import re
-    hosts = re.findall(r'//([^:/]+)', _urls)
-    if len(set(hosts)) > 1:
-        raise RuntimeError(
-            "環境設定エラー: CLOUD_SERVER_URL と API_BASE_URL のホストが"
-            "異なります: {}".format(hosts))
-
-_validate_env()
-
+# ---- 碁盤 -----------------------------------------------------------
 BOARD_SIZE = 19
 CELL_SIZE = 36
 MARGIN = 40
 STONE_RADIUS = 18
 STAR_RADIUS = 4
 
-# 新規インストール後、ui_settings にゲーム画面の保存が無いときの初期ウィンドウサイズ。
-# Windows は作業領域（タスクバー等を除く）のピクセル幅・高さに対する割合（0.0〜1.0）。
-# それ以外の OS は画面全体。運用で変える場合はここだけ編集。
 GAME_WINDOW_INITIAL_WIDTH_FRACTION = 0.60
 GAME_WINDOW_INITIAL_HEIGHT_FRACTION = 0.78
 
-TIME_LIMIT = 10 * 60  # 10 minutes per player
+TIME_LIMIT = 10 * 60
 
 NET_TCP_PORT = 19937
 NET_UDP_PORT = 19938
@@ -112,5 +65,4 @@ STAR_POINTS = [
 GO_RANKS = ["{}段".format(i) for i in range(9, 0, -1)] + \
            ["{}級".format(i) for i in range(1, 11)]
 
-# Cloud client is imported lazily in _connect_cloud() to avoid slow startup
 HAS_CLOUD = True
