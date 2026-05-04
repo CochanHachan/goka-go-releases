@@ -66,3 +66,4 @@ GO_RANKS = ["{}段".format(i) for i in range(9, 0, -1)] + \
            ["{}級".format(i) for i in range(1, 11)]
 
 HAS_CLOUD = True
+IS_BETA_EDITION = (_ENV == "staging")
