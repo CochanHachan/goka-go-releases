@@ -1729,6 +1729,12 @@ async def admin_update(request: Request):
             cwd=REPO_DIR, capture_output=True, text=True, timeout=10
         ).stdout.strip()
 
+        # ローカル変更を退避（hotpatch等で変更されている場合）
+        subprocess.run(
+            ["git", "stash"], cwd=REPO_DIR,
+            capture_output=True, text=True, timeout=10
+        )
+
         # 常にfetch → checkoutしてからpull（前回のデプロイで別ブランチに
         # 切り替わっている可能性があるため、毎回明示的にcheckoutする）
         fetch_result = subprocess.run(
@@ -2188,7 +2194,10 @@ async def admin_setup_staging(request: Request):
 
     staging_port = 8001
     staging_dir = REPO_DIR + "-staging"
-    staging_pg_dsn = os.environ.get("GOKA_STAGING_PG_DSN", "dbname=goka_staging")
+    staging_pg_dsn = os.environ.get(
+        "GOKA_STAGING_PG_DSN",
+        "dbname=goka_staging user=goka password=goka_secure_2026 host=localhost"
+    )
     log_lines: list = []
 
     def _log(msg: str) -> None:
@@ -2278,9 +2287,27 @@ async def admin_setup_staging(request: Request):
                              "log": log_lines},
                     status_code=500)
 
+        # 0.5 ステージング用データベース作成（存在しなければ）
+        try:
+            import psycopg2 as _pg2
+            _tmp_conn = _pg2.connect("dbname=postgres user=goka password=goka_secure_2026 host=localhost")
+            _tmp_conn.autocommit = True
+            _tmp_cur = _tmp_conn.cursor()
+            _tmp_cur.execute("SELECT 1 FROM pg_database WHERE datname = 'goka_staging'")
+            if not _tmp_cur.fetchone():
+                _tmp_cur.execute("CREATE DATABASE goka_staging OWNER goka")
+                _log("ステージングデータベース goka_staging を作成しました")
+            else:
+                _log("ステージングデータベース goka_staging は既存です")
+            _tmp_cur.close()
+            _tmp_conn.close()
+        except Exception as e:
+            _log(f"ステージングDB作成をスキップ: {e}")
+
         # 1. ステージング用リポジトリの準備
         if os.path.isdir(staging_dir):
             _log(f"既存のステージングリポジトリを更新: {staging_dir}")
+            await _run(["git", "stash"], cwd=staging_dir)
             r = await _run(["git", "fetch", "origin"], cwd=staging_dir)
             if r.returncode != 0:
                 return JSONResponse(
@@ -2288,7 +2315,7 @@ async def admin_setup_staging(request: Request):
                              "output": r.stdout + r.stderr},
                     status_code=500)
             await _run(["git", "checkout", "main"], cwd=staging_dir)
-            r = await _run(["git", "pull", "origin", "main"], cwd=staging_dir)
+            r = await _run(["git", "reset", "--hard", "origin/main"], cwd=staging_dir)
             _log(f"git pull: {r.stdout.strip()}")
         else:
             _log(f"ステージングリポジトリをクローン: {staging_dir}")
