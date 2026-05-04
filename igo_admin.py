@@ -35,7 +35,7 @@ def _admin_app_base_dir():
 
 # Notebook 行の高さ（pack だとタブが最小高さに潰れやすいため grid + 固定高さで確保）
 _ADMIN_TAB_AREA_HEIGHT = 252
-_ADMIN_UPDATE_CHECK_URL = "https://goka-igo.com/version-admin.json"
+_ADMIN_UPDATE_CHECK_URL = "https://goka-igo.com/version.json"
 _ADMIN_UPDATE_TITLE = "管理者ツール更新"
 _ADMIN_UPDATE_APP_VERSION = APP_VERSION
 
@@ -358,7 +358,7 @@ class AdminApp:
                 with urllib.request.urlopen(req, timeout=4) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                 latest = str(data.get("version", "")).strip()
-                dl_url = str(data.get("download_url", "")).strip()
+                dl_url = str(data.get("admin_download_url", "")).strip()
                 notes = str(data.get("release_notes", "")).strip()
                 if not latest or not dl_url:
                     return
