@@ -135,6 +135,8 @@ def _normalize_num_text(text: str) -> str:
     """全角数字やカンマ混じりを正規化して数値文字列に寄せる。"""
     s = unicodedata.normalize("NFKC", str(text or ""))
     s = s.strip().replace(",", "").replace(" ", "")
+    import re as _re
+    s = _re.sub(r'[^\d.\-]+$', '', s)
     return s
 
 
@@ -724,14 +726,14 @@ class AdminApp:
         )
         right_default.pack(side="left", anchor="n")
 
-        self._default_main_time_var = tk.StringVar(
-            value=str(_to_int(cfg.get("default_main_time_min", 10), 10, min_value=1, max_value=180)))
-        self._default_byoyomi_sec_var = tk.StringVar(
-            value=str(_to_int(cfg.get("default_byoyomi_sec", 30), 30, min_value=1, max_value=180)))
-        self._default_byoyomi_count_var = tk.StringVar(
-            value=str(_to_int(cfg.get("default_byoyomi_count", 3), 3, min_value=1, max_value=30)))
-        self._default_komi_var = tk.StringVar(
-            value=str(_to_float(cfg.get("default_komi", 7.5), 7.5, min_value=-50.0, max_value=50.0)))
+        _srv_main = _to_int(server_settings.get("default_main_time_min", 10) if server_settings else 10, 10, min_value=1, max_value=180)
+        _srv_byo_sec = _to_int(server_settings.get("default_byoyomi_sec", 30) if server_settings else 30, 30, min_value=1, max_value=180)
+        _srv_byo_count = _to_int(server_settings.get("default_byoyomi_count", 3) if server_settings else 3, 3, min_value=1, max_value=30)
+        _srv_komi = _to_float(server_settings.get("default_komi", 7.5) if server_settings else 7.5, 7.5, min_value=-50.0, max_value=50.0)
+        self._default_main_time_var = tk.StringVar(value=str(_srv_main))
+        self._default_byoyomi_sec_var = tk.StringVar(value=str(_srv_byo_sec))
+        self._default_byoyomi_count_var = tk.StringVar(value="{}\u56de".format(_srv_byo_count))
+        self._default_komi_var = tk.StringVar(value="{}\u76ee\u534a".format(_srv_komi))
 
         def _default_line(parent, label, var):
             row = tk.Frame(parent, bg=_tab_bg)
@@ -1021,13 +1023,19 @@ class AdminApp:
         komi = _to_float(self._default_komi_var.get(), 7.5, min_value=-50.0, max_value=50.0)
         self._default_main_time_var.set(str(default_main))
         self._default_byoyomi_sec_var.set(str(byoyomi_sec))
-        self._default_byoyomi_count_var.set(str(byoyomi_count))
-        self._default_komi_var.set(str(komi))
+        self._default_byoyomi_count_var.set("{}\u56de".format(byoyomi_count))
+        self._default_komi_var.set("{}\u76ee\u534a".format(komi))
         cfg["default_main_time_min"] = default_main
         cfg["default_byoyomi_sec"] = byoyomi_sec
         cfg["default_byoyomi_count"] = byoyomi_count
         cfg["default_komi"] = komi
         self._save_config_safely(cfg)
+        self._api_put("/api/settings", {
+            "default_main_time_min": default_main,
+            "default_byoyomi_sec": byoyomi_sec,
+            "default_byoyomi_count": byoyomi_count,
+            "default_komi": komi,
+        })
 
     def _apply_size_position_defaults(self):
         cfg = self._load_config_safely()

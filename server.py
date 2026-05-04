@@ -673,10 +673,16 @@ _DEFAULT_SETTINGS = {
     "fischer_main_time": 300,
     "fischer_increment": 10,
     "bot_offer_delay": 60,
+    "default_main_time_min": 10,
+    "default_byoyomi_sec": 30,
+    "default_byoyomi_count": 3,
+    "default_komi": 7.5,
 }
 
 _SETTINGS_COLUMNS = ("theme", "offer_timeout_min", "fischer_main_time",
-                      "fischer_increment", "bot_offer_delay")
+                      "fischer_increment", "bot_offer_delay",
+                      "default_main_time_min", "default_byoyomi_sec",
+                      "default_byoyomi_count", "default_komi")
 
 
 def _load_settings() -> dict:
@@ -734,6 +740,10 @@ class UpdateSettingsRequest(BaseModel):
     fischer_main_time: Optional[int] = None
     fischer_increment: Optional[int] = None
     bot_offer_delay: Optional[int] = None
+    default_main_time_min: Optional[int] = None
+    default_byoyomi_sec: Optional[int] = None
+    default_byoyomi_count: Optional[int] = None
+    default_komi: Optional[float] = None
 
 
 
@@ -772,6 +782,14 @@ async def update_settings(req: UpdateSettingsRequest):
         settings["fischer_increment"] = req.fischer_increment
     if req.bot_offer_delay is not None:
         settings["bot_offer_delay"] = max(10, min(600, req.bot_offer_delay))
+    if req.default_main_time_min is not None:
+        settings["default_main_time_min"] = max(1, min(180, req.default_main_time_min))
+    if req.default_byoyomi_sec is not None:
+        settings["default_byoyomi_sec"] = max(1, min(180, req.default_byoyomi_sec))
+    if req.default_byoyomi_count is not None:
+        settings["default_byoyomi_count"] = max(1, min(30, req.default_byoyomi_count))
+    if req.default_komi is not None:
+        settings["default_komi"] = max(-50.0, min(50.0, req.default_komi))
     _save_settings(settings)
     logger.info("Settings updated: %s", settings)
     return {"success": True, "settings": settings}
