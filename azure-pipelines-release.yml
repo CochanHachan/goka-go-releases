@@ -251,6 +251,15 @@ stages:
               GOKA_FTP_TLS: $(GOKA_FTP_TLS)
               REL_NOTES: ${{ parameters.releaseNotes }}
 
+          # ── GokaGo_Latest.zip（安定ダウンロード名）を作成 ──
+          - script: |
+              set -e
+              VER='${{ parameters.releaseVersion }}'
+              cp "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
+                 "$(Pipeline.Workspace)/release/GokaGo_Latest.zip"
+              echo "Created GokaGo_Latest.zip from goka_go_${VER}.zip"
+            displayName: Create GokaGo_Latest.zip (stable download name)
+
           # ── 軽量アップデート ZIP もアップロード ──
           - script: |
               set -e
