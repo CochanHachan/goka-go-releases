@@ -682,7 +682,11 @@ _DEFAULT_SETTINGS = {
 _SETTINGS_COLUMNS = ("theme", "offer_timeout_min", "fischer_main_time",
                       "fischer_increment", "bot_offer_delay",
                       "default_main_time_min", "default_byoyomi_sec",
-                      "default_byoyomi_count", "default_komi")
+                      "default_byoyomi_count", "default_komi",
+                      "board_frame_height", "board_frame_width",
+                      "match_apply_height", "match_apply_width",
+                      "challenge_accept_height", "challenge_accept_width",
+                      "sakura_dialog_height", "sakura_dialog_width")
 
 
 def _load_settings() -> dict:
@@ -744,6 +748,14 @@ class UpdateSettingsRequest(BaseModel):
     default_byoyomi_sec: Optional[int] = None
     default_byoyomi_count: Optional[int] = None
     default_komi: Optional[float] = None
+    board_frame_height: Optional[float] = None
+    board_frame_width: Optional[float] = None
+    match_apply_height: Optional[float] = None
+    match_apply_width: Optional[float] = None
+    challenge_accept_height: Optional[float] = None
+    challenge_accept_width: Optional[float] = None
+    sakura_dialog_height: Optional[float] = None
+    sakura_dialog_width: Optional[float] = None
 
 
 
@@ -790,6 +802,13 @@ async def update_settings(req: UpdateSettingsRequest):
         settings["default_byoyomi_count"] = max(1, min(30, req.default_byoyomi_count))
     if req.default_komi is not None:
         settings["default_komi"] = max(-50.0, min(50.0, req.default_komi))
+    for _sz_key in ("board_frame_height", "board_frame_width",
+                    "match_apply_height", "match_apply_width",
+                    "challenge_accept_height", "challenge_accept_width",
+                    "sakura_dialog_height", "sakura_dialog_width"):
+        _sz_val = getattr(req, _sz_key, None)
+        if _sz_val is not None:
+            settings[_sz_key] = max(0.10, min(1.00, float(_sz_val)))
     _save_settings(settings)
     logger.info("Settings updated: %s", settings)
     return {"success": True, "settings": settings}

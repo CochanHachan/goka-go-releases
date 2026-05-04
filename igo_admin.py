@@ -761,47 +761,81 @@ class AdminApp:
             bd=1, relief="groove", padx=10, pady=8
         )
         size_frame.pack(anchor="w")
-        tk.Label(size_frame, text="※高さはWindows作業領域内の割合を示す",
+        tk.Label(size_frame, text="\u203bWindows\u4f5c\u696d\u9818\u57df\u5185\u306e\u5272\u5408\u3092\u793a\u3059",
                  font=("Yu Gothic UI", 9),
                  fg=T("text_primary"), bg=_tab_bg).pack(anchor="w", pady=(0, 6))
 
         self._board_frame_height_var = tk.StringVar(
             value=_height_ratio_to_percent_text(
                 _height_ratio_from_text(cfg.get("board_frame_height", 0.78), 0.78)))
+        self._board_frame_width_var = tk.StringVar(
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("board_frame_width", 0.60), 0.60)))
         self._match_apply_height_var = tk.StringVar(
             value=_height_ratio_to_percent_text(
                 _height_ratio_from_text(cfg.get("match_apply_height", 0.40), 0.40)))
+        self._match_apply_width_var = tk.StringVar(
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("match_apply_width", 0.30), 0.30)))
         self._challenge_accept_height_var = tk.StringVar(
             value=_height_ratio_to_percent_text(
                 _height_ratio_from_text(cfg.get("challenge_accept_height", 0.40), 0.40)))
+        self._challenge_accept_width_var = tk.StringVar(
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("challenge_accept_width", 0.30), 0.30)))
         self._sakura_dialog_height_var = tk.StringVar(
             value=_height_ratio_to_percent_text(
                 _height_ratio_from_text(cfg.get("sakura_dialog_height", 0.36), 0.36)))
+        self._sakura_dialog_width_var = tk.StringVar(
+            value=_height_ratio_to_percent_text(
+                _height_ratio_from_text(cfg.get("sakura_dialog_width", 0.50), 0.50)))
 
-        def _size_line(parent, label, var):
+        def _size_line(parent, label, h_var, w_var):
             row = tk.Frame(parent, bg=_tab_bg)
             row.pack(anchor="w", pady=3)
-            tk.Label(row, text=label, width=18, anchor="w",
+            tk.Label(row, text=label, width=14, anchor="w",
                      font=("Yu Gothic UI", 10),
-                     fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 10))
-            ent = tk.Entry(row, textvariable=var, width=8,
-                           font=("Yu Gothic UI", 10))
-            ent.pack(side="left")
-            return ent
+                     fg=T("text_primary"), bg=_tab_bg).pack(side="left", padx=(0, 4))
+            tk.Label(row, text="\u9ad8\u3055",
+                     font=("Yu Gothic UI", 9),
+                     fg=T("text_primary"), bg=_tab_bg).pack(side="left")
+            h_ent = tk.Entry(row, textvariable=h_var, width=6,
+                             font=("Yu Gothic UI", 10))
+            h_ent.pack(side="left", padx=(2, 6))
+            tk.Label(row, text="\u6a2a\u5e45",
+                     font=("Yu Gothic UI", 9),
+                     fg=T("text_primary"), bg=_tab_bg).pack(side="left")
+            w_ent = tk.Entry(row, textvariable=w_var, width=6,
+                             font=("Yu Gothic UI", 10))
+            w_ent.pack(side="left", padx=(2, 0))
+            return h_ent, w_ent
 
-        board_ent = _size_line(size_frame, "基盤フレームの高さ", self._board_frame_height_var)
-        match_ent = _size_line(size_frame, "対局申込画面の高さ", self._match_apply_height_var)
-        challenge_ent = _size_line(size_frame, "挑戦状受付画面の高さ", self._challenge_accept_height_var)
-        sakura_ent = _size_line(size_frame, "桜吹雪ダイアログの高さ", self._sakura_dialog_height_var)
+        board_h_ent, board_w_ent = _size_line(size_frame, "\u57fa\u76e4\u30d5\u30ec\u30fc\u30e0", self._board_frame_height_var, self._board_frame_width_var)
+        match_h_ent, match_w_ent = _size_line(size_frame, "\u5bfe\u5c40\u7533\u8fbc\u753b\u9762", self._match_apply_height_var, self._match_apply_width_var)
+        challenge_h_ent, challenge_w_ent = _size_line(size_frame, "\u6311\u6226\u72b6\u53d7\u4ed8\u753b\u9762", self._challenge_accept_height_var, self._challenge_accept_width_var)
+
+        # 桜吹雪ダイアログ（インストールデフォルトではなく管理者がいつでも変更可能）
+        sakura_frame = tk.LabelFrame(
+            size_root, text="\u685c\u5439\u96ea\u30c0\u30a4\u30a2\u30ed\u30b0\uff08\u7ba1\u7406\u8005\u8a2d\u5b9a\uff09",
+            font=("Yu Gothic UI", 10),
+            fg=T("text_primary"), bg=_tab_bg,
+            bd=1, relief="groove", padx=10, pady=8
+        )
+        sakura_frame.pack(anchor="w", pady=(8, 0))
+        sakura_h_ent, sakura_w_ent = _size_line(sakura_frame, "\u685c\u5439\u96ea\u30c0\u30a4\u30a2\u30ed\u30b0", self._sakura_dialog_height_var, self._sakura_dialog_width_var)
 
         def _normalize_height_percent_on_focusout(var, default_ratio):
             ratio = _height_ratio_from_text(var.get(), default_ratio)
             var.set(_height_ratio_to_percent_text(ratio))
 
-        board_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._board_frame_height_var, 0.78))
-        match_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._match_apply_height_var, 0.40))
-        challenge_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._challenge_accept_height_var, 0.40))
-        sakura_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._sakura_dialog_height_var, 0.36))
+        board_h_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._board_frame_height_var, 0.78))
+        board_w_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._board_frame_width_var, 0.60))
+        match_h_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._match_apply_height_var, 0.40))
+        match_w_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._match_apply_width_var, 0.30))
+        challenge_h_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._challenge_accept_height_var, 0.40))
+        challenge_w_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._challenge_accept_width_var, 0.30))
+        sakura_h_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._sakura_dialog_height_var, 0.36))
+        sakura_w_ent.bind("<FocusOut>", lambda _e: _normalize_height_percent_on_focusout(self._sakura_dialog_width_var, 0.50))
 
         # --- テーマ設定（サイズ・位置タブ）---
         theme_frame = tk.LabelFrame(self._admin_tab_size_pos, text="テーマ",
@@ -1040,23 +1074,39 @@ class AdminApp:
     def _apply_size_position_defaults(self):
         cfg = self._load_config_safely()
         board_h = _height_ratio_from_text(self._board_frame_height_var.get(), 0.78)
+        board_w = _height_ratio_from_text(self._board_frame_width_var.get(), 0.60)
         match_h = _height_ratio_from_text(self._match_apply_height_var.get(), 0.40)
+        match_w = _height_ratio_from_text(self._match_apply_width_var.get(), 0.30)
         challenge_h = _height_ratio_from_text(self._challenge_accept_height_var.get(), 0.40)
+        challenge_w = _height_ratio_from_text(self._challenge_accept_width_var.get(), 0.30)
         sakura_h = _height_ratio_from_text(self._sakura_dialog_height_var.get(), 0.36)
+        sakura_w = _height_ratio_from_text(self._sakura_dialog_width_var.get(), 0.50)
         self._board_frame_height_var.set(_height_ratio_to_percent_text(board_h))
+        self._board_frame_width_var.set(_height_ratio_to_percent_text(board_w))
         self._match_apply_height_var.set(_height_ratio_to_percent_text(match_h))
+        self._match_apply_width_var.set(_height_ratio_to_percent_text(match_w))
         self._challenge_accept_height_var.set(_height_ratio_to_percent_text(challenge_h))
+        self._challenge_accept_width_var.set(_height_ratio_to_percent_text(challenge_w))
         self._sakura_dialog_height_var.set(_height_ratio_to_percent_text(sakura_h))
+        self._sakura_dialog_width_var.set(_height_ratio_to_percent_text(sakura_w))
         cfg["board_frame_height"] = board_h
+        cfg["board_frame_width"] = board_w
         cfg["match_apply_height"] = match_h
+        cfg["match_apply_width"] = match_w
         cfg["challenge_accept_height"] = challenge_h
+        cfg["challenge_accept_width"] = challenge_w
         cfg["sakura_dialog_height"] = sakura_h
+        cfg["sakura_dialog_width"] = sakura_w
         self._save_config_safely(cfg)
         self._api_put("/api/settings", {
             "board_frame_height": board_h,
+            "board_frame_width": board_w,
             "match_apply_height": match_h,
+            "match_apply_width": match_w,
             "challenge_accept_height": challenge_h,
+            "challenge_accept_width": challenge_w,
             "sakura_dialog_height": sakura_h,
+            "sakura_dialog_width": sakura_w,
         })
 
     # =================================================================

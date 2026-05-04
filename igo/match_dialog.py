@@ -16,7 +16,7 @@ from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.theme import T
 from igo.elo import elo_to_display_rank
 from igo.config import get_offer_timeout_ms
-from igo.config import get_ui_height_ratio
+from igo.config import get_ui_height_ratio, get_ui_width_ratio
 from igo.config import get_primary_work_area_rect
 from igo.ui_helpers import _configure_combo_style, _apply_combo_listbox_style
 from igo.enums import (
@@ -54,9 +54,12 @@ class MatchDialog:
         dh = 600
         try:
             wr = get_primary_work_area_rect()
+            work_w = wr[2] if wr else max(1, parent_root.winfo_screenwidth())
             work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
             dh = int(work_h * get_ui_height_ratio("match_apply_height", 0.40))
             dh = max(420, dh)
+            dw = int(work_w * get_ui_width_ratio("match_apply_width", 0.30))
+            dw = max(440, dw)
         except Exception:
             dh = 600
         if saved_geom and isinstance(saved_geom, str):

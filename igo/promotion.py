@@ -8,7 +8,7 @@ import os
 
 from igo.elo import _is_dan_rank
 from igo.lang import L
-from igo.config import get_ui_height_ratio
+from igo.config import get_ui_height_ratio, get_ui_width_ratio
 from igo.config import get_primary_work_area_rect
 
 logger = logging.getLogger(__name__)
@@ -150,6 +150,11 @@ class PromotionPopup(tk.Toplevel):
         try:
             ratio = get_ui_height_ratio("sakura_dialog_height", 0.36)
             self.height = max(280, int(sh * ratio))
+        except Exception:
+            pass
+        try:
+            w_ratio = get_ui_width_ratio("sakura_dialog_width", 0.50)
+            self.width = max(400, int(sw * w_ratio))
         except Exception:
             pass
         try:

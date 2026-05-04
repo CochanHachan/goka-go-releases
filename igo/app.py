@@ -61,6 +61,7 @@ from igo.config import (
     _get_app_data_dir, _get_install_dir, _init_config_if_needed,
     get_offer_timeout_ms,
     get_ui_height_ratio,
+    get_ui_width_ratio,
     get_primary_work_area_rect,
 )
 from igo.elo import (
@@ -1014,7 +1015,7 @@ class App:
         else:
             sw = max(1, self.root.winfo_screenwidth())
             sh = max(1, self.root.winfo_screenheight())
-        fw = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_WIDTH_FRACTION)))
+        fw = get_ui_width_ratio("board_frame_width", float(GAME_WINDOW_INITIAL_WIDTH_FRACTION))
         fh = get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))
         w = int(sw * fw)
         h = int(sh * fh)

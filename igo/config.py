@@ -173,6 +173,20 @@ def get_ui_height_ratio(key: str, default: float = 0.5) -> float:
     return default
 
 
+def get_ui_width_ratio(key: str, default: float = 0.5) -> float:
+    """Get a UI width ratio from config. Returns default if not set."""
+    try:
+        cfg_path = os.path.join(_get_app_data_dir(), "igo_config.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        val = cfg.get(key)
+        if val is not None:
+            return float(val)
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
+        logger.debug("Failed to read %s, using default", key, exc_info=True)
+    return default
+
+
 def get_offer_timeout_ms():
     """Get match offer timeout in milliseconds from config (default 180000 = 3 min)."""
     try:
