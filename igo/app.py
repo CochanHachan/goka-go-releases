@@ -97,7 +97,7 @@ class App:
         self.root = tk.Tk()
         self.root.withdraw()  # 初期化完了まで非表示（show_loginで表示）
         self.root.title(
-            STAGING_LABEL + "\u7881\u83ef" + (" [テスト]" if IS_BETA_EDITION else ""))
+            "\u7881\u83ef" + (" [テスト]" if IS_BETA_EDITION else ""))
         self.root.configure(bg=T("root_bg"))
 
         _db_path = os.path.join(_get_app_data_dir(), "ui_settings.db")
@@ -277,7 +277,7 @@ class App:
 
     def _set_title(self, center_text=""):
         """タイトルバーを設定する。碁華は左、center_textを中央に配置。"""
-        prefix = STAGING_LABEL + "碁華" + (" [テスト]" if IS_BETA_EDITION else "")
+        prefix = "碁華" + (" [テスト]" if IS_BETA_EDITION else "")
         if not center_text:
             self.root.title(prefix)
             return
@@ -1068,7 +1068,7 @@ class App:
     def show_login(self):
         self.root.withdraw()
         self.root.title(
-            STAGING_LABEL + "\u7881\u83ef" + (" [テスト]" if IS_BETA_EDITION else ""))
+            "\u7881\u83ef" + (" [テスト]" if IS_BETA_EDITION else ""))
         self.root.minsize(400, 400)
         self._save_geometry()
         self.root.config(menu="")

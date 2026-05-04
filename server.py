@@ -242,11 +242,67 @@ def _dict_cursor(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
 
+def _ensure_tables(conn):
+    """テーブルが存在しない場合は作成する（ステージング環境の初回起動対応）。"""
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        real_name TEXT NOT NULL DEFAULT '',
+        handle_name TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS user_auth (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        password_hash TEXT NOT NULL DEFAULT '',
+        salt TEXT NOT NULL DEFAULT '',
+        password_enc TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS user_stats (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        elo INTEGER NOT NULL DEFAULT 1500,
+        rank TEXT NOT NULL DEFAULT '15級',
+        wins INTEGER NOT NULL DEFAULT 0,
+        losses INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS user_preferences (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        language TEXT NOT NULL DEFAULT 'ja'
+    );
+    CREATE TABLE IF NOT EXISTS app_settings (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        theme TEXT NOT NULL DEFAULT 'light',
+        offer_timeout_min INTEGER NOT NULL DEFAULT 3,
+        fischer_main_time INTEGER NOT NULL DEFAULT 300,
+        fischer_increment INTEGER NOT NULL DEFAULT 10,
+        bot_offer_delay INTEGER NOT NULL DEFAULT 60,
+        default_main_time_min INTEGER DEFAULT NULL,
+        default_byoyomi_sec INTEGER DEFAULT NULL,
+        default_byoyomi_count INTEGER DEFAULT NULL,
+        default_komi REAL DEFAULT NULL,
+        board_frame_height REAL DEFAULT NULL,
+        board_frame_width REAL DEFAULT NULL,
+        match_apply_height REAL DEFAULT NULL,
+        match_apply_width REAL DEFAULT NULL,
+        challenge_accept_height REAL DEFAULT NULL,
+        challenge_accept_width REAL DEFAULT NULL,
+        sakura_dialog_height REAL DEFAULT NULL,
+        sakura_dialog_width REAL DEFAULT NULL
+    );
+    INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+    """)
+    conn.commit()
+    cur.close()
+
+
 def init_db():
-    """起動時にDB接続を確認し、password_hash/salt の不整合を自動修復する。
-    テーブルは 001_initial_schema.sql で作成済みの前提。
-    """
+    """起動時にDB接続を確認し、テーブル作成・password_hash/salt の不整合を自動修復する。"""
     conn = get_db_connection()
+    _ensure_tables(conn)
     cur = _dict_cursor(conn)
 
     # 既存データ移行: password_enc(B64) を正として password_hash/salt の不整合を自動修復
