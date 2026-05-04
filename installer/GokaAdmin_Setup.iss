@@ -7,7 +7,7 @@
 #define AppVersion   "1.2.184"
 #define AppPublisher "CochanHachan"
 #define AppURL       "https://goka-igo.com"
-#define AppExeName   "goka_admin.exe"
+#define AppExeName   "igo_admin.exe"
 
 [Setup]
 AppId={{B2C3D4E5-F6A7-8901-BCDE-F12345678901}
@@ -23,7 +23,7 @@ DefaultGroupName={#AppName}
 AllowNoIcons=yes
 OutputDir=..\dist\installer
 OutputBaseFilename=GokaAdmin_Installer
-SetupIconFile=..\goka_go.ico
+SetupIconFile=..\admin_icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -46,17 +46,17 @@ Name: "{app}"; Permissions: users-modify
 
 [Files]
 ; ---- 管理者ツール本体 (PyInstaller の出力フォルダをまるごと) ----
-Source: "..\dist\goka_admin\*"; \
+Source: "..\dist\igo_admin\*"; \
   DestDir: "{app}"; \
   Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; ---- アイコン ----
-Source: "..\goka_go.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\admin_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#AppName}";                       Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go.ico"
+Name: "{group}\{#AppName}";                       Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\admin_icon.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}";                 Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\goka_go.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}";                 Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\admin_icon.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#AppExeName}"; \
