@@ -85,14 +85,16 @@ stages:
               }
               Write-Host "CodeSignTool: $($cst.FullName)"
 
-              # Sign goka_go.exe
+              # Get credential ID automatically
+              Write-Host "Getting credential IDs..."
+              & $cst.FullName get_credential_ids -username="$(ES_USERNAME)" -password="$(ES_PASSWORD)"
+
+              # Sign goka_go.exe (credential_id auto-detected, JWT auth)
               $exePath = "dist\goka_go\goka_go.exe"
               if (Test-Path $exePath) {
                 & $cst.FullName sign `
                   -username="$(ES_USERNAME)" `
                   -password="$(ES_PASSWORD)" `
-                  -credential_id="$(CREDENTIAL_ID)" `
-                  -totp_secret="$(ES_TOTP_SECRET)" `
                   -input_file_path="$exePath" `
                   -override="true"
                 Write-Host "Signed: $exePath"
@@ -103,8 +105,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
             continueOnError: true
 
           - script: python tools/download_katago_for_windows_build.py
@@ -169,8 +169,6 @@ stages:
                 & $cst.FullName sign `
                   -username="$(ES_USERNAME)" `
                   -password="$(ES_PASSWORD)" `
-                  -credential_id="$(CREDENTIAL_ID)" `
-                  -totp_secret="$(ES_TOTP_SECRET)" `
                   -input_file_path="$installerPath" `
                   -override="true"
                 Write-Host "Signed installer: $installerPath"
@@ -181,8 +179,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
             continueOnError: true
 
           - task: PublishPipelineArtifact@1
