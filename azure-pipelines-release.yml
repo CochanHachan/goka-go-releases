@@ -71,25 +71,26 @@ stages:
           - script: pyinstaller goka_go.spec --noconfirm
             displayName: PyInstaller goka_go.spec
 
-          # ── SSL.com eSigner: CodeSignTool セットアップ ──
+          # ── SSL.com eSigner: CodeSignTool v1.3.2 セットアップ ──
           - powershell: |
               $cstZip = "CodeSignTool.zip"
               $cstDir = "CodeSignTool"
-              Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.0/CodeSignTool-v1.3.0-windows.zip" -OutFile $cstZip
+              Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip" -OutFile $cstZip
               Expand-Archive -Path $cstZip -DestinationPath $cstDir -Force
 
               $cst = Get-ChildItem -Path $cstDir -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
               if (-not $cst) { Write-Warning "CodeSignTool.bat not found"; exit 0 }
               Write-Host "CodeSignTool: $($cst.FullName)"
 
-              # Write production config next to CodeSignTool.bat
-              $confDir = Join-Path $cst.DirectoryName "conf"
-              if (-not (Test-Path $confDir)) { New-Item -ItemType Directory -Path $confDir -Force | Out-Null }
-              $configPath = Join-Path $confDir "code_sign_tool.properties"
-              $configContent = "CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8`nOAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token`nCSC_API_ENDPOINT=https://cs.ssl.com`nTSA_URL=http://ts.ssl.com`nTSA_LEGACY_URL=http://ts.ssl.com/legacy"
-              Set-Content -Path $configPath -Value $configContent -Encoding UTF8
-              Write-Host "Config written to $configPath"
-            displayName: "Setup CodeSignTool"
+              # Verify bundled config exists
+              $configPath = Join-Path $cst.DirectoryName "conf\code_sign_tool.properties"
+              if (Test-Path $configPath) {
+                Write-Host "Config: $configPath"
+                Get-Content $configPath
+              } else {
+                Write-Warning "Config not found at $configPath"
+              }
+            displayName: "Setup CodeSignTool v1.3.2"
             continueOnError: true
 
           # ── SSL.com eSigner でメイン exe を署名 ──
