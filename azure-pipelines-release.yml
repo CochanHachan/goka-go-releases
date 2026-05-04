@@ -100,14 +100,16 @@ stages:
                 exit 0
               }
 
-              $exePath = "dist\goka_go\goka_go.exe"
-              if (Test-Path $exePath) {
+              $exePath = Resolve-Path "dist\goka_go\goka_go.exe" -ErrorAction SilentlyContinue
+              if ($exePath) {
                 Write-Host "Signing $exePath ..."
-                & $cst.FullName sign `
+                Push-Location $cst.DirectoryName
+                .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
                   -input_file_path="$exePath" `
                   -override="true"
+                Pop-Location
                 Write-Host "Signed: $exePath"
               } else {
                 Write-Warning "goka_go.exe not found, skipping signing"
@@ -177,11 +179,13 @@ stages:
               $cst = Get-ChildItem -Path CodeSignTool -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
               $installerPath = "$(Build.ArtifactStagingDirectory)\release\GokaGo_Setup.exe"
               if ((Test-Path $installerPath) -and $cst) {
-                & $cst.FullName sign `
+                Push-Location $cst.DirectoryName
+                .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
                   -input_file_path="$installerPath" `
                   -override="true"
+                Pop-Location
                 Write-Host "Signed installer: $installerPath"
               } else {
                 Write-Warning "Installer or CodeSignTool not found, skipping signing"
