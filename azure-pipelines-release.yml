@@ -205,6 +205,49 @@ stages:
               CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
 
+          # ── 管理者ツール用 Inno Setup インストーラー ──
+          - powershell: |
+              $version = '${{ parameters.releaseVersion }}'
+              $issFile = "installer/GokaAdmin_Setup.iss"
+              (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+              & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+              Write-Host "Admin installer built: version $version"
+
+              $exes = Get-ChildItem "dist/installer/GokaAdmin_Installer*.exe"
+              if ($exes.Count -gt 0) {
+                  $dest = "$(Build.ArtifactStagingDirectory)/release"
+                  Copy-Item $exes[0].FullName "$dest/GokaAdmin_Installer.exe"
+                  $sizeMB = [math]::Round($exes[0].Length / 1MB, 1)
+                  Write-Host "Admin installer: $sizeMB MB -> $dest/GokaAdmin_Installer.exe"
+              }
+            displayName: "Build Inno Setup admin installer"
+
+          # ── SSL.com eSigner で管理者インストーラーを署名 ──
+          - powershell: |
+              $cst = Get-ChildItem -Path CodeSignTool -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
+              $installerPath = "$(Build.ArtifactStagingDirectory)\release\GokaAdmin_Installer.exe"
+              if ((Test-Path $installerPath) -and $cst) {
+                Push-Location $cst.DirectoryName
+                .\CodeSignTool.bat sign `
+                  -username="$env:ES_USERNAME" `
+                  -password="$env:ES_PASSWORD" `
+                  -totp_secret="$env:ES_TOTP_SECRET" `
+                  -credential_id="$env:CREDENTIAL_ID" `
+                  -input_file_path="$installerPath" `
+                  -override="true"
+                Pop-Location
+                Write-Host "Signed admin installer: $installerPath"
+              } else {
+                Write-Warning "Admin installer or CodeSignTool not found, skipping signing"
+              }
+            displayName: "Sign admin installer with SSL.com eSigner"
+            env:
+              ES_USERNAME: $(ES_USERNAME)
+              ES_PASSWORD: $(ES_PASSWORD)
+              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
+              CREDENTIAL_ID: $(CREDENTIAL_ID)
+            continueOnError: true
+
           - task: PublishPipelineArtifact@1
             inputs:
               targetPath: "$(Build.ArtifactStagingDirectory)/release"
@@ -295,6 +338,8 @@ stages:
               echo
               echo "=== Installer check ==="
               curl -sI "$(PUBLIC_BASE)/releases/Goka_Installer.exe" | head -3
+              echo "=== Admin Installer check ==="
+              curl -sI "$(PUBLIC_BASE)/releases/GokaAdmin_Installer.exe" | head -3
               echo "=== Update ZIP check ==="
               curl -sI "$(PUBLIC_BASE)/releases/goka_go_${{ parameters.releaseVersion }}.zip" | head -3
             displayName: Smoke test production files
