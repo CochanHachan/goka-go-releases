@@ -78,15 +78,17 @@ stages:
               Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.0/CodeSignTool-v1.3.0-windows.zip" -OutFile $cstZip
               Expand-Archive -Path $cstZip -DestinationPath $cstDir -Force
 
-              # Write production config
-              $basePath = Get-ChildItem -Path $cstDir -Directory | Select-Object -First 1
-              $configPath = Join-Path $basePath.FullName "conf\code_sign_tool.properties"
+              $cst = Get-ChildItem -Path $cstDir -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
+              if (-not $cst) { Write-Warning "CodeSignTool.bat not found"; exit 0 }
+              Write-Host "CodeSignTool: $($cst.FullName)"
+
+              # Write production config next to CodeSignTool.bat
+              $confDir = Join-Path $cst.DirectoryName "conf"
+              if (-not (Test-Path $confDir)) { New-Item -ItemType Directory -Path $confDir -Force | Out-Null }
+              $configPath = Join-Path $confDir "code_sign_tool.properties"
               $configContent = "CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8`nOAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token`nCSC_API_ENDPOINT=https://cs.ssl.com`nTSA_URL=http://ts.ssl.com`nTSA_LEGACY_URL=http://ts.ssl.com/legacy"
               Set-Content -Path $configPath -Value $configContent -Encoding UTF8
               Write-Host "Config written to $configPath"
-
-              $cst = Get-ChildItem -Path $cstDir -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
-              Write-Host "CodeSignTool: $($cst.FullName)"
             displayName: "Setup CodeSignTool"
             continueOnError: true
 
@@ -102,8 +104,8 @@ stages:
               if (Test-Path $exePath) {
                 Write-Host "Signing $exePath ..."
                 & $cst.FullName sign `
-                  -username="$(ES_USERNAME)" `
-                  -password="$(ES_PASSWORD)" `
+                  -username="$env:ES_USERNAME" `
+                  -password="$env:ES_PASSWORD" `
                   -input_file_path="$exePath" `
                   -override="true"
                 Write-Host "Signed: $exePath"
@@ -176,8 +178,8 @@ stages:
               $installerPath = "$(Build.ArtifactStagingDirectory)\release\GokaGo_Setup.exe"
               if ((Test-Path $installerPath) -and $cst) {
                 & $cst.FullName sign `
-                  -username="$(ES_USERNAME)" `
-                  -password="$(ES_PASSWORD)" `
+                  -username="$env:ES_USERNAME" `
+                  -password="$env:ES_PASSWORD" `
                   -input_file_path="$installerPath" `
                   -override="true"
                 Write-Host "Signed installer: $installerPath"
