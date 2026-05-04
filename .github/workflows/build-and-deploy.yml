@@ -140,7 +140,7 @@ jobs:
           )
           with open("installer/GokaGo_Setup.iss", "w", encoding="utf-8") as f:
               f.write(content)
-          print(f"Updated GokaGo_Setup.iss: AppVersion={version}")
+          print(f"Updated GokaGo_Setup.iss (Goka_Installer): AppVersion={version}")
 
       - name: Build with PyInstaller
         run: pyinstaller goka_go.spec --noconfirm
@@ -248,7 +248,7 @@ jobs:
             exit 1
           }
           & $iscc "installer\GokaGo_Setup.iss"
-          $exeName = "GokaGo_Setup_${env:RELEASE_VERSION}.exe"
+          $exeName = "Goka_Installer_${env:RELEASE_VERSION}.exe"
           $exePath = "dist\installer\$exeName"
           if (Test-Path $exePath) {
             $sizeMB = (Get-Item $exePath).Length / 1MB
@@ -266,14 +266,14 @@ jobs:
           password: ${{ secrets.ES_PASSWORD }}
           credential_id: ${{ secrets.CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: dist/installer/GokaGo_Setup_${{ steps.version.outputs.version }}.exe
+          file_path: dist/installer/Goka_Installer_${{ steps.version.outputs.version }}.exe
           output_path: dist/installer_signed
           environment_name: PROD
 
       - name: Replace installer with signed version
         shell: bash
         run: |
-          cp -f "dist/installer_signed/GokaGo_Setup_${{ steps.version.outputs.version }}.exe" "dist/installer/GokaGo_Setup_${{ steps.version.outputs.version }}.exe"
+          cp -f "dist/installer_signed/Goka_Installer_${{ steps.version.outputs.version }}.exe" "dist/installer/Goka_Installer_${{ steps.version.outputs.version }}.exe"
           echo "Replaced installer with signed version"
 
       - name: Create update ZIP

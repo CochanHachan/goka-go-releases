@@ -164,25 +164,25 @@ stages:
           - powershell: |
               choco install innosetup -y --no-progress
               $version = '${{ parameters.releaseVersion }}'
-              $issFile = "installer/GokaGo_Setup.iss"
+              $issFile = "installer/GokaGo_Setup.iss"  # OutputBaseFilename -> Goka_Installer_*
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
               & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
               Write-Host "Production installer built: version $version"
 
               # Copy installer to release artifacts
-              $exes = Get-ChildItem "dist/installer/GokaGo_Setup_*.exe"
+              $exes = Get-ChildItem "dist/installer/Goka_Installer_*.exe"
               if ($exes.Count -gt 0) {
                   $dest = "$(Build.ArtifactStagingDirectory)/release"
-                  Copy-Item $exes[0].FullName "$dest/GokaGo_Setup.exe"
+                  Copy-Item $exes[0].FullName "$dest/Goka_Installer.exe"
                   $sizeMB = [math]::Round($exes[0].Length / 1MB, 1)
-                  Write-Host "Installer: $sizeMB MB -> $dest/GokaGo_Setup.exe"
+                  Write-Host "Installer: $sizeMB MB -> $dest/Goka_Installer.exe"
               }
             displayName: "Build Inno Setup production installer"
 
           # ── SSL.com eSigner でインストーラーを署名 ──
           - powershell: |
               $cst = Get-ChildItem -Path CodeSignTool -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
-              $installerPath = "$(Build.ArtifactStagingDirectory)\release\GokaGo_Setup.exe"
+              $installerPath = "$(Build.ArtifactStagingDirectory)\release\Goka_Installer.exe"
               if ((Test-Path $installerPath) -and $cst) {
                 Push-Location $cst.DirectoryName
                 .\CodeSignTool.bat sign `
@@ -294,7 +294,7 @@ stages:
               curl -fsS "$(PUBLIC_BASE)/version.json"
               echo
               echo "=== Installer check ==="
-              curl -sI "$(PUBLIC_BASE)/releases/GokaGo_Setup.exe" | head -3
+              curl -sI "$(PUBLIC_BASE)/releases/Goka_Installer.exe" | head -3
               echo "=== Update ZIP check ==="
               curl -sI "$(PUBLIC_BASE)/releases/goka_go_${{ parameters.releaseVersion }}.zip" | head -3
             displayName: Smoke test production files
