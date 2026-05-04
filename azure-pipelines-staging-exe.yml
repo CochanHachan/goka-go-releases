@@ -71,12 +71,16 @@ stages:
             inputs:
               scriptSource: "inline"
               script: |
-                import json, os
+                import json, os, re
                 path = "version_staging.json"
                 if os.path.exists(path):
                     d = json.load(open(path, encoding="utf-8"))
                     d["download_url"] = "https://goka-igo.com/staging/releases/goka-go-update.zip"
                     d["admin_download_url"] = "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
+                    # Sync version from constants.py
+                    m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', open("igo/constants.py", encoding="utf-8").read())
+                    if m:
+                        d["version"] = m.group(1)
                     json.dump(d, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
                     print("Updated version_staging.json:", json.dumps(d, indent=2))
             displayName: "Update download URLs for goka-igo.com"
