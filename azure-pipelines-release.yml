@@ -71,27 +71,41 @@ stages:
           - script: pyinstaller goka_go.spec --noconfirm
             displayName: PyInstaller goka_go.spec
 
-          # ── SSL.com eSigner でメイン exe を署名 ──
+          # ── SSL.com eSigner: CodeSignTool セットアップ ──
           - powershell: |
-              # Download CodeSignTool for Windows
               $cstZip = "CodeSignTool.zip"
               $cstDir = "CodeSignTool"
-              Invoke-WebRequest -Uri "https://app.esigner.com/files/CodeSignTool-v1-3-2-windows/3954004a/download" -OutFile $cstZip
+              Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.0/CodeSignTool-v1.3.0-windows.zip" -OutFile $cstZip
               Expand-Archive -Path $cstZip -DestinationPath $cstDir -Force
+
+              # Write production config
+              $basePath = Get-ChildItem -Path $cstDir -Directory | Select-Object -First 1
+              $configPath = Join-Path $basePath.FullName "conf\code_sign_tool.properties"
+              @"
+CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8
+OAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token
+CSC_API_ENDPOINT=https://cs.ssl.com
+TSA_URL=http://ts.ssl.com
+TSA_LEGACY_URL=http://ts.ssl.com/legacy
+"@ | Set-Content -Path $configPath -Encoding UTF8
+              Write-Host "Config written to $configPath"
+
               $cst = Get-ChildItem -Path $cstDir -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
+              Write-Host "CodeSignTool: $($cst.FullName)"
+            displayName: "Setup CodeSignTool"
+            continueOnError: true
+
+          # ── SSL.com eSigner でメイン exe を署名 ──
+          - powershell: |
+              $cst = Get-ChildItem -Path CodeSignTool -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
               if (-not $cst) {
-                Write-Warning "CodeSignTool.bat not found"
+                Write-Warning "CodeSignTool.bat not found, skipping"
                 exit 0
               }
-              Write-Host "CodeSignTool: $($cst.FullName)"
 
-              # Get credential ID automatically
-              Write-Host "Getting credential IDs..."
-              & $cst.FullName get_credential_ids -username="$(ES_USERNAME)" -password="$(ES_PASSWORD)"
-
-              # Sign goka_go.exe (credential_id auto-detected, JWT auth)
               $exePath = "dist\goka_go\goka_go.exe"
               if (Test-Path $exePath) {
+                Write-Host "Signing $exePath ..."
                 & $cst.FullName sign `
                   -username="$(ES_USERNAME)" `
                   -password="$(ES_PASSWORD)" `
