@@ -81,13 +81,8 @@ stages:
               # Write production config
               $basePath = Get-ChildItem -Path $cstDir -Directory | Select-Object -First 1
               $configPath = Join-Path $basePath.FullName "conf\code_sign_tool.properties"
-              @"
-CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8
-OAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token
-CSC_API_ENDPOINT=https://cs.ssl.com
-TSA_URL=http://ts.ssl.com
-TSA_LEGACY_URL=http://ts.ssl.com/legacy
-"@ | Set-Content -Path $configPath -Encoding UTF8
+              $configContent = "CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8`nOAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token`nCSC_API_ENDPOINT=https://cs.ssl.com`nTSA_URL=http://ts.ssl.com`nTSA_LEGACY_URL=http://ts.ssl.com/legacy"
+              Set-Content -Path $configPath -Value $configContent -Encoding UTF8
               Write-Host "Config written to $configPath"
 
               $cst = Get-ChildItem -Path $cstDir -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
