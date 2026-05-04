@@ -355,7 +355,8 @@ class AdminApp:
         def _worker():
             try:
                 req = urllib.request.Request(_ADMIN_UPDATE_CHECK_URL)
-                with urllib.request.urlopen(req, timeout=4) as resp:
+                req.add_header("User-Agent", "GokaAdmin/{} (Windows)".format(_ADMIN_UPDATE_APP_VERSION))
+                with urllib.request.urlopen(req, timeout=8) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                 latest = str(data.get("version", "")).strip()
                 dl_url = str(data.get("admin_download_url", "")).strip()
