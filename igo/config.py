@@ -127,6 +127,38 @@ def _get_db_path():
     return os.path.join(script_dir, "igo_users.db")
 
 
+def get_primary_work_area_rect():
+    """Return (left, top, width, height) of the primary monitor work area, or None."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class RECT(ctypes.Structure):
+            _fields_ = (
+                ("left", wintypes.LONG),
+                ("top", wintypes.LONG),
+                ("right", wintypes.LONG),
+                ("bottom", wintypes.LONG),
+            )
+
+        rect = RECT()
+        SPI_GETWORKAREA = 48
+        if not ctypes.windll.user32.SystemParametersInfoW(
+                SPI_GETWORKAREA, 0, ctypes.byref(rect), 0):
+            return None
+        left = int(rect.left)
+        top = int(rect.top)
+        w = int(rect.right - rect.left)
+        h = int(rect.bottom - rect.top)
+        if w >= 320 and h >= 240:
+            return (left, top, w, h)
+    except Exception:
+        pass
+    return None
+
+
 def get_ui_height_ratio(key: str, default: float = 0.5) -> float:
     """Get a UI height ratio from config. Returns default if not set."""
     try:
