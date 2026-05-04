@@ -28,7 +28,7 @@ if _c is None:
     raise RuntimeError("Unknown _ENV={!r}".format(_ENV))
 
 APP_NAME          = _c["app_name"]
-APP_VERSION       = "1.2.182"
+APP_VERSION       = "1.2.183"
 APP_BUILD         = "20260503"
 STAGING_LABEL     = _c["staging_label"]
 CLOUD_SERVER_URL  = _c["cloud_server_url"]
