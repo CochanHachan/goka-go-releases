@@ -224,6 +224,16 @@ stages:
               artifactName: "release-zips"
               targetPath: "$(Pipeline.Workspace)/release"
 
+          # ── FTP 診断: ディレクトリ構造を確認 ──
+          - script: |
+              set -e
+              python tools/ftp_diagnostic.py
+            displayName: "FTP diagnostic: directory structure"
+            env:
+              GOKA_FTP_HOST: $(FTP_SERVER)
+              GOKA_FTP_USER: $(FTP_USERNAME)
+              GOKA_FTP_PASS: $(FTP_PASSWORD)
+
           # ── 本番 version.json + ZIPs をアップロード ──
           - script: |
               set -e
