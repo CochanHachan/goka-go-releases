@@ -397,6 +397,7 @@ stages:
               steps:
                 - checkout: self
                   fetchDepth: 1
+                  persistCredentials: true
 
                 - task: UsePythonVersion@0
                   inputs:
@@ -464,8 +465,8 @@ stages:
                 # ── サーバーデプロイ（git pull + restart） ──
                 - script: |
                     set -e
-                    TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-                    URL="${GOKA_SERVER_URL:-http://34.85.118.112:8000}"
+                    TOKEN="${GOKA_ADMIN_TOKEN}"
+                    URL="${GOKA_SERVER_URL}"
 
                     echo "=== 通常デプロイ (git pull) ==="
                     RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
@@ -518,3 +519,42 @@ stages:
                     echo "=== Update ZIP check ==="
                     curl -sI "$(PUBLIC_BASE)/releases/goka_go_$(RELEASE_VERSION).zip" | head -3
                   displayName: "Smoke test production files"
+
+                # ── version.json をリポジトリにコミットバック ──
+                - script: |
+                    set -e
+                    VER='$(RELEASE_VERSION)'
+                    NOTES='$(RELEASE_NOTES)'
+
+                    # version.json を更新
+                    python3 -c "
+import json
+vj = {
+    'version': '${VER}',
+    'download_url': 'https://goka-igo.com/releases/goka_go_${VER}.zip',
+    'admin_download_url': 'https://goka-igo.com/releases/goka_admin_${VER}.zip',
+    'release_notes': '${NOTES}'
+}
+with open('version.json', 'w', encoding='utf-8') as f:
+    json.dump(vj, f, ensure_ascii=False)
+    f.write('\\n')
+print(f'Updated version.json to v${VER}')
+"
+
+                    # constants.py + GokaGo_Setup.iss をアーティファクトからコピー
+                    if [ -f "$(Pipeline.Workspace)/release/constants.py" ]; then
+                      cp "$(Pipeline.Workspace)/release/constants.py" igo/constants.py
+                    fi
+                    if [ -f "$(Pipeline.Workspace)/release/GokaGo_Setup.iss" ]; then
+                      cp "$(Pipeline.Workspace)/release/GokaGo_Setup.iss" installer/GokaGo_Setup.iss
+                    fi
+
+                    # コミット＆プッシュ（[skip ci] で再トリガー防止）
+                    git config user.name "Azure Pipelines"
+                    git config user.email "azuredevops@users.noreply.github.com"
+                    git add version.json igo/constants.py installer/GokaGo_Setup.iss
+                    git diff --cached --quiet || (
+                      git commit -m "Release v${VER} [skip ci]"
+                      git push origin HEAD:main
+                    )
+                  displayName: "Commit version.json back to repo"
