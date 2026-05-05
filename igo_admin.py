@@ -263,6 +263,26 @@ def _seconds_to_japanese_hms_text(total_seconds: int) -> str:
     return _convert_time_string_vba_style("{}.{}.{}".format(h, m, s))
 
 
+def _komi_from_display(text: str, default: float = 7.5) -> float:
+    """囲碁表記のコミ文字列を数値に戻す。'7目半' → 7.5, '6目半' → 6.5, '半目' → 0.5。"""
+    raw = str(text or "").strip()
+    if not raw:
+        return default
+    m = re.fullmatch(r"(-?)\s*(\d+)?\s*目?半", raw)
+    if m:
+        sign = -1 if m.group(1) == "-" else 1
+        int_part = int(m.group(2) or 0)
+        return sign * (int_part + 0.5)
+    m2 = re.fullmatch(r"(-?)\s*(\d+)\s*目?", raw)
+    if m2:
+        sign = -1 if m2.group(1) == "-" else 1
+        return sign * int(m2.group(2))
+    try:
+        return float(_normalize_num_text(raw))
+    except Exception:
+        return default
+
+
 def _komi_to_display(komi_value: float) -> str:
     """コミ値を囲碁の表記に変換する。7.5 → '7目半', 6.5 → '6目半', 0 → '0'。"""
     komi = float(komi_value)
@@ -627,8 +647,8 @@ class AdminApp:
                 current_bot_delay = int(server_settings.get("bot_offer_delay", 30))
         except Exception:
             pass
-        self._timeout_var = tk.StringVar(value=str(current_timeout))
-        self._fischer_main_var = tk.StringVar(value=str(current_fischer_main))
+        self._timeout_var = tk.StringVar(value="{}分".format(current_timeout))
+        self._fischer_main_var = tk.StringVar(value="{}分".format(current_fischer_main))
         self._fischer_inc_var = tk.StringVar(value=str(current_fischer_inc))
         self._bot_delay_var = tk.StringVar(value=str(current_bot_delay))
 
@@ -717,9 +737,17 @@ class AdminApp:
             sec = _duration_seconds_from_text(raw, default_seconds=0)
             var.set(_seconds_to_japanese_hms_text(sec))
 
-        timeout_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._timeout_var))
+        def _normalize_minute_var_on_focusout(var):
+            raw = str(var.get() or "").strip()
+            if not raw:
+                return
+            val = _to_int(raw, 0, min_value=0, max_value=9999)
+            if val > 0:
+                var.set("{}分".format(val))
+
+        timeout_ent.bind("<FocusOut>", lambda _e: _normalize_minute_var_on_focusout(self._timeout_var))
         bot_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._bot_delay_var))
-        fmain_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._fischer_main_var))
+        fmain_ent.bind("<FocusOut>", lambda _e: _normalize_minute_var_on_focusout(self._fischer_main_var))
         finc_ent.bind("<FocusOut>", lambda _e: _normalize_time_var_on_focusout(self._fischer_inc_var))
 
         # H.M.S 入力はフォーカスアウト時に「正規化H.M.S」に補正し、変換結果を即反映
@@ -1069,7 +1097,7 @@ class AdminApp:
         default_main = _to_int(self._default_main_time_var.get(), 10, min_value=1, max_value=180)
         byoyomi_sec = _to_int(self._default_byoyomi_sec_var.get(), 30, min_value=1, max_value=180)
         byoyomi_count = _to_int(self._default_byoyomi_count_var.get(), 3, min_value=1, max_value=30)
-        komi = _to_float(self._default_komi_var.get(), 7.5, min_value=-50.0, max_value=50.0)
+        komi = _komi_from_display(self._default_komi_var.get(), 7.5)
         self._default_main_time_var.set(str(default_main))
         self._default_byoyomi_sec_var.set(str(byoyomi_sec))
         self._default_byoyomi_count_var.set("{}\u56de".format(byoyomi_count))
