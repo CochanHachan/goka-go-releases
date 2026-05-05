@@ -84,7 +84,11 @@ def _init_config_if_needed():
                 cfg["fischer_increment"] = server_fischer_inc
                 changed = True
         for _dk in ("default_main_time_min", "default_byoyomi_sec",
-                     "default_byoyomi_count", "default_komi"):
+                     "default_byoyomi_count", "default_komi",
+                     "board_frame_height", "board_frame_width",
+                     "match_apply_height", "match_apply_width",
+                     "challenge_accept_height", "challenge_accept_width",
+                     "sakura_dialog_height", "sakura_dialog_width"):
             _dv = server_settings.get(_dk)
             if _dv is not None and cfg.get(_dk) != _dv:
                 cfg[_dk] = _dv

@@ -160,6 +160,7 @@ class MatchOfferDialog:
             if len(parts) == 2:
                 try:
                     dw = int(parts[0])
+                    dh = int(parts[1])
                 except ValueError:
                     dw, dh = 440, 420
             else:
