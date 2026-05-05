@@ -29,8 +29,11 @@ parameters:
     default: "main"
 
 variables:
-  PUBLIC_BASE: "https://goka-igo.com"
-  STAGING_PREFIX: "staging"
+- group: ftp-secrets
+- name: PUBLIC_BASE
+  value: "https://goka-igo.com"
+- name: STAGING_PREFIX
+  value: "staging"
 
 stages:
   # ── Stage 1: Windows ビルド ──

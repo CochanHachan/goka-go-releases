@@ -34,7 +34,10 @@ parameters:
     default: "staging"
 
 variables:
-  PUBLIC_BASE: "https://goka-igo.com"
+- group: esigner-secrets
+- group: ftp-secrets
+- name: PUBLIC_BASE
+  value: "https://goka-igo.com"
 
 stages:
   - stage: Build
