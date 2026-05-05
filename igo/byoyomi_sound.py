@@ -119,14 +119,13 @@ def play_robot_appear_localized():
 
 
 def _play_robot_appear_localized_direct(prefix):
-    """ロボ出現音声を _play 経由なしで再生する（常に Erobot_appear.wav）。"""
+    """ロボ出現音声を _play 経由なしで言語別に再生する。"""
     try:
         if not _init_mixer():
             return
         if not _sound_dir:
             return
-        # 要件: どの国でもロボ出現時は常に Erobot_appear.wav を鳴らす
-        filename = "Erobot_appear.wav"
+        filename = "{}robot_appear.wav".format(prefix)
         path = os.path.join(_sound_dir, filename)
         if not os.path.exists(path):
             _logger.warning("sound file not found: %s (sound_dir=%s)", filename, _sound_dir)
