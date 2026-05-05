@@ -44,11 +44,19 @@ concurrency:
   group: build-and-deploy
   cancel-in-progress: false
 
+# ============================================================
+# Job 1: build — ビルド・署名・ステージングデプロイ（自動）
+# Job 2: deploy-production — 本番デプロイ（オーナー承認後）
+# ============================================================
 jobs:
   build:
     runs-on: windows-latest
     env:
       PYTHONIOENCODING: utf-8
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build_date: ${{ steps.version.outputs.build_date }}
+      release_notes: ${{ steps.version.outputs.release_notes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -321,11 +329,46 @@ jobs:
           size_mb = os.path.getsize(dst) / (1024 * 1024)
           print(f"Created {dst} ({size_mb:.1f} MB)")
 
+      # ── ビルド成果物をアップロード（deploy-production ジョブに渡す） ──
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          retention-days: 7
+          path: |
+            dist/goka_go.zip
+            dist/goka_admin.zip
+            igo/constants.py
+            installer/GokaGo_Setup.iss
+            version.json
+
+  # ============================================================
+  # Job 2: 本番デプロイ（承認必須）
+  # GitHub Settings → Environments → "production" に承認者を設定
+  # ============================================================
+  deploy-production:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: artifacts
+
       - name: Deploy update ZIP and version.json
         shell: python
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_NOTES: ${{ needs.build.outputs.release_notes }}
         run: |
           import json, shutil, os
 
@@ -333,16 +376,20 @@ jobs:
           notes = os.environ["RELEASE_NOTES"]
 
           # ZIPをreleasesフォルダにコピー
-          src_zip = "dist/goka_go.zip"
+          src_zip = "artifacts/dist/goka_go.zip"
           dst_zip = f"releases/goka_go_{version}.zip"
           os.makedirs("releases", exist_ok=True)
           shutil.copy2(src_zip, dst_zip)
           print(f"Copied {src_zip} -> {dst_zip}")
 
-          admin_src = "dist/goka_admin.zip"
+          admin_src = "artifacts/dist/goka_admin.zip"
           admin_dst = f"releases/goka_admin_{version}.zip"
           shutil.copy2(admin_src, admin_dst)
           print(f"Copied {admin_src} -> {admin_dst}")
+
+          # 更新されたソースファイルをコピー
+          shutil.copy2("artifacts/igo/constants.py", "igo/constants.py")
+          shutil.copy2("artifacts/installer/GokaGo_Setup.iss", "installer/GokaGo_Setup.iss")
 
           # version.json更新
           vj = {
@@ -359,8 +406,8 @@ jobs:
       - name: Commit and push release
         shell: bash
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_NOTES: ${{ needs.build.outputs.release_notes }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -370,24 +417,20 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_NOTES: ${{ steps.version.outputs.release_notes }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_NOTES: ${{ needs.build.outputs.release_notes }}
         run: |
-          $version = $env:RELEASE_VERSION
-          $notes = $env:RELEASE_NOTES
-          $zipFile = "releases/goka_go_${version}.zip"
-          $adminZip = "releases/goka_admin_${version}.zip"
-          gh release create "v${version}" --title "v${version}" --notes "${notes}" "${zipFile}" "${adminZip}" 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            # ZIP配布のみを公開（インストーラーEXEは添付しない）
-            gh release upload "v${version}" "${zipFile}" "${adminZip}" --clobber 2>$null
-          }
-        shell: pwsh
+          VERSION="${RELEASE_VERSION}"
+          NOTES="${RELEASE_NOTES}"
+          ZIP_FILE="releases/goka_go_${VERSION}.zip"
+          ADMIN_ZIP="releases/goka_admin_${VERSION}.zip"
+          gh release create "v${VERSION}" --title "v${VERSION}" --notes "${NOTES}" "${ZIP_FILE}" "${ADMIN_ZIP}" 2>/dev/null || \
+          gh release upload "v${VERSION}" "${ZIP_FILE}" "${ADMIN_ZIP}" --clobber 2>/dev/null
 
       - name: Update homepage download link
         shell: python
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
         run: |
           import re, os
 
@@ -433,7 +476,7 @@ jobs:
       - name: Commit homepage update
         shell: bash
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
         run: |
           git add web/index.html web/admin-test.html
           git diff --cached --quiet || (git commit -m "Update HP download link to v${RELEASE_VERSION}" && git pull --rebase origin main && git push)
