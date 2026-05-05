@@ -1410,10 +1410,10 @@ class AdminApp:
                 pw_plain, display_rank, f"{elo_int:,}", login_count, match_count,
                 status_text, opponent, email, created
             ])
-        # 実ユーザーIDと衝突しにくいよう、ボットは 900000 番台の正数IDを割り当てる
+        # ボットはDBに存在しないため、IDは "Bot-連番" 形式で表示
         for bot_idx, (bot_name, bot_info) in enumerate(self.AI_BOTS.items(), start=1):
             rows.append([
-                900000 + bot_idx, bot_name, "AI",
+                f"Bot-{bot_idx}", bot_name, "AI",
                 "", bot_info["rank"], f"{bot_info['elo']:,}", 0, 0, "オンライン", "", "", ""
             ])
             online_count += 1

@@ -319,8 +319,88 @@ def _ensure_tables(conn):
         sakura_dialog_width REAL DEFAULT NULL
     );
     INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+    -- ゲーム関連テーブル
+    CREATE TABLE IF NOT EXISTS games (
+        id SERIAL PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        board_size INTEGER NOT NULL DEFAULT 19,
+        komi REAL NOT NULL DEFAULT 6.5,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        finished_at TIMESTAMP,
+        result TEXT
+    );
+    CREATE TABLE IF NOT EXISTS game_players (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        color TEXT NOT NULL DEFAULT 'black',
+        is_bot BOOLEAN NOT NULL DEFAULT FALSE,
+        bot_name TEXT
+    );
+    CREATE TABLE IF NOT EXISTS game_records (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        sgf TEXT,
+        recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS game_events (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        data TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS live_game_state (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        board_state TEXT,
+        current_turn TEXT DEFAULT 'black',
+        move_number INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS spectator_sessions (
+        id SERIAL PRIMARY KEY,
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS user_ui_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        setting_key TEXT NOT NULL,
+        setting_value TEXT,
+        UNIQUE(user_id, setting_key)
+    );
     """)
     conn.commit()
+
+    # PRIMARY KEY 制約の存在確認（データ整合性保証）
+    cur.execute("""
+        SELECT tc.table_name, tc.constraint_type
+        FROM information_schema.table_constraints tc
+        WHERE tc.table_schema = 'public'
+          AND tc.constraint_type = 'PRIMARY KEY'
+        ORDER BY tc.table_name
+    """)
+    pk_tables = {row[0] for row in cur.fetchall()}
+    expected = {'users', 'user_auth', 'user_stats', 'user_preferences',
+                'app_settings', 'games', 'game_players', 'game_records',
+                'game_events', 'live_game_state', 'auth_sessions',
+                'spectator_sessions', 'user_ui_settings'}
+    missing_pk = expected - pk_tables
+    if missing_pk:
+        logger.warning("PRIMARY KEY 制約が不足: %s", missing_pk)
+    else:
+        logger.info("全テーブルの PRIMARY KEY 制約を確認: OK (%d テーブル)", len(pk_tables))
+
     cur.close()
 
 
