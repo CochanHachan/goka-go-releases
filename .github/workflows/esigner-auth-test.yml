@@ -10,50 +10,49 @@ on:
 jobs:
   diagnose:
     runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
     steps:
-      - name: "Step 1: ES_TOTP_SECRET の形式チェック"
+      - name: "Step 1 - TOTP Secret Format Check"
         shell: python
         env:
           ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
         run: |
-          import os, re, base64
+          import os, sys, re, base64
+          sys.stdout.reconfigure(encoding='utf-8')
 
           secret = os.environ.get("ES_TOTP_SECRET", "")
           length = len(secret)
-          print(f"=== ES_TOTP_SECRET 形式診断 ===")
-          print(f"文字数: {length}")
+          print("=== ES_TOTP_SECRET Format Diagnosis ===")
+          print(f"Length: {length} characters")
 
           if length == 0:
-              print("❌ 結果: ES_TOTP_SECRET が未設定（空）です")
-              exit(1)
+              print("FAIL: ES_TOTP_SECRET is empty (not set)")
+              sys.exit(1)
 
           if length == 6 and secret.isdigit():
-              print("❌ 結果: 6桁の数字です。これは「ワンタイムパスワード」であり、")
-              print("   「TOTP秘密鍵」ではありません。")
-              print("   → SSL.com の eSigner ダッシュボードから Base32 秘密鍵を取得し直してください。")
-              print("   → 秘密鍵は通常 24〜44文字の英数字+記号（例: JBSWY3DPEHPK3PXP...）です。")
-              exit(1)
+              print("FAIL: This is a 6-digit OTP code, NOT a TOTP secret key.")
+              print("  A TOTP secret key is a Base32/Base64 string (24-44 chars).")
+              print("  Example: RDXYgV9qju+6/7GnMf1vCbKexXVJmUVr+86Wq/8aIGg=")
+              print("  Get the secret key from SSL.com eSigner dashboard.")
+              sys.exit(1)
 
-          # Base32 チェック（padding なしも対応）
           is_base32 = bool(re.fullmatch(r'[A-Z2-7=]+', secret, re.IGNORECASE))
-          # Base64 チェック
           is_base64 = bool(re.fullmatch(r'[A-Za-z0-9+/=]+', secret))
 
           if is_base32 and length >= 16:
-              print(f"✅ Base32 形式（{length}文字）— TOTP秘密鍵として正しい形式です")
+              print(f"OK: Base32 format ({length} chars) - valid TOTP secret key")
           elif is_base64 and length >= 20:
-              print(f"⚠️ Base64 形式の可能性（{length}文字）— SSL.com の TOTP secret は")
-              print("   Base64 の場合もあります（末尾が = で終わる）。形式としては有効です。")
+              print(f"OK: Base64 format ({length} chars) - SSL.com uses Base64 TOTP secrets")
           else:
-              print(f"⚠️ 不明な形式（{length}文字）")
-              print(f"   先頭4文字: {secret[:4]}***")
-              print(f"   末尾4文字: ***{secret[-4:]}")
+              print(f"WARN: Unknown format ({length} chars)")
+              print(f"  First 4 chars: {secret[:4]}***")
+              print(f"  Last 4 chars: ***{secret[-4:]}")
 
-          # TOTP コード生成テスト
+          # TOTP code generation test
           try:
               import hmac, hashlib, struct, time
-
-              # Base32 デコード試行
               try:
                   key = base64.b32decode(secret + '=' * (-len(secret) % 8), casefold=True)
                   decode_method = "Base32"
@@ -62,43 +61,44 @@ jobs:
                       key = base64.b64decode(secret)
                       decode_method = "Base64"
                   except Exception:
-                      print("❌ TOTP秘密鍵をデコードできません。形式が不正です。")
-                      exit(1)
+                      print("FAIL: Cannot decode TOTP secret key")
+                      sys.exit(1)
 
               counter = struct.pack(">Q", int(time.time()) // 30)
               mac = hmac.new(key, counter, hashlib.sha1).digest()
               offset = mac[-1] & 0x0F
               code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
               totp = str(code % 1000000).zfill(6)
-              print(f"✅ TOTPコード生成成功（{decode_method}デコード）: {totp}")
+              print(f"OK: TOTP code generated ({decode_method} decode): {totp}")
           except Exception as e:
-              print(f"❌ TOTPコード生成失敗: {e}")
-              exit(1)
+              print(f"FAIL: TOTP generation error: {e}")
+              sys.exit(1)
 
-      - name: "Step 2: OAuth2 トークン取得テスト（パスワード認証）"
+      - name: "Step 2 - OAuth2 Token Test (password + TOTP)"
         shell: python
         env:
           ES_USERNAME: ${{ secrets.ES_USERNAME }}
           ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
           ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
         run: |
-          import os, json, urllib.request, urllib.parse, urllib.error
+          import os, sys, json, urllib.request, urllib.parse, urllib.error
           import hmac, hashlib, struct, time, base64
+          sys.stdout.reconfigure(encoding='utf-8')
 
           username = os.environ.get("ES_USERNAME", "")
           password = os.environ.get("ES_PASSWORD", "")
           totp_secret = os.environ.get("ES_TOTP_SECRET", "")
 
-          print(f"=== OAuth2 認証テスト ===")
-          print(f"Username 設定: {'あり' if username else 'なし'}")
-          print(f"Password 設定: {'あり' if password else 'なし'}")
-          print(f"TOTP Secret 設定: {'あり' if totp_secret else 'なし'}")
+          print("=== OAuth2 Authentication Test ===")
+          print(f"Username set: {'YES' if username else 'NO'}")
+          print(f"Password set: {'YES' if password else 'NO'}")
+          print(f"TOTP Secret set: {'YES' if totp_secret else 'NO'}")
 
           if not all([username, password, totp_secret]):
-              print("❌ 必要なシークレットが不足しています")
-              exit(1)
+              print("FAIL: Missing required secrets")
+              sys.exit(1)
 
-          # TOTP コード生成
+          # Generate TOTP code
           try:
               try:
                   key = base64.b32decode(totp_secret + '=' * (-len(totp_secret) % 8), casefold=True)
@@ -109,17 +109,15 @@ jobs:
               offset = mac[-1] & 0x0F
               code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
               totp = str(code % 1000000).zfill(6)
-              print(f"生成した TOTP コード: {totp}")
+              print(f"Generated TOTP code: {totp}")
           except Exception as e:
-              print(f"❌ TOTPコード生成失敗: {e}")
-              exit(1)
+              print(f"FAIL: TOTP generation error: {e}")
+              sys.exit(1)
 
-          # SSL.com OAuth2 トークンエンドポイント
+          # SSL.com OAuth2 token endpoint
           token_url = "https://login.ssl.com/oauth2/token"
-          # CLIENT_ID は CodeSignTool のデフォルト値
           client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
 
-          # Step 2a: パスワード + TOTP でトークン取得
           data = urllib.parse.urlencode({
               "grant_type": "password",
               "username": username,
@@ -128,54 +126,56 @@ jobs:
               "totp": totp,
           }).encode()
 
-          print(f"\n--- テスト: パスワード + TOTP でトークン取得 ---")
+          print("\n--- Test: Password + TOTP token request ---")
           req = urllib.request.Request(token_url, data=data, method="POST")
           req.add_header("Content-Type", "application/x-www-form-urlencoded")
 
           try:
               with urllib.request.urlopen(req, timeout=30) as resp:
                   body = json.loads(resp.read().decode())
-                  print(f"✅ 認証成功！ access_token 取得")
-                  print(f"   token_type: {body.get('token_type')}")
-                  print(f"   expires_in: {body.get('expires_in')}秒")
+                  print(f"OK: Authentication succeeded!")
+                  print(f"  token_type: {body.get('token_type')}")
+                  print(f"  expires_in: {body.get('expires_in')} seconds")
           except urllib.error.HTTPError as e:
               error_body = e.read().decode()
-              print(f"❌ 認証失敗 (HTTP {e.code})")
               try:
                   err = json.loads(error_body)
-                  error_desc = err.get("error_description", err.get("error", "不明"))
-                  print(f"   エラー: {error_desc}")
-
-                  if "invalid" in error_desc.lower() and "grant" in error_desc.lower():
-                      print("\n=== 診断結果 ===")
-                      print("「authorization grant が無効」エラーの原因候補:")
-                      print("  1. ES_PASSWORD が間違っている / 期限切れ")
-                      print("  2. ES_TOTP_SECRET が間違っている（OTPコード生成が不正）")
-                      print("  3. SSL.com アカウント / eSigner 証明書が期限切れ")
-                      print()
-                      print("次のステップ: Step 2b でパスワードのみ（TOTP なし）で試行します")
+                  error_desc = err.get("error_description", err.get("error", "unknown"))
               except json.JSONDecodeError:
-                  print(f"   レスポンス: {error_body[:200]}")
-              exit(1)
-          except Exception as e:
-              print(f"❌ 接続エラー: {e}")
-              exit(1)
+                  error_desc = error_body[:200]
 
-      - name: "Step 2b: パスワードのみでトークン取得（TOTP 問題の切り分け）"
+              print(f"FAIL: HTTP {e.code}: {error_desc}")
+
+              if "invalid" in error_desc.lower() and "grant" in error_desc.lower():
+                  print("\n=== DIAGNOSIS ===")
+                  print("'authorization grant invalid' error.")
+                  print("Possible causes:")
+                  print("  1. ES_PASSWORD is wrong or expired")
+                  print("  2. ES_TOTP_SECRET is wrong (generating bad OTP codes)")
+                  print("  3. SSL.com account or eSigner certificate expired/revoked")
+                  print("  4. The TOTP secret was rotated on SSL.com side")
+                  print("Next: Step 2b will test password-only (no TOTP) to narrow down")
+              sys.exit(1)
+          except Exception as e:
+              print(f"FAIL: Connection error: {e}")
+              sys.exit(1)
+
+      - name: "Step 2b - Password-only Test (isolate TOTP issue)"
         if: failure()
         shell: python
         env:
           ES_USERNAME: ${{ secrets.ES_USERNAME }}
           ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
         run: |
-          import os, json, urllib.request, urllib.parse, urllib.error
+          import os, sys, json, urllib.request, urllib.parse, urllib.error
+          sys.stdout.reconfigure(encoding='utf-8')
 
           username = os.environ.get("ES_USERNAME", "")
           password = os.environ.get("ES_PASSWORD", "")
           token_url = "https://login.ssl.com/oauth2/token"
           client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
 
-          print("=== パスワードのみ認証テスト（TOTP なし）===")
+          print("=== Password-only Auth Test (no TOTP) ===")
 
           data = urllib.parse.urlencode({
               "grant_type": "password",
@@ -189,39 +189,41 @@ jobs:
 
           try:
               with urllib.request.urlopen(req, timeout=30) as resp:
-                  print("✅ パスワード認証成功（TOTP なしでも通った）")
-                  print("   → ES_PASSWORD は正しいが、ES_TOTP_SECRET に問題がある可能性は低い")
-                  print("   → 2FA が必須のため TOTP エラーではなく別の原因かもしれません")
+                  print("OK: Password auth succeeded (without TOTP)")
+                  print("  -> ES_PASSWORD is correct")
+                  print("  -> Problem is likely NOT the password")
           except urllib.error.HTTPError as e:
               error_body = e.read().decode()
               try:
                   err = json.loads(error_body)
-                  error_desc = err.get("error_description", err.get("error", "不明"))
+                  error_desc = err.get("error_description", err.get("error", "unknown"))
               except json.JSONDecodeError:
                   error_desc = error_body[:200]
 
               print(f"HTTP {e.code}: {error_desc}")
 
-              if e.code == 400 and "totp" in error_desc.lower():
-                  print("\n=== 診断結果 ===")
-                  print("✅ パスワードは正しいが、TOTP が必須で拒否されました")
-                  print("→ ES_PASSWORD は正常。問題は ES_TOTP_SECRET にあります。")
-                  print("→ SSL.com eSigner ダッシュボードから TOTP 秘密鍵を再取得してください。")
-              elif e.code == 400 and ("invalid" in error_desc.lower() or "grant" in error_desc.lower()):
-                  print("\n=== 診断結果 ===")
-                  print("❌ パスワード認証自体が失敗しています")
-                  print("→ ES_PASSWORD が間違っている、またはアカウントが無効です")
-                  print("→ SSL.com (https://login.ssl.com) にブラウザでログインできるか確認してください")
+              if "totp" in error_desc.lower() or "otp" in error_desc.lower():
+                  print("\n=== DIAGNOSIS: TOTP Required ===")
+                  print("Password is CORRECT but TOTP is required.")
+                  print("-> ES_PASSWORD: OK")
+                  print("-> ES_TOTP_SECRET: Problem here - secret may be wrong/rotated")
+                  print("ACTION: Re-export TOTP secret from SSL.com eSigner dashboard")
+              elif "invalid" in error_desc.lower() or "grant" in error_desc.lower():
+                  print("\n=== DIAGNOSIS: Password Invalid ===")
+                  print("Password auth ALSO failed without TOTP.")
+                  print("-> ES_PASSWORD: WRONG or account is disabled/expired")
+                  print("ACTION: Login to https://login.ssl.com in browser to verify account")
+                  print("ACTION: Check if password was changed or account was locked")
               elif e.code == 401:
-                  print("\n=== 診断結果 ===")
-                  print("❌ 認証情報が無効です（401 Unauthorized）")
-                  print("→ ES_USERNAME または ES_PASSWORD を確認してください")
+                  print("\n=== DIAGNOSIS: Credentials Invalid ===")
+                  print("-> Check ES_USERNAME and ES_PASSWORD")
               else:
-                  print(f"\n予期しないエラー: HTTP {e.code}")
+                  print(f"\nUnexpected error: HTTP {e.code}")
+                  print(f"Response: {error_desc}")
           except Exception as e:
-              print(f"❌ 接続エラー: {e}")
+              print(f"Connection error: {e}")
 
-      - name: "Step 3: CREDENTIAL_ID 有効性チェック"
+      - name: "Step 3 - Credential ID Check"
         if: success()
         shell: python
         env:
@@ -230,19 +232,24 @@ jobs:
           ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
           CREDENTIAL_ID: ${{ secrets.CREDENTIAL_ID }}
         run: |
-          import os, json, urllib.request, urllib.parse, urllib.error
+          import os, sys, json, urllib.request, urllib.parse, urllib.error
           import hmac, hashlib, struct, time, base64
+          sys.stdout.reconfigure(encoding='utf-8')
 
+          credential_id = os.environ.get("CREDENTIAL_ID", "")
           username = os.environ.get("ES_USERNAME", "")
           password = os.environ.get("ES_PASSWORD", "")
           totp_secret = os.environ.get("ES_TOTP_SECRET", "")
-          credential_id = os.environ.get("CREDENTIAL_ID", "")
 
-          print(f"=== CREDENTIAL_ID 診断 ===")
-          print(f"CREDENTIAL_ID 設定: {'あり' if credential_id else 'なし'}")
-          print(f"CREDENTIAL_ID 文字数: {len(credential_id)}")
+          print("=== CREDENTIAL_ID Validation ===")
+          print(f"CREDENTIAL_ID set: {'YES' if credential_id else 'NO'}")
+          print(f"CREDENTIAL_ID length: {len(credential_id)}")
 
-          # TOTP 生成
+          if not credential_id:
+              print("FAIL: CREDENTIAL_ID is empty")
+              sys.exit(1)
+
+          # Generate TOTP
           try:
               try:
                   key = base64.b32decode(totp_secret + '=' * (-len(totp_secret) % 8), casefold=True)
@@ -254,10 +261,10 @@ jobs:
               code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
               totp = str(code % 1000000).zfill(6)
           except Exception as e:
-              print(f"TOTP生成失敗: {e}")
-              exit(1)
+              print(f"TOTP generation failed: {e}")
+              sys.exit(1)
 
-          # トークン取得
+          # Get token
           token_url = "https://login.ssl.com/oauth2/token"
           client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
           data = urllib.parse.urlencode({
@@ -275,10 +282,10 @@ jobs:
                   body = json.loads(resp.read().decode())
                   access_token = body.get("access_token", "")
           except Exception as e:
-              print(f"トークン取得失敗: {e}")
-              exit(1)
+              print(f"Token request failed: {e}")
+              sys.exit(1)
 
-          # credential_id の検証（CSC API）
+          # Check credential via CSC API
           csc_url = "https://cs.ssl.com/csc/v0/credentials/info"
           info_data = json.dumps({
               "credentialID": credential_id,
@@ -292,23 +299,16 @@ jobs:
           try:
               with urllib.request.urlopen(req2, timeout=30) as resp:
                   info = json.loads(resp.read().decode())
-                  status = info.get("key", {}).get("status", "不明")
-                  cert_status = info.get("cert", {}).get("status", "不明")
-                  print(f"✅ CREDENTIAL_ID は有効です")
-                  print(f"   鍵ステータス: {status}")
-                  print(f"   証明書ステータス: {cert_status}")
-
-                  # 証明書の有効期限チェック
+                  status = info.get("key", {}).get("status", "unknown")
+                  print(f"OK: CREDENTIAL_ID is valid")
+                  print(f"  Key status: {status}")
                   certs = info.get("cert", {}).get("certificates", [])
-                  if certs:
-                      import ssl, tempfile
-                      cert_pem = certs[0]
-                      print(f"   証明書チェーン: {len(certs)} 枚")
+                  print(f"  Certificate chain: {len(certs)} cert(s)")
           except urllib.error.HTTPError as e:
               error_body = e.read().decode()
-              print(f"❌ CREDENTIAL_ID チェック失敗 (HTTP {e.code})")
-              print(f"   {error_body[:300]}")
+              print(f"FAIL: Credential check failed (HTTP {e.code})")
+              print(f"  {error_body[:300]}")
               if e.code == 400:
-                  print("→ CREDENTIAL_ID が無効か、この証明書がすでに失効している可能性があります")
+                  print("-> CREDENTIAL_ID may be invalid or certificate revoked")
           except Exception as e:
-              print(f"❌ CSC API エラー: {e}")
+              print(f"FAIL: CSC API error: {e}")
