@@ -308,6 +308,14 @@ class AdminApp:
         self.root.geometry("1000x900")
         self.root.minsize(800, 780)
 
+        # ウィンドウアイコン設定
+        _icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "admin_icon.ico")
+        if os.path.exists(_icon_path):
+            try:
+                self.root.iconbitmap(_icon_path)
+            except Exception:
+                pass
+
         # Enter key: invoke button or move to next widget
         def _on_enter(event):
             w = event.widget
@@ -557,7 +565,7 @@ class AdminApp:
             "rc_insert_column", "rc_delete_column",
             "copy", "cut", "paste", "undo", "delete")
         self._admin_col_widths_set = False
-        for i, w in enumerate([40, 130, 120, 110, 100, 70, 90, 90, 110, 100, 180, 160]):
+        for i, w in enumerate([70, 130, 120, 110, 100, 70, 90, 90, 110, 100, 180, 160]):
             self.tree.column_width(column=i, width=w)
         self._highlighted_row = None
         # 初期表示は ID 列で昇順に固定（IDとアカウント対応を追いやすくする）
@@ -1410,10 +1418,10 @@ class AdminApp:
                 pw_plain, display_rank, f"{elo_int:,}", login_count, match_count,
                 status_text, opponent, email, created
             ])
-        # ボットはDBに存在しないため、IDは "Bot-連番" 形式で表示
+        # ボットは 900001〜900030 のユニークIDで表示（実ユーザーIDと衝突しない範囲）
         for bot_idx, (bot_name, bot_info) in enumerate(self.AI_BOTS.items(), start=1):
             rows.append([
-                f"Bot-{bot_idx}", bot_name, "AI",
+                900000 + bot_idx, bot_name, "AI",
                 "", bot_info["rank"], f"{bot_info['elo']:,}", 0, 0, "オンライン", "", "", ""
             ])
             online_count += 1
@@ -1433,7 +1441,7 @@ class AdminApp:
                 pass
             if not self._admin_col_widths_set:
                 ncols = len(self._admin_headers)
-                defaults = [40, 130, 120, 110, 100, 70, 90, 90, 110, 100, 180, 160]
+                defaults = [70, 130, 120, 110, 100, 70, 90, 90, 110, 100, 180, 160]
                 self._ws.restore_column_widths(self.tree, ncols, defaults)
                 # 過去設定に極端な幅が保存されているケースの保険
                 try:

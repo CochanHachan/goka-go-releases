@@ -100,6 +100,14 @@ class App:
             "\u7881\u83ef" + (" [テスト]" if IS_BETA_EDITION else ""))
         self.root.configure(bg=T("root_bg"))
 
+        _icon_name = "goka_go_test.ico" if IS_BETA_EDITION else "goka_go.ico"
+        _icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", _icon_name)
+        if os.path.exists(_icon_path):
+            try:
+                self.root.iconbitmap(_icon_path)
+            except Exception:
+                pass
+
         _db_path = os.path.join(_get_app_data_dir(), "ui_settings.db")
         self._ws = WindowSettings(_db_path, "game")
         self._current_screen = "login"

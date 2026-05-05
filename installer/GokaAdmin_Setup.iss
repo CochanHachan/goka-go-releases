@@ -39,7 +39,7 @@ Name: "english";  MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; \
   Description: "{cm:CreateDesktopIcon}"; \
   GroupDescription: "{cm:AdditionalIcons}"; \
-  Flags: unchecked
+  Flags: checked
 
 [Dirs]
 Name: "{app}"; Permissions: users-modify
