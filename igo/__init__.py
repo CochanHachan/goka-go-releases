@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""碁華 (Goka GO) - パッケージ初期化"""
+"""碁華 (Goka GO) - パッケージ初期化 v1.2.189"""
 import logging as _logging
 import os as _os
 
