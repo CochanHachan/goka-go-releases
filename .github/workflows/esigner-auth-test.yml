@@ -124,10 +124,13 @@ jobs:
           otp, method = generate_totp(totp_secret)
           print(f"Generated OTP: {otp} (via {method})")
 
+          # Use a valid SHA-256 hash length (32 bytes = 44 chars base64)
+          import hashlib as hl2
+          dummy_hash = base64.b64encode(hl2.sha256(b"test_signing").digest()).decode()
           auth_data = json.dumps({
               "credentialID": cred_id,
               "numSignatures": 1,
-              "hash": ["dGVzdA=="],
+              "hash": [dummy_hash],
               "OTP": otp
           }).encode()
           req_c = urllib.request.Request(f"{csc_url}/csc/v0/credentials/authorize", data=auth_data, method="POST")
