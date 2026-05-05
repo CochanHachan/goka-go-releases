@@ -83,6 +83,12 @@ def _init_config_if_needed():
             if cfg.get("fischer_increment") != server_fischer_inc:
                 cfg["fischer_increment"] = server_fischer_inc
                 changed = True
+        for _dk in ("default_main_time_min", "default_byoyomi_sec",
+                     "default_byoyomi_count", "default_komi"):
+            _dv = server_settings.get(_dk)
+            if _dv is not None and cfg.get(_dk) != _dv:
+                cfg[_dk] = _dv
+                changed = True
         if changed:
             with open(app_cfg, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)

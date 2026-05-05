@@ -199,6 +199,23 @@ bot_accept_timers: Dict[str, asyncio.Task] = {}
 pending_offers: Dict[str, dict] = {}
 
 BOT_AUTO_DELAY = 30  # 秒 — ボットが挑戦状を送るまでのデフォルト待機時間
+
+
+def _increment_match_count(handle_name: str):
+    """対局開始時に match_count をインクリメントする。"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE user_stats SET match_count = match_count + 1 "
+            "FROM users WHERE user_stats.user_id = users.id AND users.handle_name = %s",
+            (handle_name,)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.warning("Failed to increment match_count for %s: %s", handle_name, e)
 # 重要: この値はクライアント側の _hosting_timeout（get_offer_timeout_ms）より
 # 十分短くなければならない。同じかそれ以上だとクライアントが先にキャンセルし、
 # ボットの挑戦状が届かなくなる。
@@ -291,7 +308,9 @@ def _ensure_tables(conn):
         elo INTEGER NOT NULL DEFAULT 1500,
         rank TEXT NOT NULL DEFAULT '15級',
         wins INTEGER NOT NULL DEFAULT 0,
-        losses INTEGER NOT NULL DEFAULT 0
+        losses INTEGER NOT NULL DEFAULT 0,
+        login_count INTEGER NOT NULL DEFAULT 0,
+        match_count INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS user_preferences (
         id SERIAL PRIMARY KEY,
@@ -387,6 +406,17 @@ def _ensure_tables(conn):
     );
     """)
     conn.commit()
+
+    # user_stats に login_count / match_count カラムを追加（既存DBマイグレーション）
+    for col_name in ("login_count", "match_count"):
+        try:
+            cur.execute(
+                "ALTER TABLE user_stats ADD COLUMN {} INTEGER NOT NULL DEFAULT 0".format(col_name)
+            )
+            conn.commit()
+            logger.info("Added column user_stats.%s", col_name)
+        except Exception:
+            conn.rollback()
 
     # PRIMARY KEY 制約の存在確認（データ整合性保証）
     cur.execute("""
@@ -656,6 +686,21 @@ async def login(req: LoginRequest):
     active_tokens[token] = req.handle_name
     logger.info("Login: %s", req.handle_name)
 
+    # login_count をインクリメント
+    try:
+        conn_lc = get_db_connection()
+        cur_lc = conn_lc.cursor()
+        cur_lc.execute(
+            "UPDATE user_stats SET login_count = login_count + 1 "
+            "FROM users WHERE user_stats.user_id = users.id AND users.handle_name = %s",
+            (req.handle_name,)
+        )
+        conn_lc.commit()
+        cur_lc.close()
+        conn_lc.close()
+    except Exception as e:
+        logger.warning("Failed to increment login_count for %s: %s", req.handle_name, e)
+
     return {
         "success": True,
         "token": token,
@@ -677,7 +722,9 @@ async def get_users():
     try:
         cur.execute(
             "SELECT u.id, u.handle_name, u.real_name, u.email, u.created_at, "
-            "s.elo, s.rank, a.password_enc "
+            "s.elo, s.rank, a.password_enc, "
+            "COALESCE(s.login_count, 0) AS login_count, "
+            "COALESCE(s.match_count, 0) AS match_count "
             "FROM users u "
             "LEFT JOIN user_stats s ON u.id = s.user_id "
             "LEFT JOIN user_auth a ON u.id = a.user_id "
@@ -704,6 +751,8 @@ async def get_users():
             "online": hn in connected_users,
             "status": user_status.get(hn, ""),
             "opponent": game_pairs.get(hn, ""),
+            "login_count": row["login_count"],
+            "match_count": row["match_count"],
         })
     return result
 
@@ -1128,13 +1177,20 @@ def _get_bot_time_settings(handle: str = "") -> dict:
             "byo_periods": 0,
             "time_control": "fischer",
             "fischer_increment": int(fischer_inc),
+            "komi": float(settings.get("default_komi") or 7.5),
         }
+    # 管理者のデフォルト持ち時間設定を使う
+    default_main_min = settings.get("default_main_time_min")
+    default_byo_sec = settings.get("default_byoyomi_sec")
+    default_byo_count = settings.get("default_byoyomi_count")
+    default_komi = settings.get("default_komi")
     return {
-        "main_time": 600,
-        "byo_time": 30,
-        "byo_periods": 5,
+        "main_time": int(default_main_min) * 60 if default_main_min else 600,
+        "byo_time": int(default_byo_sec) if default_byo_sec else 30,
+        "byo_periods": int(default_byo_count) if default_byo_count else 5,
         "time_control": "byoyomi",
         "fischer_increment": 0,
+        "komi": float(default_komi) if default_komi is not None else 7.5,
     }
 
 
@@ -1176,7 +1232,7 @@ async def _bot_auto_offer(handle: str):
             "main_time": time_cfg["main_time"],
             "byo_time": time_cfg["byo_time"],
             "byo_periods": time_cfg["byo_periods"],
-            "komi": 7.5,
+            "komi": time_cfg.get("komi", 7.5),
             "is_bot": True,
             "time_control": time_cfg["time_control"],
             "fischer_increment": time_cfg["fischer_increment"],
@@ -1232,7 +1288,7 @@ async def _bot_auto_accept(handle: str):
             "main_time": time_cfg["main_time"],
             "byo_time": time_cfg["byo_time"],
             "byo_periods": time_cfg["byo_periods"],
-            "komi": 7.5,
+            "komi": time_cfg.get("komi", 7.5),
             "is_bot": True,
             "time_control": time_cfg["time_control"],
             "fischer_increment": time_cfg["fischer_increment"],
@@ -1279,7 +1335,8 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             game_pairs[handle] = target
             game_pairs[target] = handle
             active_games[frozenset({handle, target})] = True
-            user_status[handle] = "対局中"
+            user_status[handle] = "ロボと対局中"
+            _increment_match_count(handle)
             await ws_send(handle, {
                 "type": "match_accepted",
                 "from": target,
@@ -1390,7 +1447,8 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             game_pairs[handle] = target
             game_pairs[target] = handle
             active_games[frozenset({handle, target})] = True
-            user_status[handle] = "対局中"
+            user_status[handle] = "ロボと対局中"
+            _increment_match_count(handle)
             await ws_send(handle, {
                 "type": "match_started",
                 "opponent": target,
@@ -1421,6 +1479,8 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
             active_games[frozenset({handle, target})] = True
             user_status[handle] = "対局中"
             user_status[target] = "対局中"
+            _increment_match_count(handle)
+            _increment_match_count(target)
 
             import random
             offerer_color = random.choice(["black", "white"])
@@ -1576,7 +1636,7 @@ async def ws_handle_message(ws: WebSocket, handle: str, msg: dict):
     elif msg_type == "set_status":
         # クライアントから明示的にステータスを設定
         new_status = msg.get("status", "ログイン")
-        if new_status in ("ログイン", "対局申請中", "対局受付中", "申請・受付", "対局中", "検討中"):
+        if new_status in ("ログイン", "対局申請中", "対局受付中", "申請・受付", "対局中", "検討中", "ロボと対局中"):
             user_status[handle] = new_status
             logger.debug("Status set: %s = %s", handle, new_status)
 

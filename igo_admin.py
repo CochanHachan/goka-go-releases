@@ -178,12 +178,12 @@ def _num_sort_key(val):
 
 
 def _convert_time_string_vba_style(s_input: str) -> str:
-    """H.M.S(または H,M,S) を「○時間○分○秒」に変換する。"""
+    """H.M.S(または H/M/S または H,M,S) を「○時間○分○秒」に変換する。"""
     s = unicodedata.normalize("NFKC", str(s_input or "")).strip()
     if not s:
         return ""
-    # 区切りは . / , のどちらでも受ける
-    parts = re.split(r"[.,]", s)
+    # 区切りは . / , のどれでも受ける
+    parts = re.split(r"[.,/]", s)
     if len(parts) != 3:
         return "入力形式エラー"
     try:
@@ -211,7 +211,7 @@ def _canonical_hms_text(s_input: str) -> str:
     s = unicodedata.normalize("NFKC", str(s_input or "")).strip()
     if not s:
         return ""
-    parts = re.split(r"[.,]", s)
+    parts = re.split(r"[.,/]", s)
     if len(parts) != 3:
         return ""
     try:
@@ -261,6 +261,26 @@ def _seconds_to_japanese_hms_text(total_seconds: int) -> str:
     m = rem // 60
     s = rem % 60
     return _convert_time_string_vba_style("{}.{}.{}".format(h, m, s))
+
+
+def _komi_to_display(komi_value: float) -> str:
+    """コミ値を囲碁の表記に変換する。7.5 → '7目半', 6.5 → '6目半', 0 → '0'。"""
+    komi = float(komi_value)
+    frac = abs(komi) - int(abs(komi))
+    has_half = abs(frac - 0.5) < 0.01
+    int_part = int(abs(komi))
+    if komi < 0:
+        sign = "-"
+    else:
+        sign = ""
+    if has_half:
+        if int_part == 0:
+            return "{}半目".format(sign)
+        return "{}{}目半".format(sign, int_part)
+    else:
+        if int_part == 0 and not sign:
+            return "0"
+        return "{}{}目".format(sign, int_part)
 
 
 def _height_ratio_from_text(
@@ -509,15 +529,7 @@ class AdminApp:
                        selectcolor=T("input_bg"),
                        activebackground=T("root_bg"),
                        activeforeground=T("text_primary")).pack(side="left")
-        env_now = "本番" if self._active_env == "production" else "テスト"
-        self._env_info_label = tk.Label(
-            env_frame,
-            text="現在: {} ({})".format(env_now, self._api_base_url),
-            font=("Yu Gothic UI", 9),
-            fg=T("text_primary"),
-            bg=T("root_bg"),
-        )
-        self._env_info_label.pack(side="left", padx=(8, 0))
+        # 「現在：...」ラベルは削除済み（ユーザー依頼）
         self._runtime_info_label = tk.Label(
             info_frame,
             text="",
@@ -742,7 +754,7 @@ class AdminApp:
         self._default_main_time_var = tk.StringVar(value=str(_srv_main))
         self._default_byoyomi_sec_var = tk.StringVar(value=str(_srv_byo_sec))
         self._default_byoyomi_count_var = tk.StringVar(value="{}\u56de".format(_srv_byo_count))
-        self._default_komi_var = tk.StringVar(value="{}\u76ee\u534a".format(_srv_komi))
+        self._default_komi_var = tk.StringVar(value=_komi_to_display(_srv_komi))
 
         def _default_line(parent, label, var):
             row = tk.Frame(parent, bg=_tab_bg)
@@ -993,10 +1005,7 @@ class AdminApp:
         self._active_env = selected
         self._api_base_url = _ADMIN_SERVER_CONFIG[selected]["api_base_url"]
         self.root.title(_ADMIN_SERVER_CONFIG[selected]["title"])
-        env_now = "本番" if selected == "production" else "テスト"
-        self._env_info_label.config(
-            text="現在: {} ({})".format(env_now, self._api_base_url)
-        )
+        # 「現在：...」ラベルは削除済み
         self._runtime_info_label.config(text="接続先情報: 切替中...")
         self._refresh()
 
@@ -1067,7 +1076,7 @@ class AdminApp:
         self._default_main_time_var.set(str(default_main))
         self._default_byoyomi_sec_var.set(str(byoyomi_sec))
         self._default_byoyomi_count_var.set("{}\u56de".format(byoyomi_count))
-        self._default_komi_var.set("{}\u76ee\u534a".format(komi))
+        self._default_komi_var.set(_komi_to_display(komi))
         cfg["default_main_time_min"] = default_main
         cfg["default_byoyomi_sec"] = byoyomi_sec
         cfg["default_byoyomi_count"] = byoyomi_count
