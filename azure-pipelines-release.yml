@@ -111,8 +111,6 @@ stages:
                 .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
-                  -totp_secret="$env:ES_TOTP_SECRET" `
-                  -credential_id="$env:CREDENTIAL_ID" `
                   -input_file_path="$exePath" `
                   -override="true"
                 Pop-Location
@@ -124,8 +122,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
 
           - script: python tools/download_katago_for_windows_build.py
@@ -191,8 +187,6 @@ stages:
                 .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
-                  -totp_secret="$env:ES_TOTP_SECRET" `
-                  -credential_id="$env:CREDENTIAL_ID" `
                   -input_file_path="$installerPath" `
                   -override="true"
                 Pop-Location
@@ -204,8 +198,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
 
           # ── 管理者ツール用 Inno Setup インストーラー ──
@@ -234,8 +226,6 @@ stages:
                 .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
-                  -totp_secret="$env:ES_TOTP_SECRET" `
-                  -credential_id="$env:CREDENTIAL_ID" `
                   -input_file_path="$installerPath" `
                   -override="true"
                 Pop-Location
@@ -247,8 +237,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
 
           - task: PublishPipelineArtifact@1
