@@ -1,0 +1,6 @@
+pyinstaller
+tksheet
+cryptography
+websockets
+pillow
+pygame
