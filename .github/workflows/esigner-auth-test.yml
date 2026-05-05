@@ -1,4 +1,4 @@
-name: eSigner Auth Diagnostic v3
+name: eSigner Auth Diagnostic v4
 
 on:
   workflow_dispatch:
