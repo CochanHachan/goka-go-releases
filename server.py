@@ -198,14 +198,14 @@ bot_accept_timers: Dict[str, asyncio.Task] = {}
 # handle -> pending offer info (タイムアウト時にボットが承諾するための情報)
 pending_offers: Dict[str, dict] = {}
 
-BOT_AUTO_DELAY = 60  # 秒 — ボットが挑戦状を送るまでのデフォルト待機時間
+BOT_AUTO_DELAY = 30  # 秒 — ボットが挑戦状を送るまでのデフォルト待機時間
 # 重要: この値はクライアント側の _hosting_timeout（get_offer_timeout_ms）より
 # 十分短くなければならない。同じかそれ以上だとクライアントが先にキャンセルし、
 # ボットの挑戦状が届かなくなる。
 
 
 def _get_bot_delay() -> int:
-    """管理者画面の bot_offer_delay 設定を秒単位で返す（デフォルト: 60秒）。"""
+    """管理者画面の bot_offer_delay 設定を秒単位で返す（デフォルト: 30秒）。"""
     try:
         settings = _load_settings()
         return int(settings.get("bot_offer_delay", BOT_AUTO_DELAY))
@@ -304,7 +304,7 @@ def _ensure_tables(conn):
         offer_timeout_min INTEGER NOT NULL DEFAULT 3,
         fischer_main_time INTEGER NOT NULL DEFAULT 300,
         fischer_increment INTEGER NOT NULL DEFAULT 10,
-        bot_offer_delay INTEGER NOT NULL DEFAULT 60,
+        bot_offer_delay INTEGER NOT NULL DEFAULT 30,
         default_main_time_min INTEGER DEFAULT NULL,
         default_byoyomi_sec INTEGER DEFAULT NULL,
         default_byoyomi_count INTEGER DEFAULT NULL,
@@ -316,9 +316,15 @@ def _ensure_tables(conn):
         challenge_accept_height REAL DEFAULT NULL,
         challenge_accept_width REAL DEFAULT NULL,
         sakura_dialog_height REAL DEFAULT NULL,
-        sakura_dialog_width REAL DEFAULT NULL
+        sakura_dialog_width REAL DEFAULT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     INSERT INTO app_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+    -- updated_at カラムが不足している場合は追加
+    DO $$ BEGIN
+        ALTER TABLE app_settings ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    EXCEPTION WHEN duplicate_column THEN NULL;
+    END $$;
 
     -- ゲーム関連テーブル
     CREATE TABLE IF NOT EXISTS games (
@@ -833,7 +839,7 @@ _DEFAULT_SETTINGS = {
     "offer_timeout_min": 3,
     "fischer_main_time": 300,
     "fischer_increment": 10,
-    "bot_offer_delay": 60,
+    "bot_offer_delay": 30,
     "default_main_time_min": 10,
     "default_byoyomi_sec": 30,
     "default_byoyomi_count": 3,
