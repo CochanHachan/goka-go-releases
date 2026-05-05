@@ -1040,8 +1040,7 @@ class AdminApp:
         self._save_config_safely(cfg)
 
     def _apply_timeout(self):
-        seconds = _duration_seconds_from_text(self._timeout_var.get(), default_seconds=180)
-        minutes = _to_int(seconds // 60, 3, min_value=1, max_value=10)
+        minutes = _to_int(self._timeout_var.get(), 3, min_value=1, max_value=10)
         self._api_put("/api/settings", {"offer_timeout_min": minutes})
         cfg = self._load_config_safely()
         cfg["offer_timeout_min"] = minutes
@@ -1056,10 +1055,8 @@ class AdminApp:
         self._save_config_safely(cfg)
 
     def _apply_fischer(self):
-        main_raw_seconds = _duration_seconds_from_text(self._fischer_main_var.get(), default_seconds=300)
-        main_min = _to_int(main_raw_seconds // 60, 5, min_value=1, max_value=30)
-        inc_raw_seconds = _duration_seconds_from_text(self._fischer_inc_var.get(), default_seconds=10)
-        inc_sec = _to_int(inc_raw_seconds, 10, min_value=1, max_value=300)
+        main_min = _to_int(self._fischer_main_var.get(), 5, min_value=1, max_value=30)
+        inc_sec = _to_int(self._fischer_inc_var.get(), 10, min_value=1, max_value=300)
         main_sec = main_min * 60
         self._api_put("/api/settings", {"fischer_main_time": main_sec, "fischer_increment": inc_sec})
         cfg = self._load_config_safely()
