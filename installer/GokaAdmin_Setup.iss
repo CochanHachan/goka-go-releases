@@ -38,8 +38,7 @@ Name: "english";  MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; \
   Description: "{cm:CreateDesktopIcon}"; \
-  GroupDescription: "{cm:AdditionalIcons}"; \
-  Flags: checked
+  GroupDescription: "{cm:AdditionalIcons}"
 
 [Dirs]
 Name: "{app}"; Permissions: users-modify
