@@ -1,4 +1,5 @@
 name: eSigner Auth Diagnostic
+# Re-run after ES_PASSWORD update
 
 on:
   workflow_dispatch:
