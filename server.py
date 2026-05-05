@@ -64,6 +64,9 @@ logger = logging.getLogger("goka_server")
 # 定数（環境変数で上書き可能 — ステージング環境用）
 # ---------------------------------------------------------------------------
 PG_DSN = os.environ.get("GOKA_PG_DSN", "dbname=goka")
+if "user=" not in PG_DSN:
+    _db = "goka_staging" if "goka_staging" in PG_DSN else "goka"
+    PG_DSN = f"dbname={_db} user=goka password=goka_secure_2026 host=localhost"
 PORT = int(os.environ.get("GOKA_PORT", "8000"))
 _ENV_LABEL = os.environ.get("GOKA_ENV", "production")
 
@@ -245,6 +248,28 @@ def _dict_cursor(conn):
 def _ensure_tables(conn):
     """テーブルが存在しない場合は作成する（ステージング環境の初回起動対応）。"""
     cur = conn.cursor()
+    if _ENV_LABEL == "staging":
+        try:
+            cur.execute("SELECT count(*) FROM users")
+        except Exception:
+            conn.rollback()
+            logger.warning("Staging: users table access failed, recreating all tables")
+            cur.execute("""
+                DROP TABLE IF EXISTS user_preferences CASCADE;
+                DROP TABLE IF EXISTS user_stats CASCADE;
+                DROP TABLE IF EXISTS user_auth CASCADE;
+                DROP TABLE IF EXISTS user_ui_settings CASCADE;
+                DROP TABLE IF EXISTS auth_sessions CASCADE;
+                DROP TABLE IF EXISTS spectator_sessions CASCADE;
+                DROP TABLE IF EXISTS game_events CASCADE;
+                DROP TABLE IF EXISTS game_players CASCADE;
+                DROP TABLE IF EXISTS live_game_state CASCADE;
+                DROP TABLE IF EXISTS game_records CASCADE;
+                DROP TABLE IF EXISTS games CASCADE;
+                DROP TABLE IF EXISTS app_settings CASCADE;
+                DROP TABLE IF EXISTS users CASCADE;
+            """)
+            conn.commit()
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -1729,10 +1754,10 @@ async def admin_update(request: Request):
             cwd=REPO_DIR, capture_output=True, text=True, timeout=10
         ).stdout.strip()
 
-        # ローカル変更を退避（hotpatch等で変更されている場合）
+        # ローカル変更を破棄（hotpatch等で変更されている場合）
         subprocess.run(
-            ["git", "stash"], cwd=REPO_DIR,
-            capture_output=True, text=True, timeout=10
+            ["git", "checkout", "--", "."], cwd=REPO_DIR,
+            capture_output=True, text=True, timeout=30
         )
 
         # 常にfetch → checkoutしてからpull（前回のデプロイで別ブランチに
