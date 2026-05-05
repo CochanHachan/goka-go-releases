@@ -1023,8 +1023,8 @@ class App:
         else:
             sw = max(1, self.root.winfo_screenwidth())
             sh = max(1, self.root.winfo_screenheight())
-        fw = get_ui_width_ratio("board_frame_width", float(GAME_WINDOW_INITIAL_WIDTH_FRACTION))
-        fh = get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))
+        fw = min(1.0, max(0.1, get_ui_width_ratio("board_frame_width", float(GAME_WINDOW_INITIAL_WIDTH_FRACTION))))
+        fh = min(1.0, max(0.1, get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))))
         w = int(sw * fw)
         h = int(sh * fh)
         min_w = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)

@@ -153,20 +153,8 @@ class MatchOfferDialog:
         ph = parent_root.winfo_height()
         px = parent_root.winfo_x()
         py = parent_root.winfo_y()
-        if self._saved_size:
-            # saved_size is "WxH" or "WxH+X+Y", extract W and H only
-            size_part = self._saved_size.split("+")[0]
-            parts = size_part.split("x")
-            if len(parts) == 2:
-                try:
-                    dw = int(parts[0])
-                    dh = int(parts[1])
-                except ValueError:
-                    dw, dh = 440, 420
-            else:
-                dw, dh = 440, 420
-        else:
-            dw, dh = 440, 420
+        dw = 440
+        dh = 420
         try:
             wr = get_primary_work_area_rect()
             work_w = wr[2] if wr else max(1, parent_root.winfo_screenwidth())
@@ -176,7 +164,15 @@ class MatchOfferDialog:
             dw = int(work_w * get_ui_width_ratio("challenge_accept_width", 0.30))
             dw = max(440, dw)
         except Exception:
-            pass
+            dh = 420
+        if self._saved_size and isinstance(self._saved_size, str):
+            size_part = self._saved_size.split("+")[0]
+            parts = size_part.split("x")
+            if len(parts) == 2:
+                try:
+                    dw = int(parts[0])
+                except ValueError:
+                    dw = 440
         x = px + (pw - dw) // 2
         y = py + (ph - dh) // 2
         self.win.geometry("{}x{}+{}+{}".format(dw, dh, x, y))
