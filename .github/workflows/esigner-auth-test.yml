@@ -1,5 +1,4 @@
-name: eSigner Auth Diagnostic
-# Re-run after ES_PASSWORD update
+name: eSigner Auth Diagnostic v3
 
 on:
   workflow_dispatch:
@@ -15,217 +14,52 @@ jobs:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: 1
     steps:
-      - name: "Step 1 - TOTP Secret Format Check"
+      - name: "Step 0 - Verify OAuth2 Endpoint (demo credentials)"
         shell: python
-        env:
-          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
         run: |
-          import os, sys, re, base64
+          import sys, json, urllib.request, urllib.parse, urllib.error
           sys.stdout.reconfigure(encoding='utf-8')
 
-          secret = os.environ.get("ES_TOTP_SECRET", "")
-          length = len(secret)
-          print("=== ES_TOTP_SECRET Format Diagnosis ===")
-          print(f"Length: {length} characters")
+          print("=== OAuth2 Endpoint Health Check (demo credentials) ===")
+          token_url = "https://login.ssl.com/oauth2/token"
+          client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
 
-          if length == 0:
-              print("FAIL: ES_TOTP_SECRET is empty (not set)")
-              sys.exit(1)
+          # Try with known demo credentials (should fail with specific error if endpoint is up)
+          data = urllib.parse.urlencode({
+              "grant_type": "password",
+              "username": "esigner_demo",
+              "password": "esignerDemo#1",
+              "client_id": client_id,
+          }).encode()
 
-          if length == 6 and secret.isdigit():
-              print("FAIL: This is a 6-digit OTP code, NOT a TOTP secret key.")
-              print("  A TOTP secret key is a Base32/Base64 string (24-44 chars).")
-              print("  Example: RDXYgV9qju+6/7GnMf1vCbKexXVJmUVr+86Wq/8aIGg=")
-              print("  Get the secret key from SSL.com eSigner dashboard.")
-              sys.exit(1)
+          req = urllib.request.Request(token_url, data=data, method="POST")
+          req.add_header("Content-Type", "application/x-www-form-urlencoded")
 
-          is_base32 = bool(re.fullmatch(r'[A-Z2-7=]+', secret, re.IGNORECASE))
-          is_base64 = bool(re.fullmatch(r'[A-Za-z0-9+/=]+', secret))
-
-          if is_base32 and length >= 16:
-              print(f"OK: Base32 format ({length} chars) - valid TOTP secret key")
-          elif is_base64 and length >= 20:
-              print(f"OK: Base64 format ({length} chars) - SSL.com uses Base64 TOTP secrets")
-          else:
-              print(f"WARN: Unknown format ({length} chars)")
-              print(f"  First 4 chars: {secret[:4]}***")
-              print(f"  Last 4 chars: ***{secret[-4:]}")
-
-          # TOTP code generation test
           try:
-              import hmac, hashlib, struct, time
-              try:
-                  key = base64.b32decode(secret + '=' * (-len(secret) % 8), casefold=True)
-                  decode_method = "Base32"
-              except Exception:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  print("OK: Demo auth succeeded - endpoint is working")
+                  print("Note: demo creds work on PROD endpoint too (limited scope)")
+          except urllib.error.HTTPError as e:
+              error_body = e.read().decode()
+              print(f"HTTP {e.code}: {error_body[:300]}")
+              if e.code == 400:
                   try:
-                      key = base64.b64decode(secret)
-                      decode_method = "Base64"
-                  except Exception:
-                      print("FAIL: Cannot decode TOTP secret key")
-                      sys.exit(1)
-
-              counter = struct.pack(">Q", int(time.time()) // 30)
-              mac = hmac.new(key, counter, hashlib.sha1).digest()
-              offset = mac[-1] & 0x0F
-              code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
-              totp = str(code % 1000000).zfill(6)
-              print(f"OK: TOTP code generated ({decode_method} decode): {totp}")
+                      err = json.loads(error_body)
+                      desc = err.get("error_description", "")
+                      if "grant" in desc.lower():
+                          print("OK: Endpoint is responding (demo creds rejected as expected on PROD)")
+                      else:
+                          print(f"Endpoint responded with: {desc}")
+                  except:
+                      pass
+              elif e.code >= 500:
+                  print("FAIL: OAuth2 endpoint itself is having issues (server error)")
+                  sys.exit(1)
           except Exception as e:
-              print(f"FAIL: TOTP generation error: {e}")
+              print(f"FAIL: Cannot reach OAuth2 endpoint: {e}")
               sys.exit(1)
 
-      - name: "Step 2 - OAuth2 Token Test (password + TOTP)"
-        shell: python
-        env:
-          ES_USERNAME: ${{ secrets.ES_USERNAME }}
-          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
-          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
-        run: |
-          import os, sys, json, urllib.request, urllib.parse, urllib.error
-          import hmac, hashlib, struct, time, base64
-          sys.stdout.reconfigure(encoding='utf-8')
-
-          username = os.environ.get("ES_USERNAME", "")
-          password = os.environ.get("ES_PASSWORD", "")
-          totp_secret = os.environ.get("ES_TOTP_SECRET", "")
-
-          print("=== OAuth2 Authentication Test ===")
-          print(f"Username set: {'YES' if username else 'NO'}")
-          print(f"Password set: {'YES' if password else 'NO'}")
-          print(f"TOTP Secret set: {'YES' if totp_secret else 'NO'}")
-
-          if not all([username, password, totp_secret]):
-              print("FAIL: Missing required secrets")
-              sys.exit(1)
-
-          # Generate TOTP code
-          try:
-              try:
-                  key = base64.b32decode(totp_secret + '=' * (-len(totp_secret) % 8), casefold=True)
-              except Exception:
-                  key = base64.b64decode(totp_secret)
-              counter = struct.pack(">Q", int(time.time()) // 30)
-              mac = hmac.new(key, counter, hashlib.sha1).digest()
-              offset = mac[-1] & 0x0F
-              code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
-              totp = str(code % 1000000).zfill(6)
-              print(f"Generated TOTP code: {totp}")
-          except Exception as e:
-              print(f"FAIL: TOTP generation error: {e}")
-              sys.exit(1)
-
-          # SSL.com OAuth2 token endpoint
-          token_url = "https://login.ssl.com/oauth2/token"
-          client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
-
-          data = urllib.parse.urlencode({
-              "grant_type": "password",
-              "username": username,
-              "password": password,
-              "client_id": client_id,
-              "totp": totp,
-          }).encode()
-
-          print("\n--- Test: Password + TOTP token request ---")
-          req = urllib.request.Request(token_url, data=data, method="POST")
-          req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
-          try:
-              with urllib.request.urlopen(req, timeout=30) as resp:
-                  body = json.loads(resp.read().decode())
-                  print(f"OK: Authentication succeeded!")
-                  print(f"  token_type: {body.get('token_type')}")
-                  print(f"  expires_in: {body.get('expires_in')} seconds")
-          except urllib.error.HTTPError as e:
-              error_body = e.read().decode()
-              try:
-                  err = json.loads(error_body)
-                  error_desc = err.get("error_description", err.get("error", "unknown"))
-              except json.JSONDecodeError:
-                  error_desc = error_body[:200]
-
-              print(f"FAIL: HTTP {e.code}: {error_desc}")
-
-              if "invalid" in error_desc.lower() and "grant" in error_desc.lower():
-                  print("\n=== DIAGNOSIS ===")
-                  print("'authorization grant invalid' error.")
-                  print("Possible causes:")
-                  print("  1. ES_PASSWORD is wrong or expired")
-                  print("  2. ES_TOTP_SECRET is wrong (generating bad OTP codes)")
-                  print("  3. SSL.com account or eSigner certificate expired/revoked")
-                  print("  4. The TOTP secret was rotated on SSL.com side")
-                  print("Next: Step 2b will test password-only (no TOTP) to narrow down")
-              sys.exit(1)
-          except Exception as e:
-              print(f"FAIL: Connection error: {e}")
-              sys.exit(1)
-
-      - name: "Step 2b - Password-only Test (isolate TOTP issue)"
-        if: failure()
-        shell: python
-        env:
-          ES_USERNAME: ${{ secrets.ES_USERNAME }}
-          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
-        run: |
-          import os, sys, json, urllib.request, urllib.parse, urllib.error
-          sys.stdout.reconfigure(encoding='utf-8')
-
-          username = os.environ.get("ES_USERNAME", "")
-          password = os.environ.get("ES_PASSWORD", "")
-          token_url = "https://login.ssl.com/oauth2/token"
-          client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
-
-          print("=== Password-only Auth Test (no TOTP) ===")
-
-          data = urllib.parse.urlencode({
-              "grant_type": "password",
-              "username": username,
-              "password": password,
-              "client_id": client_id,
-          }).encode()
-
-          req = urllib.request.Request(token_url, data=data, method="POST")
-          req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
-          try:
-              with urllib.request.urlopen(req, timeout=30) as resp:
-                  print("OK: Password auth succeeded (without TOTP)")
-                  print("  -> ES_PASSWORD is correct")
-                  print("  -> Problem is likely NOT the password")
-          except urllib.error.HTTPError as e:
-              error_body = e.read().decode()
-              try:
-                  err = json.loads(error_body)
-                  error_desc = err.get("error_description", err.get("error", "unknown"))
-              except json.JSONDecodeError:
-                  error_desc = error_body[:200]
-
-              print(f"HTTP {e.code}: {error_desc}")
-
-              if "totp" in error_desc.lower() or "otp" in error_desc.lower():
-                  print("\n=== DIAGNOSIS: TOTP Required ===")
-                  print("Password is CORRECT but TOTP is required.")
-                  print("-> ES_PASSWORD: OK")
-                  print("-> ES_TOTP_SECRET: Problem here - secret may be wrong/rotated")
-                  print("ACTION: Re-export TOTP secret from SSL.com eSigner dashboard")
-              elif "invalid" in error_desc.lower() or "grant" in error_desc.lower():
-                  print("\n=== DIAGNOSIS: Password Invalid ===")
-                  print("Password auth ALSO failed without TOTP.")
-                  print("-> ES_PASSWORD: WRONG or account is disabled/expired")
-                  print("ACTION: Login to https://login.ssl.com in browser to verify account")
-                  print("ACTION: Check if password was changed or account was locked")
-              elif e.code == 401:
-                  print("\n=== DIAGNOSIS: Credentials Invalid ===")
-                  print("-> Check ES_USERNAME and ES_PASSWORD")
-              else:
-                  print(f"\nUnexpected error: HTTP {e.code}")
-                  print(f"Response: {error_desc}")
-          except Exception as e:
-              print(f"Connection error: {e}")
-
-      - name: "Step 3 - Credential ID Check"
-        if: success()
+      - name: "Step 1 - Secret Format Check"
         shell: python
         env:
           ES_USERNAME: ${{ secrets.ES_USERNAME }}
@@ -233,28 +67,99 @@ jobs:
           ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
           CREDENTIAL_ID: ${{ secrets.CREDENTIAL_ID }}
         run: |
+          import os, sys, re, base64
+          sys.stdout.reconfigure(encoding='utf-8')
+
+          print("=== All Secrets Format Check ===")
+
+          username = os.environ.get("ES_USERNAME", "")
+          password = os.environ.get("ES_PASSWORD", "")
+          totp_secret = os.environ.get("ES_TOTP_SECRET", "")
+          cred_id = os.environ.get("CREDENTIAL_ID", "")
+
+          # Username
+          if username:
+              masked = username[:3] + "***" + username[-3:] if len(username) > 6 else "***"
+              print(f"ES_USERNAME: SET ({len(username)} chars, hint: {masked})")
+              if "@" in username:
+                  print("  -> Looks like an email address (expected)")
+              else:
+                  print("  -> WARNING: Does not contain '@'. SSL.com username is usually an email.")
+          else:
+              print("ES_USERNAME: NOT SET")
+              sys.exit(1)
+
+          # Password
+          if password:
+              print(f"ES_PASSWORD: SET ({len(password)} chars)")
+              if len(password) < 6:
+                  print("  -> WARNING: Very short password")
+          else:
+              print("ES_PASSWORD: NOT SET")
+              sys.exit(1)
+
+          # TOTP Secret
+          if totp_secret:
+              is_base32 = bool(re.fullmatch(r'[A-Z2-7=]+', totp_secret, re.IGNORECASE))
+              is_base64 = bool(re.fullmatch(r'[A-Za-z0-9+/=]+', totp_secret))
+              if is_base32 and len(totp_secret) >= 16:
+                  fmt = "Base32"
+              elif is_base64 and len(totp_secret) >= 20:
+                  fmt = "Base64"
+              elif len(totp_secret) == 6 and totp_secret.isdigit():
+                  fmt = "6-DIGIT OTP (WRONG! Need secret key, not OTP code)"
+              else:
+                  fmt = f"Unknown"
+              print(f"ES_TOTP_SECRET: SET ({len(totp_secret)} chars, format: {fmt})")
+          else:
+              print("ES_TOTP_SECRET: NOT SET")
+              sys.exit(1)
+
+          # Credential ID
+          if cred_id:
+              print(f"CREDENTIAL_ID: SET ({len(cred_id)} chars)")
+          else:
+              print("CREDENTIAL_ID: NOT SET")
+
+          # TOTP generation test
+          try:
+              import hmac, hashlib, struct, time
+              try:
+                  key = base64.b32decode(totp_secret + '=' * (-len(totp_secret) % 8), casefold=True)
+                  dm = "Base32"
+              except:
+                  key = base64.b64decode(totp_secret)
+                  dm = "Base64"
+              counter = struct.pack(">Q", int(time.time()) // 30)
+              mac = hmac.new(key, counter, hashlib.sha1).digest()
+              offset = mac[-1] & 0x0F
+              code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
+              totp = str(code % 1000000).zfill(6)
+              print(f"TOTP code generation: OK ({dm} decode) -> {totp}")
+          except Exception as e:
+              print(f"TOTP code generation: FAIL ({e})")
+              sys.exit(1)
+
+      - name: "Step 2 - OAuth2 Full Auth Test"
+        shell: python
+        env:
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
+        run: |
           import os, sys, json, urllib.request, urllib.parse, urllib.error
           import hmac, hashlib, struct, time, base64
           sys.stdout.reconfigure(encoding='utf-8')
 
-          credential_id = os.environ.get("CREDENTIAL_ID", "")
           username = os.environ.get("ES_USERNAME", "")
           password = os.environ.get("ES_PASSWORD", "")
           totp_secret = os.environ.get("ES_TOTP_SECRET", "")
-
-          print("=== CREDENTIAL_ID Validation ===")
-          print(f"CREDENTIAL_ID set: {'YES' if credential_id else 'NO'}")
-          print(f"CREDENTIAL_ID length: {len(credential_id)}")
-
-          if not credential_id:
-              print("FAIL: CREDENTIAL_ID is empty")
-              sys.exit(1)
 
           # Generate TOTP
           try:
               try:
                   key = base64.b32decode(totp_secret + '=' * (-len(totp_secret) % 8), casefold=True)
-              except Exception:
+              except:
                   key = base64.b64decode(totp_secret)
               counter = struct.pack(">Q", int(time.time()) // 30)
               mac = hmac.new(key, counter, hashlib.sha1).digest()
@@ -262,12 +167,14 @@ jobs:
               code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
               totp = str(code % 1000000).zfill(6)
           except Exception as e:
-              print(f"TOTP generation failed: {e}")
+              print(f"FAIL: TOTP error: {e}")
               sys.exit(1)
 
-          # Get token
           token_url = "https://login.ssl.com/oauth2/token"
           client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
+
+          # Test A: Full auth (username + password + TOTP)
+          print("=== Test A: Full auth (username + password + TOTP) ===")
           data = urllib.parse.urlencode({
               "grant_type": "password",
               "username": username,
@@ -277,39 +184,85 @@ jobs:
           }).encode()
           req = urllib.request.Request(token_url, data=data, method="POST")
           req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
           try:
               with urllib.request.urlopen(req, timeout=30) as resp:
                   body = json.loads(resp.read().decode())
-                  access_token = body.get("access_token", "")
+                  print(f"OK: Full auth succeeded! token_type={body.get('token_type')}")
+          except urllib.error.HTTPError as e:
+              err_body = e.read().decode()
+              try:
+                  err = json.loads(err_body)
+                  desc = err.get("error_description", err.get("error", "unknown"))
+              except:
+                  desc = err_body[:300]
+              print(f"FAIL: HTTP {e.code}: {desc}")
+              # Don't exit - continue to test B
           except Exception as e:
-              print(f"Token request failed: {e}")
-              sys.exit(1)
+              print(f"FAIL: {e}")
 
-          # Check credential via CSC API
-          csc_url = "https://cs.ssl.com/csc/v0/credentials/info"
-          info_data = json.dumps({
-              "credentialID": credential_id,
-              "certificates": "chain",
-              "certInfo": True,
+          # Test B: Password only (no TOTP)
+          print("\n=== Test B: Password only (no TOTP) ===")
+          data2 = urllib.parse.urlencode({
+              "grant_type": "password",
+              "username": username,
+              "password": password,
+              "client_id": client_id,
           }).encode()
-          req2 = urllib.request.Request(csc_url, data=info_data, method="POST")
-          req2.add_header("Content-Type", "application/json")
-          req2.add_header("Authorization", f"Bearer {access_token}")
-
+          req2 = urllib.request.Request(token_url, data=data2, method="POST")
+          req2.add_header("Content-Type", "application/x-www-form-urlencoded")
           try:
               with urllib.request.urlopen(req2, timeout=30) as resp:
-                  info = json.loads(resp.read().decode())
-                  status = info.get("key", {}).get("status", "unknown")
-                  print(f"OK: CREDENTIAL_ID is valid")
-                  print(f"  Key status: {status}")
-                  certs = info.get("cert", {}).get("certificates", [])
-                  print(f"  Certificate chain: {len(certs)} cert(s)")
+                  print("OK: Password-only auth succeeded")
           except urllib.error.HTTPError as e:
-              error_body = e.read().decode()
-              print(f"FAIL: Credential check failed (HTTP {e.code})")
-              print(f"  {error_body[:300]}")
-              if e.code == 400:
-                  print("-> CREDENTIAL_ID may be invalid or certificate revoked")
+              err_body = e.read().decode()
+              try:
+                  err = json.loads(err_body)
+                  desc = err.get("error_description", err.get("error", "unknown"))
+              except:
+                  desc = err_body[:300]
+              print(f"Result: HTTP {e.code}: {desc}")
+              if "totp" in desc.lower() or "otp" in desc.lower():
+                  print("-> Password OK, TOTP required (expected)")
+                  print("DIAGNOSIS: ES_PASSWORD is CORRECT. Problem is ES_TOTP_SECRET.")
+              elif "invalid" in desc.lower() and "grant" in desc.lower():
+                  print("-> Password also rejected without TOTP")
+                  print("DIAGNOSIS: ES_PASSWORD is WRONG or account disabled/expired.")
+                  print("ACTION: Verify you can login at https://login.ssl.com with this email+password")
+                  print("ACTION: If password was recently changed, make sure GitHub Secrets was updated with the EXACT new password (no extra spaces)")
+              else:
+                  print(f"-> Unexpected response")
           except Exception as e:
-              print(f"FAIL: CSC API error: {e}")
+              print(f"Error: {e}")
+
+          # Test C: Wrong password sanity check
+          print("\n=== Test C: Sanity check with known-bad password ===")
+          data3 = urllib.parse.urlencode({
+              "grant_type": "password",
+              "username": username,
+              "password": "definitely_wrong_password_12345",
+              "client_id": client_id,
+          }).encode()
+          req3 = urllib.request.Request(token_url, data=data3, method="POST")
+          req3.add_header("Content-Type", "application/x-www-form-urlencoded")
+          try:
+              with urllib.request.urlopen(req3, timeout=30) as resp:
+                  print("UNEXPECTED: Wrong password accepted?!")
+          except urllib.error.HTTPError as e:
+              err_body = e.read().decode()
+              try:
+                  err = json.loads(err_body)
+                  desc = err.get("error_description", err.get("error", "unknown"))
+              except:
+                  desc = err_body[:300]
+              print(f"HTTP {e.code}: {desc}")
+              print("-> This is expected (wrong password should fail)")
+              print("If Test B gave the SAME error as Test C, your password in Secrets is wrong.")
+          except Exception as e:
+              print(f"Error: {e}")
+
+          print("\n=== SUMMARY ===")
+          print("If Test A & B both fail with 'grant invalid' but Test C also shows same error:")
+          print("  -> ES_PASSWORD stored in GitHub Secrets is incorrect")
+          print("  -> Double-check: no leading/trailing spaces, correct copy-paste")
+          print("If Test B shows 'TOTP required' but Test A fails:")
+          print("  -> ES_TOTP_SECRET is the problem (secret key wrong or rotated)")
