@@ -2,6 +2,10 @@ name: eSigner Auth Diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/esigner-auth-test.yml'
 
 jobs:
   diagnose:
