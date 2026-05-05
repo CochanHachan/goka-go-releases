@@ -1,47 +1,73 @@
 # =============================================================================
-# Azure Pipelines — リリース一式（ZIP + version.json）を FTPS で自動配置
+# Azure Pipelines — 本番リリースパイプライン（GitHub Actions 完全代替）
 #
-# 手動実行のみ（trigger なし）。パラメータ releaseVersion を指定する。
+# トリガー:
+#   ・main ブランチへのソースコード push（自動）
+#   ・手動実行（バージョン・リリースノート指定可）
 #
 # 流れ:
-#   1) Windows: PyInstaller で goka_go / igo_admin をビルドし ZIP 化
-#   2) Linux: ステージング領域へ FTPS（/staging/version.json と /staging/releases/*.zip）
-#   3) Linux: 本番領域へ FTPS（/version.json と /releases/*.zip）
+#   1) Build (Windows):   PyInstaller → コード署名 → Inno Setup → ZIP 化
+#   2) Production (Linux): 承認待ち → FTP アップロード → Web 更新 → サーバーデプロイ
 #
-# 変数（FTP_* はシークレット推奨）:
-#   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD … 必須
-#   GOKA_FTP_REMOTE … 例 goka-igo.com/public_html
-#   GOKA_FTP_TLS … 1=FTPS（既定）、0=平文
+# 必須 Variable Groups:
+#   esigner-secrets: ES_USERNAME, ES_PASSWORD, ES_TOTP_SECRET, CREDENTIAL_ID
+#   ftp-secrets:     FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
+#   server-secrets:  GOKA_ADMIN_TOKEN, GOKA_SERVER_URL
 #
-# 登録: Pipelines → 新規 → 既存の YAML → /azure-pipelines-release.yml
+# 承認設定:
+#   Azure DevOps → Pipelines → Environments → "production" → Approvals and checks
 # =============================================================================
 
-trigger: none
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - 'igo/**'
+      - 'igo_game.py'
+      - 'igo_cloud_client.py'
+      - 'glossy_button.py'
+      - 'glossy_pill_button.py'
+      - 'teal_banner.py'
+      - 'decorative_banner.py'
+      - 'lang.py'
+      - 'login_form.py'
+      - 'window_settings.py'
+      - 'goka_go.spec'
+      - 'image/**'
+      - '*.png'
+      - '*.wav'
+      - 'server.py'
+      - 'igo_ws_server.py'
+      - 'igo_admin.py'
+      - 'igo_admin.spec'
+
 pr: none
 
 parameters:
   - name: releaseVersion
-    displayName: "リリース版（例 1.2.177）"
-    type: string
-    default: "1.2.177"
-  - name: releaseNotes
-    displayName: "release_notes（空なら v<version>）"
+    displayName: "リリース版（空欄で自動インクリメント）"
     type: string
     default: ""
-  - name: stagingPathPrefix
-    displayName: "ステージング用のパス接頭辞（FTP 上のサブフォルダ）"
+  - name: releaseNotes
+    displayName: "リリースノート（空なら自動生成）"
     type: string
-    default: "staging"
+    default: ""
 
 variables:
 - group: esigner-secrets
 - group: ftp-secrets
+- group: server-secrets
 - name: PUBLIC_BASE
   value: "https://goka-igo.com"
 
+# ============================================================
+# Stage 1: Build — ビルド・署名・ZIP 作成（自動実行）
+# ============================================================
 stages:
   - stage: Build
-    displayName: Build release ZIPs
+    displayName: "Build & Sign"
     jobs:
       - job: WindowsBuild
         pool:
@@ -59,15 +85,74 @@ stages:
           - task: Cache@2
             displayName: Cache pip packages
             inputs:
-              key: 'pip | "windows" | "3.13"'
-              path: $(PIP_CACHE_DIR)
+              key: 'pip | "windows" | "3.13" | requirements-build.txt'
+              path: $(Pipeline.Workspace)/.pip
               restoreKeys: |
                 pip | "windows" | "3.13"
 
-          - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
+          - script: pip install -r requirements-build.txt
             displayName: Install build dependencies
             env:
               PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
+
+          # ── バージョン決定（手動指定 or 自動インクリメント） ──
+          - task: PythonScript@0
+            name: versionStep
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import json, os, re
+                from datetime import datetime, timezone
+
+                manual_version = "${{ parameters.releaseVersion }}".strip()
+
+                if manual_version:
+                    new_version = manual_version
+                else:
+                    with open("version.json", "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    current = data["version"]
+                    parts = current.split(".")
+                    parts[-1] = str(int(parts[-1]) + 1)
+                    new_version = ".".join(parts)
+
+                notes = "${{ parameters.releaseNotes }}".strip()
+                if not notes:
+                    notes = f"v{new_version} 自動ビルド"
+
+                build_date = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+                print(f"##vso[task.setvariable variable=RELEASE_VERSION;isOutput=true]{new_version}")
+                print(f"##vso[task.setvariable variable=BUILD_DATE;isOutput=true]{build_date}")
+                print(f"##vso[task.setvariable variable=RELEASE_NOTES;isOutput=true]{notes}")
+                print(f"Version: {new_version}, Build: {build_date}, Notes: {notes}")
+            displayName: "Determine version"
+
+          # ── ソースファイルのバージョン更新 ──
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import re, os
+
+                version = "$(versionStep.RELEASE_VERSION)"
+                build_date = "$(versionStep.BUILD_DATE)"
+
+                with open("igo/constants.py", "r", encoding="utf-8") as f:
+                    content = f.read()
+                content = re.sub(r'(APP_VERSION\s*=\s*")[^"]*(")', rf'\g<1>{version}\2', content)
+                content = re.sub(r'(APP_BUILD\s*=\s*")[^"]*(")', rf'\g<1>{build_date}\2', content)
+                with open("igo/constants.py", "w", encoding="utf-8") as f:
+                    f.write(content)
+                print(f"Updated constants.py: APP_VERSION={version}, APP_BUILD={build_date}")
+
+                with open("installer/GokaGo_Setup.iss", "r", encoding="utf-8") as f:
+                    content = f.read()
+                content = re.sub(r'(#define AppVersion\s+")[^"]*(")', rf'\g<1>{version}\2', content)
+                with open("installer/GokaGo_Setup.iss", "w", encoding="utf-8") as f:
+                    f.write(content)
+                print(f"Updated GokaGo_Setup.iss: AppVersion={version}")
+            displayName: "Update version in source files"
 
           # ── 不足アセット生成 ──
           - task: PythonScript@0
@@ -81,10 +166,11 @@ stages:
                     print("Created default igo_config.json")
             displayName: "Create missing assets"
 
+          # ── PyInstaller ビルド ──
           - script: pyinstaller goka_go.spec --noconfirm
-            displayName: PyInstaller goka_go.spec
+            displayName: "PyInstaller goka_go"
 
-          # ── SSL.com eSigner: CodeSignTool v1.3.2 セットアップ ──
+          # ── SSL.com eSigner: CodeSignTool セットアップ ──
           - powershell: |
               $cstZip = "CodeSignTool.zip"
               $cstDir = "CodeSignTool"
@@ -94,25 +180,14 @@ stages:
               $cst = Get-ChildItem -Path $cstDir -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
               if (-not $cst) { Write-Warning "CodeSignTool.bat not found"; exit 0 }
               Write-Host "CodeSignTool: $($cst.FullName)"
-
-              # Verify bundled config exists
-              $configPath = Join-Path $cst.DirectoryName "conf\code_sign_tool.properties"
-              if (Test-Path $configPath) {
-                Write-Host "Config: $configPath"
-                Get-Content $configPath
-              } else {
-                Write-Warning "Config not found at $configPath"
-              }
             displayName: "Setup CodeSignTool v1.3.2"
             continueOnError: true
+            timeoutInMinutes: 5
 
-          # ── SSL.com eSigner でメイン exe を署名 ──
+          # ── メイン EXE 署名 ──
           - powershell: |
               $cst = Get-ChildItem -Path CodeSignTool -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
-              if (-not $cst) {
-                Write-Warning "CodeSignTool.bat not found, skipping"
-                exit 0
-              }
+              if (-not $cst) { Write-Warning "CodeSignTool.bat not found, skipping"; exit 0 }
 
               $exePath = Resolve-Path "dist\goka_go\goka_go.exe" -ErrorAction SilentlyContinue
               if ($exePath) {
@@ -130,25 +205,29 @@ stages:
               } else {
                 Write-Warning "goka_go.exe not found, skipping signing"
               }
-            displayName: "Sign goka_go.exe with SSL.com eSigner"
+            displayName: "Sign goka_go.exe"
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
               ES_TOTP_SECRET: $(ES_TOTP_SECRET)
               CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
+            timeoutInMinutes: 5
 
+          # ── KataGo ダウンロード ──
           - script: python tools/download_katago_for_windows_build.py
-            displayName: Download KataGo (Windows)
+            displayName: "Download KataGo"
 
           - script: python tools/copy_katago_into_dist.py
-            displayName: Copy katago into dist/goka_go
+            displayName: "Copy KataGo into dist"
 
+          # ── 管理者ツールビルド ──
           - script: pyinstaller igo_admin.spec --noconfirm
-            displayName: PyInstaller igo_admin.spec
+            displayName: "PyInstaller igo_admin"
 
-          - script: python tools/make_release_zips.py ${{ parameters.releaseVersion }} "$(Build.ArtifactStagingDirectory)/release"
-            displayName: Create goka_go / goka_admin ZIPs
+          # ── リリース ZIP 作成 ──
+          - script: python tools/make_release_zips.py $(versionStep.RELEASE_VERSION) "$(Build.ArtifactStagingDirectory)/release"
+            displayName: "Create release ZIPs"
 
           # ── 軽量アップデート ZIP（KataGo 除外） ──
           - task: PythonScript@0
@@ -157,7 +236,7 @@ stages:
               script: |
                 import os, zipfile
 
-                ver = "${{ parameters.releaseVersion }}"
+                ver = "$(versionStep.RELEASE_VERSION)"
                 release_dir = os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"] + "/release"
                 full_zip = os.path.join(release_dir, f"goka_go_{ver}.zip")
                 update_zip = os.path.join(release_dir, f"goka_go_update_{ver}.zip")
@@ -171,18 +250,17 @@ stages:
                 full_mb = os.path.getsize(full_zip) / 1024 / 1024
                 update_mb = os.path.getsize(update_zip) / 1024 / 1024
                 print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
-            displayName: "Create lightweight update ZIP (no KataGo)"
+            displayName: "Create lightweight update ZIP"
 
-          # ── 本番用 Inno Setup インストーラー ──
+          # ── Inno Setup インストーラー（本番） ──
           - powershell: |
               choco install innosetup -y --no-progress
-              $version = '${{ parameters.releaseVersion }}'
-              $issFile = "installer/GokaGo_Setup.iss"  # OutputBaseFilename -> Goka_Installer_*
+              $version = '$(versionStep.RELEASE_VERSION)'
+              $issFile = "installer/GokaGo_Setup.iss"
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
               & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
               Write-Host "Production installer built: version $version"
 
-              # Copy installer to release artifacts
               $exes = Get-ChildItem "dist/installer/Goka_Installer_*.exe"
               if ($exes.Count -gt 0) {
                   $dest = "$(Build.ArtifactStagingDirectory)/release"
@@ -190,9 +268,9 @@ stages:
                   $sizeMB = [math]::Round($exes[0].Length / 1MB, 1)
                   Write-Host "Installer: $sizeMB MB -> $dest/Goka_Installer.exe"
               }
-            displayName: "Build Inno Setup production installer"
+            displayName: "Build production installer"
 
-          # ── SSL.com eSigner でインストーラーを署名 ──
+          # ── インストーラー署名 ──
           - powershell: |
               $cst = Get-ChildItem -Path CodeSignTool -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
               $installerPath = "$(Build.ArtifactStagingDirectory)\release\Goka_Installer.exe"
@@ -208,19 +286,20 @@ stages:
                 Pop-Location
                 Write-Host "Signed installer: $installerPath"
               } else {
-                Write-Warning "Installer or CodeSignTool not found, skipping signing"
+                Write-Warning "Installer or CodeSignTool not found, skipping"
               }
-            displayName: "Sign installer with SSL.com eSigner"
+            displayName: "Sign installer"
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
               ES_TOTP_SECRET: $(ES_TOTP_SECRET)
               CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
+            timeoutInMinutes: 5
 
-          # ── 管理者ツール用 Inno Setup インストーラー ──
+          # ── 管理者 Inno Setup インストーラー ──
           - powershell: |
-              $version = '${{ parameters.releaseVersion }}'
+              $version = '$(versionStep.RELEASE_VERSION)'
               $issFile = "installer/GokaAdmin_Setup.iss"
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
               & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
@@ -233,9 +312,9 @@ stages:
                   $sizeMB = [math]::Round($exes[0].Length / 1MB, 1)
                   Write-Host "Admin installer: $sizeMB MB -> $dest/GokaAdmin_Installer.exe"
               }
-            displayName: "Build Inno Setup admin installer"
+            displayName: "Build admin installer"
 
-          # ── SSL.com eSigner で管理者インストーラーを署名 ──
+          # ── 管理者インストーラー署名 ──
           - powershell: |
               $cst = Get-ChildItem -Path CodeSignTool -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
               $installerPath = "$(Build.ArtifactStagingDirectory)\release\GokaAdmin_Installer.exe"
@@ -251,108 +330,191 @@ stages:
                 Pop-Location
                 Write-Host "Signed admin installer: $installerPath"
               } else {
-                Write-Warning "Admin installer or CodeSignTool not found, skipping signing"
+                Write-Warning "Admin installer or CodeSignTool not found, skipping"
               }
-            displayName: "Sign admin installer with SSL.com eSigner"
+            displayName: "Sign admin installer"
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
               ES_TOTP_SECRET: $(ES_TOTP_SECRET)
               CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
+            timeoutInMinutes: 5
 
+          # ── version.json を成果物に含める ──
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import json, os, shutil
+
+                ver = "$(versionStep.RELEASE_VERSION)"
+                notes = "$(versionStep.RELEASE_NOTES)"
+                release_dir = os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"] + "/release"
+
+                vj = {
+                    "version": ver,
+                    "download_url": f"https://goka-igo.com/releases/goka_go_{ver}.zip",
+                    "admin_download_url": f"https://goka-igo.com/releases/goka_admin_{ver}.zip",
+                    "release_notes": notes
+                }
+                with open(os.path.join(release_dir, "version.json"), "w", encoding="utf-8") as f:
+                    json.dump(vj, f, ensure_ascii=False)
+                    f.write("\n")
+
+                shutil.copy2("igo/constants.py", os.path.join(release_dir, "constants.py"))
+                shutil.copy2("installer/GokaGo_Setup.iss", os.path.join(release_dir, "GokaGo_Setup.iss"))
+                print(f"Created version.json for v{ver}")
+            displayName: "Create version.json + metadata"
+
+          # ── アーティファクト公開 ──
           - task: PublishPipelineArtifact@1
             inputs:
               targetPath: "$(Build.ArtifactStagingDirectory)/release"
               artifact: "release-zips"
               publishLocation: "pipeline"
-            displayName: Publish release artifacts
+            displayName: "Publish release artifacts"
 
+  # ============================================================
+  # Stage 2: Production Deploy — 承認後に本番配信
+  # Azure DevOps → Environments → "production" → Approvals 設定
+  # ============================================================
   - stage: Production
-    displayName: Deploy production (FTP)
+    displayName: "Deploy to Production (承認必須)"
     dependsOn: Build
+    variables:
+      RELEASE_VERSION: $[ stageDependencies.Build.WindowsBuild.outputs['versionStep.RELEASE_VERSION'] ]
+      RELEASE_NOTES: $[ stageDependencies.Build.WindowsBuild.outputs['versionStep.RELEASE_NOTES'] ]
     jobs:
-      - job: FtpProduction
+      - deployment: ProductionDeploy
+        displayName: "Production FTP + Server Deploy"
         pool:
           vmImage: ubuntu-latest
-        steps:
-          - checkout: self
-            fetchDepth: 1
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 1
 
-          - task: UsePythonVersion@0
-            inputs:
-              versionSpec: "3.12"
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: "3.12"
 
-          - task: DownloadPipelineArtifact@2
-            inputs:
-              artifactName: "release-zips"
-              targetPath: "$(Pipeline.Workspace)/release"
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifactName: "release-zips"
+                    targetPath: "$(Pipeline.Workspace)/release"
 
-          # ── 本番 version.json + ZIPs をアップロード ──
-          - script: |
-              set -e
-              VER='${{ parameters.releaseVersion }}'
-              python tools/release_publish_ftp.py \
-                --version "$VER" \
-                --zip-go "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
-                --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${VER}.zip" \
-                --public-base "$(PUBLIC_BASE)" \
-                --release-notes "${REL_NOTES}"
-            displayName: FTP upload production version.json + ZIPs
-            env:
-              GOKA_FTP_HOST: $(FTP_SERVER)
-              GOKA_FTP_USER: $(FTP_USERNAME)
-              GOKA_FTP_PASS: $(FTP_PASSWORD)
-              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
-              REL_NOTES: ${{ parameters.releaseNotes }}
+                # ── 本番 FTP アップロード（version.json + ZIPs） ──
+                - script: |
+                    set -e
+                    VER='$(RELEASE_VERSION)'
+                    python tools/release_publish_ftp.py \
+                      --version "$VER" \
+                      --zip-go "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
+                      --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${VER}.zip" \
+                      --public-base "$(PUBLIC_BASE)" \
+                      --release-notes "$(RELEASE_NOTES)"
+                  displayName: "FTP upload production ZIPs + version.json"
+                  env:
+                    GOKA_FTP_HOST: $(FTP_SERVER)
+                    GOKA_FTP_USER: $(FTP_USERNAME)
+                    GOKA_FTP_PASS: $(FTP_PASSWORD)
+                    GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
 
-          # ── GokaGo_Latest.zip（安定ダウンロード名）を作成 ──
-          - script: |
-              set -e
-              VER='${{ parameters.releaseVersion }}'
-              cp "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
-                 "$(Pipeline.Workspace)/release/GokaGo_Latest.zip"
-              echo "Created GokaGo_Latest.zip from goka_go_${VER}.zip"
-            displayName: Create GokaGo_Latest.zip (stable download name)
+                # ── 安定ダウンロード名 GokaGo_Latest.zip ──
+                - script: |
+                    set -e
+                    VER='$(RELEASE_VERSION)'
+                    cp "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
+                       "$(Pipeline.Workspace)/release/GokaGo_Latest.zip"
+                    echo "Created GokaGo_Latest.zip from goka_go_${VER}.zip"
+                  displayName: "Create GokaGo_Latest.zip"
 
-          # ── 軽量アップデート ZIP もアップロード ──
-          - script: |
-              set -e
-              VER='${{ parameters.releaseVersion }}'
-              python tools/staging_ftp_upload.py \
-                "$(Pipeline.Workspace)/release" \
-                "releases"
-            displayName: FTP upload lightweight update ZIP
-            env:
-              GOKA_FTP_HOST: $(FTP_SERVER)
-              GOKA_FTP_USER: $(FTP_USERNAME)
-              GOKA_FTP_PASS: $(FTP_PASSWORD)
-              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+                # ── 軽量アップデート ZIP + インストーラー アップロード ──
+                - script: |
+                    set -e
+                    python tools/staging_ftp_upload.py \
+                      "$(Pipeline.Workspace)/release" \
+                      "releases"
+                  displayName: "FTP upload update ZIP + installers"
+                  env:
+                    GOKA_FTP_HOST: $(FTP_SERVER)
+                    GOKA_FTP_USER: $(FTP_USERNAME)
+                    GOKA_FTP_PASS: $(FTP_PASSWORD)
+                    GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
 
-          # ── Web ページを FTP アップロード（HPダウンロードリンク更新） ──
-          - script: |
-              set -e
-              python tools/deploy_web_ftp.py
-            displayName: FTP upload web pages (HP)
-            env:
-              GOKA_FTP_HOST: $(FTP_SERVER)
-              GOKA_FTP_USER: $(FTP_USERNAME)
-              GOKA_FTP_PASS: $(FTP_PASSWORD)
-              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+                # ── Web ページ FTP アップロード ──
+                - script: |
+                    set -e
+                    python tools/deploy_web_ftp.py
+                  displayName: "FTP upload web pages"
+                  env:
+                    GOKA_FTP_HOST: $(FTP_SERVER)
+                    GOKA_FTP_USER: $(FTP_USERNAME)
+                    GOKA_FTP_PASS: $(FTP_PASSWORD)
+                    GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+                  continueOnError: true
 
-          # ── 配信確認 ──
-          - script: |
-              set -e
-              echo "=== Production version.json ==="
-              curl -fsS "$(PUBLIC_BASE)/version.json"
-              echo
-              echo "=== Installer check ==="
-              curl -sI "$(PUBLIC_BASE)/releases/Goka_Installer.exe" | head -3
-              echo "=== Admin Installer check ==="
-              curl -sI "$(PUBLIC_BASE)/releases/GokaAdmin_Installer.exe" | head -3
-              echo "=== Update ZIP check ==="
-              curl -sI "$(PUBLIC_BASE)/releases/goka_go_${{ parameters.releaseVersion }}.zip" | head -3
-            displayName: Smoke test production files
+                # ── サーバーデプロイ（git pull + restart） ──
+                - script: |
+                    set -e
+                    TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
+                    URL="${GOKA_SERVER_URL:-http://34.85.118.112:8000}"
+
+                    echo "=== 通常デプロイ (git pull) ==="
+                    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+                      -H "X-Token: ${TOKEN}" \
+                      "${URL}/admin/update" \
+                      --connect-timeout 10 --max-time 120)
+                    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+                    BODY=$(echo "$RESPONSE" | head -n -1)
+                    echo "HTTP ${HTTP_CODE}: ${BODY}"
+
+                    if [ "$HTTP_CODE" = "200" ]; then
+                      echo "Server deploy triggered successfully."
+                      exit 0
+                    fi
+
+                    echo ""
+                    echo "=== 通常デプロイ失敗。ホットパッチを試行 ==="
+                    RAW_URL="https://raw.githubusercontent.com/CochanHachan/goka-go-releases/main/server.py"
+                    SERVER_PY=$(curl -sL "${RAW_URL}")
+                    if [ -z "$SERVER_PY" ]; then
+                      echo "WARNING: Failed to download server.py"
+                      exit 0
+                    fi
+
+                    RESPONSE2=$(curl -s -w "\n%{http_code}" -X POST \
+                      -H "X-Token: ${TOKEN}" \
+                      -H "Content-Type: application/octet-stream" \
+                      --data-binary @- \
+                      "${URL}/admin/hotpatch" \
+                      --connect-timeout 10 --max-time 30 <<< "$SERVER_PY")
+                    HTTP_CODE2=$(echo "$RESPONSE2" | tail -1)
+                    BODY2=$(echo "$RESPONSE2" | head -n -1)
+                    echo "Hotpatch HTTP ${HTTP_CODE2}: ${BODY2}"
+                  displayName: "Deploy server (git pull + restart)"
+                  env:
+                    GOKA_ADMIN_TOKEN: $(GOKA_ADMIN_TOKEN)
+                    GOKA_SERVER_URL: $(GOKA_SERVER_URL)
+                  continueOnError: true
+
+                # ── 配信確認 ──
+                - script: |
+                    set -e
+                    echo "=== Production version.json ==="
+                    curl -fsS "$(PUBLIC_BASE)/version.json"
+                    echo
+                    echo "=== Installer check ==="
+                    curl -sI "$(PUBLIC_BASE)/releases/Goka_Installer.exe" | head -3
+                    echo "=== Admin Installer check ==="
+                    curl -sI "$(PUBLIC_BASE)/releases/GokaAdmin_Installer.exe" | head -3
+                    echo "=== Update ZIP check ==="
+                    curl -sI "$(PUBLIC_BASE)/releases/goka_go_$(RELEASE_VERSION).zip" | head -3
+                  displayName: "Smoke test production files"
