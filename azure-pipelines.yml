@@ -1,0 +1,74 @@
+# =============================================================================
+# Azure Pipelines — web/ を FTPS で本番サーバーへデプロイ（GitHub 非依存）
+#
+# クライアント ZIP と version.json の本番反映は別パイプライン:
+#   azure-pipelines-release.yml（手動実行・ステージング→本番 FTPS）
+# =============================================================================
+#
+# 配置: リポジトリ直下の azure-pipelines.yml
+#
+# Azure DevOps:
+#   Pipelines → 新規 → Azure Repos Git →「既存の Azure Pipelines YAML ファイル」
+#   → ブランチ main、パス /azure-pipelines.yml
+#
+# パイプライン変数（推奨: FTP_* はシークレット）:
+#   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD  … 必須
+# 任意:
+#   GOKA_FTP_REMOTE  … リモート相対パス（例: public_html）。未設定で FTP ルート相当。
+#   GOKA_FTP_TLS     … 1=FTPS（既定）、0=平文 FTP
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID … 両方あるときキャッシュ全パージ
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - web/*
+      - azure-pipelines.yml
+      - tools/deploy_web_ftp.py
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+    fetchDepth: 1
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.12"
+
+  - script: python tools/deploy_web_ftp.py
+    displayName: "Deploy web/ via FTPS (tools/deploy_web_ftp.py)"
+    env:
+      # パイプライン変数 FTP_* → スクリプトが読む GOKA_FTP_* に渡す
+      GOKA_FTP_HOST: $(FTP_SERVER)
+      GOKA_FTP_USER: $(FTP_USERNAME)
+      GOKA_FTP_PASS: $(FTP_PASSWORD)
+      GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+      GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+
+  - script: |
+      set -e
+      if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ZONE_ID:-}" ]; then
+        echo "Skipping Cloudflare purge (set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID to enable)."
+        exit 0
+      fi
+      echo "Purging Cloudflare cache..."
+      CODE=$(curl -sS -o /tmp/cf_purge.json -w "%{http_code}" -X POST \
+        "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
+        -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+        -H "Content-Type: application/json" \
+        --data '{"purge_everything":true}')
+      cat /tmp/cf_purge.json
+      test "$CODE" = "200"
+      grep -q '"success":true' /tmp/cf_purge.json
+      echo "Cloudflare purge OK."
+    displayName: "Purge Cloudflare cache (optional)"
+    env:
+      CLOUDFLARE_API_TOKEN: $(CLOUDFLARE_API_TOKEN)
+      CLOUDFLARE_ZONE_ID: $(CLOUDFLARE_ZONE_ID)

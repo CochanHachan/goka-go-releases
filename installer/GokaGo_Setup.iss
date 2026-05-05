@@ -23,7 +23,7 @@ DefaultGroupName={#AppName}
 AllowNoIcons=yes
 ; OutputDir はbuild.batから上書きするため省略可
 OutputDir=..\dist\installer
-OutputBaseFilename=GokaGo_Setup_{#AppVersion}
+OutputBaseFilename=Goka_Installer_{#AppVersion}
 SetupIconFile=..\goka_go.ico
 Compression=lzma
 SolidCompression=yes

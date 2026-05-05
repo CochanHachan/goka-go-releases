@@ -52,6 +52,7 @@ from igo.constants import (
     BOARD_SIZE, CELL_SIZE, MARGIN,
     GAME_WINDOW_INITIAL_WIDTH_FRACTION,
     GAME_WINDOW_INITIAL_HEIGHT_FRACTION,
+    IS_BETA_EDITION,
     EMPTY, BLACK, WHITE,
     TIME_LIMIT, NET_TCP_PORT, NET_UDP_PORT,
     HAS_CLOUD, CLOUD_SERVER_URL, API_BASE_URL,
@@ -59,6 +60,9 @@ from igo.constants import (
 from igo.config import (
     _get_app_data_dir, _get_install_dir, _init_config_if_needed,
     get_offer_timeout_ms,
+    get_ui_height_ratio,
+    get_ui_width_ratio,
+    get_primary_work_area_rect,
 )
 from igo.elo import (
     elo_to_rank, elo_to_display_rank, calculate_elo_update,
@@ -92,8 +96,17 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.withdraw()  # 初期化完了まで非表示（show_loginで表示）
-        self.root.title(STAGING_LABEL + "\u7881\u83ef")
+        self.root.title(
+            "\u7881\u83ef" + (" [テスト]" if IS_BETA_EDITION else ""))
         self.root.configure(bg=T("root_bg"))
+
+        _icon_name = "goka_go_test.ico" if IS_BETA_EDITION else "goka_go.ico"
+        _icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", _icon_name)
+        if os.path.exists(_icon_path):
+            try:
+                self.root.iconbitmap(_icon_path)
+            except Exception:
+                pass
 
         _db_path = os.path.join(_get_app_data_dir(), "ui_settings.db")
         self._ws = WindowSettings(_db_path, "game")
@@ -272,7 +285,7 @@ class App:
 
     def _set_title(self, center_text=""):
         """タイトルバーを設定する。碁華は左、center_textを中央に配置。"""
-        prefix = STAGING_LABEL + "碁華"
+        prefix = "碁華" + (" [テスト]" if IS_BETA_EDITION else "")
         if not center_text:
             self.root.title(prefix)
             return
@@ -698,9 +711,12 @@ class App:
                         _write_log("Update dialog already shown, skipping")
                         return  # ダイアログ側でshow_loginを呼ぶ
                     self._update_dialog_shown = True
-                    _write_log("Showing update dialog")
-                    self.root.after(0, lambda: self._show_update_dialog(
-                        latest, dl_url, notes))
+                    _write_log("Showing update prompt (spinner + はい)")
+                    self.root.after(
+                        0,
+                        lambda lv=latest, du=dl_url, nt=notes: self._show_update_prompt(
+                            lv, du, nt),
+                    )
                     return  # ダイアログ側で処理する
                 else:
                     # 更新不要 → 前回の更新が成功したとみなしマーカー削除
@@ -726,125 +742,18 @@ class App:
                 return (0,)
         return _v(remote) > _v(current)
 
-    def _show_update_dialog(self, latest, dl_url, notes):
-        """更新ダイアログを表示する。「後でする」→ログイン画面へ。"""
-        # ── カラーパレット ──────────────────────
-        _BG        = "#000000"
-        _FG        = "#E0E0E0"
-        _ACCENT    = "#D4A645"
-        _BTN_PRI   = "#8B2020"
-        _BTN_PRI_H = "#A52A2A"
-        _BTN_SEC   = "#1A2A5C"
-        _BTN_SEC_H = "#253A7A"
-        _BTN_FG    = "#FFFFFF"
-        _LINE_CLR  = "#D4A645"
-        _FONT      = "Yu Gothic UI"
+    def _show_update_prompt(self, latest, dl_url, notes):
+        """新バージョン検知時: スピナー付き画面 → はいで _do_update（完全アップデート）。"""
+        from igo.update_progress import show_update_available_prompt
 
-        def _rounded_rect(canvas, x1, y1, x2, y2, r, **kw):
-            pts = [
-                x1+r, y1,  x2-r, y1,
-                x2, y1,  x2, y1+r,
-                x2, y2-r,  x2, y2,
-                x2-r, y2,  x1+r, y2,
-                x1, y2,  x1, y2-r,
-                x1, y1+r,  x1, y1,
-            ]
-            return canvas.create_polygon(pts, smooth=True, **kw)
-
-        class _HoverButton(tk.Canvas):
-            def __init__(self, parent, text, btn_width, btn_height, radius,
-                         base_color, hover_color, fg, font, command, bg=None):
-                canvas_bg = bg if bg else _BG
-                super().__init__(parent, width=btn_width, height=btn_height,
-                                 bg=canvas_bg, highlightthickness=0, bd=0)
-                self._cmd = command
-                self._base = base_color
-                self._hover = hover_color
-                self._btn_w = btn_width
-                self._btn_h = btn_height
-                self._radius = radius
-                self._text = text
-                self._fg = fg
-                self._font = font
-                self._draw(self._base)
-                self.bind("<Enter>", lambda e: self._draw(self._hover))
-                self.bind("<Leave>", lambda e: self._draw(self._base))
-                self.bind("<ButtonRelease-1>", lambda e: self._cmd())
-
-            def _draw(self, color):
-                self.delete("all")
-                _rounded_rect(self, 2, 2, self._btn_w - 2, self._btn_h - 2,
-                               self._radius, fill=color, outline="")
-                self.create_text(self._btn_w // 2, self._btn_h // 2,
-                                 text=self._text, fill=self._fg,
-                                 font=self._font)
-
-        win = tk.Toplevel()
-        win.title("アップデート")
-        win.configure(bg=_BG)
-        win.withdraw()
-
-        outer = tk.Frame(win, bg=_BG, padx=30, pady=24)
-        outer.pack(fill="both", expand=True)
-
-        _gap = 8
-        tk.Frame(outer, bg=_LINE_CLR, height=2).pack(fill="x", pady=(0, _gap))
-
-        tk.Label(outer, text="アプリが進化しました",
-                 font=(_FONT, 16, "bold"),
-                 fg=_ACCENT, bg=_BG).pack(anchor="center")
-        tk.Label(outer, text="アップデートしてください",
-                 font=(_FONT, 16, "bold"),
-                 fg=_ACCENT, bg=_BG).pack(anchor="center", pady=(0, _gap))
-
-        tk.Frame(outer, bg=_LINE_CLR, height=2).pack(fill="x", pady=(0, 20))
-
-        tk.Label(outer, text="旧バージョン : {}".format(APP_VERSION),
-                 font=(_FONT, 12), fg=_FG, bg=_BG,
-                 anchor="center").pack(fill="x", pady=(0, 4))
-        tk.Label(outer, text="新バージョン : {}".format(latest),
-                 font=(_FONT, 12), fg=_FG, bg=_BG,
-                 anchor="center").pack(fill="x", pady=(0, 24))
-
-        _btn_w = 150
-        _btn_h = 44
-        btn_frame = tk.Frame(outer, bg=_BG)
-        btn_frame.pack(pady=(0, 4))
-        btn_font = (_FONT, 13)
-
-        _HoverButton(btn_frame, text="アップデート",
-                     btn_width=_btn_w, btn_height=_btn_h, radius=14,
-                     base_color=_BTN_PRI, hover_color=_BTN_PRI_H,
-                     fg=_BTN_FG, font=btn_font, bg=_BG,
-                     command=lambda: self._do_update(win, dl_url, latest)
-                     ).pack(side="left", padx=(0, 12))
-
-        def _skip_update():
-            win.destroy()
-            self.show_login()
-
-        win.protocol("WM_DELETE_WINDOW", _skip_update)
-
-        _HoverButton(btn_frame, text="後でする",
-                     btn_width=_btn_w, btn_height=_btn_h, radius=14,
-                     base_color=_BTN_SEC, hover_color=_BTN_SEC_H,
-                     fg=_BTN_FG, font=btn_font, bg=_BG,
-                     command=_skip_update
-                     ).pack(side="left")
-
-        def _finalize():
-            win.update_idletasks()
-            rw = win.winfo_reqwidth()
-            rh = win.winfo_reqheight()
-            sx = win.winfo_screenwidth()
-            sy = win.winfo_screenheight()
-            x = (sx - rw) // 2
-            y = (sy - rh) // 2
-            win.geometry("+{}+{}".format(x, y))
-            win.resizable(False, False)
-            win.deiconify()
-
-        win.after(100, _finalize)
+        show_update_available_prompt(
+            self.root,
+            APP_VERSION,
+            latest,
+            notes,
+            on_confirm=lambda: self._do_update(None, dl_url, latest),
+            on_later=self.show_login,
+        )
 
     def _do_update(self, dialog, dl_url, latest):
         """ZIPをダウンロード→解凍→アプリ終了→バッチで上書き→再起動。"""
@@ -866,7 +775,11 @@ class App:
         self._create_update_lock()
         # ── 試行を記録（ループ防止） ──
         self._record_attempt(latest)
-        dialog.destroy()
+        if dialog is not None:
+            try:
+                dialog.destroy()
+            except tk.TclError:
+                pass
         prog = show_update_progress(self.root)
 
         # PyInstaller exe のパスから正しいアプリディレクトリを取得
@@ -883,9 +796,10 @@ class App:
                 _log("Downloading to: {}".format(zip_path))
                 # SSL検証あり → 失敗時はSSL検証なしでリトライ
                 _dl_ok = False
+                _ua = "GokaGoTest-Updater" if IS_BETA_EDITION else "GokaGo-Updater"
                 try:
                     ctx = ssl.create_default_context()
-                    req = urllib.request.Request(dl_url, headers={"User-Agent": "GokaGo-Updater"})
+                    req = urllib.request.Request(dl_url, headers={"User-Agent": _ua})
                     with urllib.request.urlopen(req, timeout=60, context=ctx) as resp:
                         with open(zip_path, "wb") as zf_out:
                             import shutil as _shutil
@@ -898,7 +812,7 @@ class App:
                     ctx2 = ssl.create_default_context()
                     ctx2.check_hostname = False
                     ctx2.verify_mode = ssl.CERT_NONE
-                    req2 = urllib.request.Request(dl_url, headers={"User-Agent": "GokaGo-Updater"})
+                    req2 = urllib.request.Request(dl_url, headers={"User-Agent": _ua})
                     with urllib.request.urlopen(req2, timeout=60, context=ctx2) as resp:
                         with open(zip_path, "wb") as zf_out:
                             import shutil as _shutil
@@ -1109,8 +1023,8 @@ class App:
         else:
             sw = max(1, self.root.winfo_screenwidth())
             sh = max(1, self.root.winfo_screenheight())
-        fw = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_WIDTH_FRACTION)))
-        fh = min(1.0, max(0.1, float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION)))
+        fw = min(1.0, max(0.1, get_ui_width_ratio("board_frame_width", float(GAME_WINDOW_INITIAL_WIDTH_FRACTION))))
+        fh = min(1.0, max(0.1, get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))))
         w = int(sw * fw)
         h = int(sh * fh)
         min_w = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
@@ -1128,6 +1042,29 @@ class App:
         user_key = self._user_screen_name(screen_name)
         ws = WindowSettings(self._ws._db_path, user_key)
         ws.restore_window(self.root, default_geometry=defaults.get(screen_name, "500x400"))
+        if screen_name == "game":
+            # 管理者設定の高さ比率を常に反映（保存済みジオメトリがあっても高さを更新）
+            work_rect = get_primary_work_area_rect()
+            if work_rect:
+                work_left, work_top, _, sh = work_rect
+            else:
+                work_left, work_top = 0, 0
+                sh = max(1, self.root.winfo_screenheight())
+            fh = get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))
+            target_h = max(320, int(sh * fh))
+            try:
+                self.root.update_idletasks()
+                cur_w = max(320, int(self.root.winfo_width()))
+                cur_x = max(work_left, int(self.root.winfo_x()))
+                # 100%時は作業領域上端に合わせてはみ出しを防ぐ
+                if fh >= 0.999:
+                    cur_y = work_top
+                    target_h = sh
+                else:
+                    cur_y = max(work_top, int(self.root.winfo_y()))
+                self.root.geometry("{}x{}+{}+{}".format(cur_w, target_h, cur_x, cur_y))
+            except Exception:
+                pass
         self._current_screen = screen_name
 
     def _switch_frame(self, frame):
@@ -1138,7 +1075,8 @@ class App:
 
     def show_login(self):
         self.root.withdraw()
-        self.root.title(STAGING_LABEL + "\u7881\u83ef")
+        self.root.title(
+            "\u7881\u83ef" + (" [テスト]" if IS_BETA_EDITION else ""))
         self.root.minsize(400, 400)
         self._save_geometry()
         self.root.config(menu="")
@@ -1503,8 +1441,13 @@ class App:
         new_elo = calculate_elo_update(my_elo, opp_elo, my_score)
         new_rank = elo_to_rank(new_elo)
         new_display = elo_to_display_rank(new_elo)
-        # Update ELO on server (non-blocking)
-        self._api_update_elo(user["handle_name"], new_elo)
+        # Update ELO and match stats on server (non-blocking)
+        outcome = "draw"
+        if my_score >= 0.999:
+            outcome = "win"
+        elif my_score <= 0.001:
+            outcome = "loss"
+        self._api_update_elo(user["handle_name"], new_elo, outcome=outcome, count_match=True)
         # Update in-memory
         if self.current_user:
             self.current_user["elo_rating"] = new_elo
@@ -1747,7 +1690,7 @@ class App:
 
     # --- Cloud mode methods ---
 
-    def _api_update_elo(self, handle, new_elo):
+    def _api_update_elo(self, handle, new_elo, outcome=None, count_match=True):
         """Update ELO rating on the GCP server (non-blocking)."""
         if not self._auth_token:
             return
@@ -1758,6 +1701,8 @@ class App:
                 _data = _json.dumps({
                     "elo": float(new_elo),
                     "token": self._auth_token,
+                    "outcome": outcome,
+                    "count_match": bool(count_match),
                 }).encode("utf-8")
                 _path = "/api/user/{}/elo".format(_urlparse.quote(handle, safe=""))
                 _req = _urlreq.Request(

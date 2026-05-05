@@ -16,6 +16,8 @@ from igo.constants import NET_UDP_PORT, BLACK, WHITE
 from igo.theme import T
 from igo.elo import elo_to_display_rank
 from igo.config import get_offer_timeout_ms
+from igo.config import get_ui_height_ratio, get_ui_width_ratio
+from igo.config import get_primary_work_area_rect
 from igo.ui_helpers import _configure_combo_style, _apply_combo_listbox_style
 from igo.enums import (
     TimeControl, parse_main_time_minutes, parse_byo_time_seconds,
@@ -50,14 +52,24 @@ class MatchDialog:
         saved_geom = self._ws.load("geometry")
         dw = 460
         dh = 600
+        try:
+            wr = get_primary_work_area_rect()
+            work_w = wr[2] if wr else max(1, parent_root.winfo_screenwidth())
+            work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
+            dh = int(work_h * get_ui_height_ratio("match_apply_height", 0.40))
+            dh = max(420, dh)
+            dw = int(work_w * get_ui_width_ratio("match_apply_width", 0.30))
+            dw = max(440, dw)
+        except Exception:
+            dh = 600
         if saved_geom and isinstance(saved_geom, str):
             size_part = saved_geom.split("+")[0]
             parts = size_part.split("x")
             if len(parts) == 2:
                 try:
-                    dw, dh = int(parts[0]), int(parts[1])
+                    dw = int(parts[0])
                 except ValueError:
-                    dw, dh = 460, 600
+                    dw = 460
         # Center on parent window
         self.win.update_idletasks()
         pw = parent_root.winfo_width()
@@ -161,13 +173,18 @@ class MatchDialog:
 
         COMBO_W = 6
 
-        # Restore saved match conditions
+        # Restore saved match conditions (サーバーのデフォルト設定をフォールバック)
         saved = self._ws.load("match_conditions", {})
+        _srv_defaults = self._load_server_defaults()
+        _def_main = _srv_defaults.get("main_time", "10\u5206")
+        _def_byo = _srv_defaults.get("byo_time", "30\u79d2")
+        _def_periods = _srv_defaults.get("byo_periods", "5\u56de")
+        _def_komi = _srv_defaults.get("komi", "7\u76ee\u534a")
 
         # Use grid layout for precise alignment
         tk.Label(left_frame, text=L("match_time"), font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=0, column=0, sticky="e", padx=(0, 4), pady=4)
-        self.main_time_var = tk.StringVar(value=saved.get("main_time", "10\u5206"))
+        self.main_time_var = tk.StringVar(value=saved.get("main_time", _def_main))
         main_vals = ["Fischer"] + ["{}\u5206".format(i) for i in range(1, 61)]
         cb1 = ttk.Combobox(left_frame, textvariable=self.main_time_var,
             values=main_vals, state="readonly", style="Groove.TCombobox",
@@ -176,7 +193,7 @@ class MatchDialog:
         cb1.bind("<<ComboboxSelected>>", self._on_time_control_change)
         tk.Label(left_frame, text=L("match_komi"), font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=0, column=2, sticky="e", padx=(8, 4), pady=4)
-        self.komi_var = tk.StringVar(value=saved.get("komi", "7\u76ee\u534a"))
+        self.komi_var = tk.StringVar(value=saved.get("komi", _def_komi))
         komi_vals = ["5\u76ee\u534a", "6\u76ee\u534a", "7\u76ee\u534a"]
         cb4 = ttk.Combobox(left_frame, textvariable=self.komi_var,
             values=komi_vals, state="readonly", style="Groove.TCombobox",
@@ -185,7 +202,7 @@ class MatchDialog:
 
         tk.Label(left_frame, text=L("match_byoyomi"), font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=1, column=0, sticky="e", padx=(0, 4), pady=4)
-        self.byo_time_var = tk.StringVar(value=saved.get("byo_time", "30\u79d2"))
+        self.byo_time_var = tk.StringVar(value=saved.get("byo_time", _def_byo))
         byo_vals = ["{}\u79d2".format(i) for i in [10, 20, 30, 40, 50, 60]]
         self._byo_time_cb = ttk.Combobox(left_frame, textvariable=self.byo_time_var,
             values=byo_vals, state="readonly", style="Groove.TCombobox",
@@ -193,7 +210,7 @@ class MatchDialog:
         self._byo_time_cb.grid(row=1, column=1, padx=2, pady=4)
         tk.Label(left_frame, text=L("match_periods"), font=("", 10),
                  fg=lfg, bg=bg, anchor="e").grid(row=1, column=2, sticky="e", padx=(8, 4), pady=4)
-        self.byo_periods_var = tk.StringVar(value=saved.get("byo_periods", "5\u56de"))
+        self.byo_periods_var = tk.StringVar(value=saved.get("byo_periods", _def_periods))
         period_vals = ["\u221e"] + ["{}\u56de".format(i) for i in range(1, 11)]
         self._byo_periods_cb = ttk.Combobox(left_frame, textvariable=self.byo_periods_var,
             values=period_vals, state="readonly", style="Groove.TCombobox",
@@ -310,6 +327,43 @@ class MatchDialog:
             command=self._reject_match, bg=bg)
         self._match_reject_btn.pack(side="left", padx=(0, 8))
         self._match_reject_btn.pack_forget()
+
+    def _load_server_defaults(self):
+        """管理者が設定したデフォルト持ち時間・コミをロードし表示用文字列で返す。"""
+        try:
+            import os as _os
+            cfg_path = _os.path.join(
+                _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                "igo_config.json",
+            )
+            if not _os.path.exists(cfg_path):
+                from igo.config import _get_app_data_dir
+                cfg_path = _os.path.join(_get_app_data_dir(), "igo_config.json")
+            if _os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                result = {}
+                mt = cfg.get("default_main_time_min")
+                if mt is not None:
+                    result["main_time"] = "{}\u5206".format(int(mt))
+                bs = cfg.get("default_byoyomi_sec")
+                if bs is not None:
+                    result["byo_time"] = "{}\u79d2".format(int(bs))
+                bc = cfg.get("default_byoyomi_count")
+                if bc is not None:
+                    result["byo_periods"] = "{}\u56de".format(int(bc))
+                dk = cfg.get("default_komi")
+                if dk is not None:
+                    kv = float(dk)
+                    frac = abs(kv) - int(abs(kv))
+                    if abs(frac - 0.5) < 0.01:
+                        result["komi"] = "{}\u76ee\u534a".format(int(abs(kv)))
+                    else:
+                        result["komi"] = "{}\u76ee".format(int(abs(kv)))
+                return result
+        except Exception:
+            pass
+        return {}
 
     def _on_time_control_change(self, event=None):
         """When Fischer is selected, disable byoyomi fields."""

@@ -39,5 +39,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo Done: dist\installer\GokaGo_Setup_%VERSION%.exe
+echo Done: dist\installer\Goka_Installer_%VERSION%.exe
 pause

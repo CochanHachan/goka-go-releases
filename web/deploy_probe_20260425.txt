@@ -1,0 +1,4 @@
+deploy_probe_20260425
+branch=app-source-sync-20260424
+commit_placeholder=TO_BE_FILLED_BY_GIT
+timestamp_jst=2026-04-25T13:48:00+09:00

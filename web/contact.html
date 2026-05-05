@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>お問い合わせ | 碁華 - Goka GO</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #1a1f29;
+      --text: #f4f6fb;
+      --muted: #b9c0d0;
+      --accent: #f0c860;
+      --line: #2f3748;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Yu Gothic UI", "Yu Gothic", sans-serif;
+      background: linear-gradient(160deg, #0f1115 0%, #171d27 50%, #111722 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 760px;
+      background: rgba(26, 31, 41, 0.95);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 28px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 1.7rem;
+      letter-spacing: 0.02em;
+    }
+    p {
+      margin: 0 0 14px;
+      line-height: 1.75;
+      color: var(--muted);
+    }
+    .contact-box {
+      margin: 16px 0 18px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 12px 14px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .contact-label {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .contact-value {
+      color: var(--text);
+      font-size: 1.04rem;
+      word-break: break-all;
+    }
+    .note {
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    a.btn {
+      display: inline-block;
+      text-decoration: none;
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 10px 14px;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      font-size: 0.92rem;
+    }
+    a.btn:hover {
+      border-color: var(--accent);
+      color: #fff;
+      background: rgba(240, 200, 96, 0.12);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>お問い合わせ</h1>
+    <p>
+      碁華（Goka GO）に関するご質問・不具合報告・ご要望は、以下の連絡先へお知らせください。
+      件名に「碁華 お問い合わせ」とご記載いただくと確認がスムーズです。
+    </p>
+
+    <section class="contact-box" aria-label="連絡先">
+      <span class="contact-label">連絡先メールアドレス</span>
+      <div class="contact-value">pcochan@proton.me</div>
+    </section>
+
+    <p class="note">
+      返信までにお時間をいただく場合があります。緊急性の高い不具合の場合は、発生時刻・利用バージョン・再現手順をご記載ください。
+    </p>
+
+    <div class="actions">
+      <a class="btn" href="/">トップページへ戻る</a>
+      <a class="btn" href="mailto:pcochan@proton.me?subject=%E7%A2%81%E8%8F%AF%20%E3%81%8A%E5%95%8F%E3%81%84%E5%90%88%E3%82%8F%E3%81%9B">メール作成を開く</a>
+    </div>
+  </main>
+</body>
+</html>

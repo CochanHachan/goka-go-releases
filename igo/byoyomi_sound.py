@@ -119,7 +119,7 @@ def play_robot_appear_localized():
 
 
 def _play_robot_appear_localized_direct(prefix):
-    """ロボ出現音声を _play 経由なしで再生する（多言語: {prefix}robot_appear.wav）。"""
+    """ロボ出現音声を _play 経由なしで言語別に再生する。"""
     try:
         if not _init_mixer():
             return

@@ -28,8 +28,8 @@ if _c is None:
     raise RuntimeError("Unknown _ENV={!r}".format(_ENV))
 
 APP_NAME          = _c["app_name"]
-APP_VERSION       = "1.2.162"
-APP_BUILD         = "20260503"
+APP_VERSION       = "1.2.187"
+APP_BUILD         = "20260505"
 STAGING_LABEL     = _c["staging_label"]
 CLOUD_SERVER_URL  = _c["cloud_server_url"]
 API_BASE_URL      = _c["api_base_url"]
@@ -66,3 +66,4 @@ GO_RANKS = ["{}段".format(i) for i in range(9, 0, -1)] + \
            ["{}級".format(i) for i in range(1, 11)]
 
 HAS_CLOUD = True
+IS_BETA_EDITION = (_ENV == "staging")

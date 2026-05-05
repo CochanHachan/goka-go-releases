@@ -17,6 +17,9 @@ class UserDatabase:
         self._create_tables()
 
     def _create_tables(self):
+        # DB 設計メモ（碁華）:
+        # - users は handle_name を業務上の一意キーとしつつ、不変の内部参照用に id を必ず持つ。
+        # - 他テーブルは、業務上すでに安定した一意カラムがあるなら無理に数値 id を増やさない。
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

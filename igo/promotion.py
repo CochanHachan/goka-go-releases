@@ -8,6 +8,8 @@ import os
 
 from igo.elo import _is_dan_rank
 from igo.lang import L
+from igo.config import get_ui_height_ratio, get_ui_width_ratio
+from igo.config import get_primary_work_area_rect
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +142,27 @@ class PromotionPopup(tk.Toplevel):
     def show(self):
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
-        x = (sw - self.width) // 2
-        y = (sh - self.height) // 2
+        left = 0
+        top = 0
+        wr = get_primary_work_area_rect()
+        if wr:
+            left, top, sw, sh = wr
+        try:
+            ratio = get_ui_height_ratio("sakura_dialog_height", 0.36)
+            self.height = max(280, int(sh * ratio))
+        except Exception:
+            pass
+        try:
+            w_ratio = get_ui_width_ratio("sakura_dialog_width", 0.50)
+            self.width = max(400, int(sw * w_ratio))
+        except Exception:
+            pass
+        try:
+            self.canvas.config(width=self.width, height=self.height)
+        except Exception:
+            pass
+        x = left + (sw - self.width) // 2
+        y = top + (sh - self.height) // 2
         self.geometry("{}x{}+{}+{}".format(self.width, self.height, x, y))
         self.deiconify()
         self.attributes("-topmost", True)

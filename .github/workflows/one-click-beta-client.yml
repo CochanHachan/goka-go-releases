@@ -1,0 +1,66 @@
+# テスト版クライアント（_APP_EDITION=beta）をビルドし Artifact として保存する。
+# 自動更新は使わない運用向け: 成果物 ZIP を手動配布する。
+# （Azure Pipelines の azure-pipelines-beta-client.yml と同等のビルド手順）
+name: One Click Beta Test Client
+
+on:
+  workflow_dispatch:
+    inputs:
+      beta_version:
+        description: "テスト版に埋め込む APP_VERSION（例 2.0.1）"
+        required: true
+        default: "2.0.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: one-click-beta-client
+  cancel-in-progress: true
+
+jobs:
+  build-beta-client:
+    name: Build Beta Client
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install pyinstaller tksheet cryptography websockets pillow pygame
+
+      - name: Switch to staging + beta edition
+        run: python tools/patch_constants_for_beta.py ${{ github.event.inputs.beta_version }}
+
+      - name: Download KataGo
+        run: python tools/download_katago_for_windows_build.py
+
+      - name: Build client with PyInstaller
+        run: pyinstaller goka_go_test.spec --noconfirm
+
+      - name: Copy KataGo into dist folder
+        run: python tools/copy_katago_into_dist.py
+
+      - name: Create beta ZIP
+        run: python tools/make_beta_zip.py
+
+      - name: Upload beta client ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: goka-go-beta-zip
+          path: dist/goka-go-beta.zip
+          retention-days: 14
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "## Beta client ZIP" >> "$GITHUB_STEP_SUMMARY"
+          echo "Artifact: **goka-go-beta-zip**（Actions の成果物からダウンロード）" >> "$GITHUB_STEP_SUMMARY"
+          echo "埋め込みバージョン: ${{ github.event.inputs.beta_version }}" >> "$GITHUB_STEP_SUMMARY"
