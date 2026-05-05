@@ -87,9 +87,10 @@ jobs:
         with:
           python-version: "3.13"
           cache: 'pip'
+          cache-dependency-path: 'requirements-build.txt'
 
       - name: Install dependencies
-        run: pip install pyinstaller tksheet cryptography websockets pillow pygame
+        run: pip install -r requirements-build.txt
 
       - name: Switch to staging environment
         shell: python
