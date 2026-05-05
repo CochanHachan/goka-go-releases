@@ -855,6 +855,26 @@ async def version_check():
         return JSONResponse(content={"version": "0.0.0"}, status_code=500)
 
 
+@app.get("/api/db-test")
+async def db_test():
+    """DB接続テスト（デバッグ用）。"""
+    results = {"dsn": _mask_dsn(PG_DSN), "env": _ENV_LABEL}
+    try:
+        conn = get_db_connection()
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='public'")
+        results["tables"] = [r["table_name"] for r in cur.fetchall()]
+        cur.execute("SELECT count(*) as cnt FROM users")
+        results["user_count"] = cur.fetchone()["cnt"]
+        cur.close()
+        conn.close()
+        results["status"] = "ok"
+    except Exception as e:
+        results["error"] = str(e)
+        results["status"] = "error"
+    return results
+
+
 @app.get("/api/settings")
 async def get_settings():
     """グローバル設定を返す。"""
@@ -2332,7 +2352,7 @@ async def admin_setup_staging(request: Request):
         # 1. ステージング用リポジトリの準備
         if os.path.isdir(staging_dir):
             _log(f"既存のステージングリポジトリを更新: {staging_dir}")
-            await _run(["git", "stash"], cwd=staging_dir)
+            await _run(["git", "checkout", "--", "."], cwd=staging_dir)
             r = await _run(["git", "fetch", "origin"], cwd=staging_dir)
             if r.returncode != 0:
                 return JSONResponse(
