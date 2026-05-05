@@ -56,8 +56,18 @@ stages:
             inputs:
               versionSpec: "3.13"
 
+          - task: Cache@2
+            displayName: Cache pip packages
+            inputs:
+              key: 'pip | "windows" | "3.13"'
+              path: $(PIP_CACHE_DIR)
+              restoreKeys: |
+                pip | "windows" | "3.13"
+
           - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
             displayName: Install build dependencies
+            env:
+              PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
 
           # ── 不足アセット生成 ──
           - task: PythonScript@0
