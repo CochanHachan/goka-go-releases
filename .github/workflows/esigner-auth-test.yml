@@ -1,0 +1,171 @@
+name: eSigner Full Diagnostic v5
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/esigner-auth-test.yml'
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
+    steps:
+      - name: "Step 1 - OAuth2 Auth + CSC Credential Test"
+        shell: python
+        env:
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
+          CREDENTIAL_ID: ${{ secrets.CREDENTIAL_ID }}
+        run: |
+          import os, sys, json, urllib.request, urllib.parse, urllib.error
+          import hmac, hashlib, struct, time, base64
+          sys.stdout.reconfigure(encoding='utf-8')
+
+          username = os.environ.get("ES_USERNAME", "")
+          password = os.environ.get("ES_PASSWORD", "")
+          totp_secret = os.environ.get("ES_TOTP_SECRET", "")
+          cred_id = os.environ.get("CREDENTIAL_ID", "")
+
+          print(f"ES_USERNAME: {len(username)} chars")
+          print(f"ES_PASSWORD: {len(password)} chars")
+          print(f"ES_TOTP_SECRET: {len(totp_secret)} chars")
+          print(f"CREDENTIAL_ID: {len(cred_id)} chars")
+
+          token_url = "https://login.ssl.com/oauth2/token"
+          csc_url = "https://cs.ssl.com"
+          client_id = "kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8"
+
+          def generate_totp(secret):
+              try:
+                  key = base64.b32decode(secret + '=' * (-len(secret) % 8), casefold=True)
+                  method = "Base32"
+              except:
+                  key = base64.b64decode(secret)
+                  method = "Base64"
+              counter = struct.pack(">Q", int(time.time()) // 30)
+              mac = hmac.new(key, counter, hashlib.sha1).digest()
+              offset = mac[-1] & 0x0F
+              code = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
+              otp = str(code % 1000000).zfill(6)
+              return otp, method
+
+          # === Step A: OAuth2 Token (no TOTP) ===
+          print("\n=== A: OAuth2 Token (password only) ===")
+          data_a = urllib.parse.urlencode({
+              "grant_type": "password",
+              "username": username,
+              "password": password,
+              "client_id": client_id,
+          }).encode()
+          req_a = urllib.request.Request(token_url, data=data_a, method="POST")
+          req_a.add_header("Content-Type", "application/x-www-form-urlencoded")
+          access_token = None
+          try:
+              with urllib.request.urlopen(req_a, timeout=30) as resp:
+                  body = json.loads(resp.read().decode())
+                  access_token = body.get("access_token", "")
+                  print(f"OK: Bearer token obtained (expires_in={body.get('expires_in')})")
+          except urllib.error.HTTPError as e:
+              err = e.read().decode()
+              print(f"FAIL: HTTP {e.code}: {err[:300]}")
+              sys.exit(1)
+          except Exception as e:
+              print(f"FAIL: {e}")
+              sys.exit(1)
+
+          if not access_token:
+              print("FAIL: No access token received")
+              sys.exit(1)
+
+          # === Step B: CSC credentials/info ===
+          print("\n=== B: CSC credentials/info ===")
+          info_data = json.dumps({
+              "credentialID": cred_id,
+              "certificates": "chain",
+              "certInfo": True
+          }).encode()
+          req_b = urllib.request.Request(f"{csc_url}/csc/v0/credentials/info", data=info_data, method="POST")
+          req_b.add_header("Content-Type", "application/json")
+          req_b.add_header("Authorization", f"Bearer {access_token}")
+          try:
+              with urllib.request.urlopen(req_b, timeout=30) as resp:
+                  body = json.loads(resp.read().decode())
+                  key_info = body.get("key", {})
+                  cert_info = body.get("cert", {})
+                  print(f"OK: Credential found")
+                  print(f"  Key algo: {key_info.get('algo', ['N/A'])}")
+                  print(f"  Key status: {key_info.get('status', 'N/A')}")
+                  print(f"  Cert count: {len(cert_info.get('certificates', []))}")
+                  # Check SCAL (Sole Control Assurance Level)
+                  scal = body.get("SCAL", "N/A")
+                  print(f"  SCAL: {scal}")
+                  # Check OTP info
+                  auth_mode = body.get("authMode", "N/A")
+                  print(f"  Auth mode: {auth_mode}")
+          except urllib.error.HTTPError as e:
+              err = e.read().decode()
+              print(f"FAIL: HTTP {e.code}: {err[:500]}")
+              if e.code == 401:
+                  print("-> Token is invalid or expired")
+              elif e.code == 400:
+                  print("-> CREDENTIAL_ID might be wrong")
+              sys.exit(1)
+          except Exception as e:
+              print(f"FAIL: {e}")
+              sys.exit(1)
+
+          # === Step C: CSC credentials/authorize (with OTP) ===
+          print("\n=== C: CSC credentials/authorize (OTP test) ===")
+          otp, method = generate_totp(totp_secret)
+          print(f"Generated OTP: {otp} (via {method})")
+
+          auth_data = json.dumps({
+              "credentialID": cred_id,
+              "numSignatures": 1,
+              "hash": ["dGVzdA=="],
+              "OTP": otp
+          }).encode()
+          req_c = urllib.request.Request(f"{csc_url}/csc/v0/credentials/authorize", data=auth_data, method="POST")
+          req_c.add_header("Content-Type", "application/json")
+          req_c.add_header("Authorization", f"Bearer {access_token}")
+          try:
+              with urllib.request.urlopen(req_c, timeout=30) as resp:
+                  body = json.loads(resp.read().decode())
+                  print(f"OK: Credential authorized! SAD={body.get('SAD', 'N/A')[:20]}...")
+          except urllib.error.HTTPError as e:
+              err_body = e.read().decode()
+              print(f"FAIL: HTTP {e.code}: {err_body[:500]}")
+              try:
+                  err = json.loads(err_body)
+                  desc = err.get("error_description", err.get("error", ""))
+                  print(f"Error detail: {desc}")
+              except:
+                  pass
+
+              if "otp" in err_body.lower() or "invalid" in err_body.lower():
+                  print("\n--- OTP DIAGNOSIS ---")
+                  print("The OTP generated from ES_TOTP_SECRET was rejected by CSC API.")
+                  print("This means ES_TOTP_SECRET does not match the TOTP secret")
+                  print("registered for this credential on SSL.com.")
+                  print("")
+                  print("ACTION: Go to SSL.com dashboard -> eSigner -> your certificate")
+                  print("ACTION: Re-generate or re-scan the TOTP QR code")
+                  print("ACTION: Copy the secret key (not the 6-digit code)")
+                  print("ACTION: Update ES_TOTP_SECRET in GitHub Secrets")
+                  print("")
+                  print("NOTE: If you recently reset your SSL.com password,")
+                  print("the TOTP secret may have been rotated automatically.")
+
+              sys.exit(1)
+          except Exception as e:
+              print(f"FAIL: {e}")
+              sys.exit(1)
+
+          print("\n=== ALL TESTS PASSED ===")
+          print("OAuth2 auth + CSC credential + OTP verification all succeeded.")
+          print("CodeSignTool should work correctly.")
