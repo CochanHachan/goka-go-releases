@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 碁華 Goka GO — バックエンドサーバー
-REST API (FastAPI) + WebSocket 中継サーバー
+REST API (FastAPI) + WebSocket 中継サーバー (v1.2.189)
 
 起動方法:
     pip install fastapi uvicorn websockets
