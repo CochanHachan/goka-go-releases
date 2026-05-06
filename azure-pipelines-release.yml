@@ -351,8 +351,8 @@ stages:
               script: |
                 import json, os, shutil
 
-                ver = "$(versionStep.RELEASE_VERSION)"
-                notes = "$(versionStep.RELEASE_NOTES)"
+                ver = os.environ["RELEASE_VER"]
+                notes = os.environ["RELEASE_NOTES_VAL"]
                 release_dir = os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"] + "/release"
 
                 vj = {
@@ -366,6 +366,9 @@ stages:
                     f.write("\n")
 
                 print(f"Created version.json for v{ver}")
+            env:
+              RELEASE_VER: $(versionStep.RELEASE_VERSION)
+              RELEASE_NOTES_VAL: $(versionStep.RELEASE_NOTES)
             displayName: "Create version.json"
 
           # ── メタデータ（コミットバック用、FTPには含めない） ──
@@ -438,13 +441,12 @@ stages:
                 # ── 本番 FTP アップロード（version.json + ZIPs） ──
                 - script: |
                     set -e
-                    VER='$(RELEASE_VERSION)'
                     python tools/release_publish_ftp.py \
-                      --version "$VER" \
-                      --zip-go "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
-                      --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${VER}.zip" \
+                      --version "${RELEASE_VER}" \
+                      --zip-go "$(Pipeline.Workspace)/release/goka_go_${RELEASE_VER}.zip" \
+                      --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${RELEASE_VER}.zip" \
                       --public-base "$(PUBLIC_BASE)" \
-                      --release-notes "$(RELEASE_NOTES)"
+                      --release-notes "${RELEASE_NOTES_VAL}"
                   displayName: "FTP upload production ZIPs + version.json"
                   env:
                     GOKA_FTP_HOST: $(FTP_SERVER)
@@ -452,15 +454,18 @@ stages:
                     GOKA_FTP_PASS: $(FTP_PASSWORD)
                     GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
                     GOKA_FTP_TLS: $(GOKA_FTP_TLS)
+                    RELEASE_VER: $(RELEASE_VERSION)
+                    RELEASE_NOTES_VAL: $(RELEASE_NOTES)
 
                 # ── 安定ダウンロード名 GokaGo_Latest.zip ──
                 - script: |
                     set -e
-                    VER='$(RELEASE_VERSION)'
-                    cp "$(Pipeline.Workspace)/release/goka_go_${VER}.zip" \
+                    cp "$(Pipeline.Workspace)/release/goka_go_${RELEASE_VER}.zip" \
                        "$(Pipeline.Workspace)/release/GokaGo_Latest.zip"
-                    echo "Created GokaGo_Latest.zip from goka_go_${VER}.zip"
+                    echo "Created GokaGo_Latest.zip from goka_go_${RELEASE_VER}.zip"
                   displayName: "Create GokaGo_Latest.zip"
+                  env:
+                    RELEASE_VER: $(RELEASE_VERSION)
 
                 # ── 軽量アップデート ZIP + インストーラー アップロード ──
                 - script: |
@@ -544,8 +549,10 @@ stages:
                     echo "=== Admin Installer check ==="
                     curl -sI "$(PUBLIC_BASE)/releases/GokaAdmin_Installer.exe" | head -3
                     echo "=== Update ZIP check ==="
-                    curl -sI "$(PUBLIC_BASE)/releases/goka_go_$(RELEASE_VERSION).zip" | head -3
+                    curl -sI "$(PUBLIC_BASE)/releases/goka_go_${RELEASE_VER}.zip" | head -3
                   displayName: "Smoke test production files"
+                  env:
+                    RELEASE_VER: $(RELEASE_VERSION)
 
                 # ── version.json をリポジトリにコミットバック ──
                 - task: PythonScript@0
