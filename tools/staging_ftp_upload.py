@@ -14,9 +14,38 @@
 """
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
+import tempfile
 from pathlib import Path
+
+
+def _detect_version(local_dir: Path) -> str:
+    """ステージング成果物またはソースコードからバージョンを検出する。"""
+    vj = local_dir / "version_staging.json"
+    if vj.exists():
+        try:
+            d = json.loads(vj.read_text(encoding="utf-8"))
+            ver = str(d.get("version", "")).strip()
+            if ver:
+                print(f"  Version from {vj}: {ver}")
+                return ver
+        except Exception as e:
+            print(f"  WARNING: {vj}: {e}")
+
+    for cpath in [Path("igo/constants.py"), local_dir / "igo" / "constants.py"]:
+        if cpath.exists():
+            try:
+                m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', cpath.read_text(encoding="utf-8"))
+                if m:
+                    print(f"  Version from {cpath}: {m.group(1)}")
+                    return m.group(1)
+            except Exception as e:
+                print(f"  WARNING: {cpath}: {e}")
+
+    return ""
 
 
 def main() -> int:
@@ -72,6 +101,32 @@ def main() -> int:
                 uploaded += 1
                 print(f"  OK {fpath.name}")
         print(f"Done. {uploaded} files uploaded to /{'/'.join(target_parts)}")
+
+        # ── version-admin.json をサイト直下にアップロード ──
+        download_url = os.environ.get("ADMIN_DOWNLOAD_URL", "").strip()
+        if download_url:
+            version = _detect_version(local_dir)
+            if version:
+                base_dir = "/" + remote_base if remote_base else "/"
+                manifest = {
+                    "version": version,
+                    "download_url": download_url,
+                    "release_notes": f"v{version}",
+                }
+                tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+                try:
+                    json.dump(manifest, tmp, ensure_ascii=False, indent=2)
+                    tmp.close()
+                    dest = base_dir.rstrip("/") + "/version-admin.json"
+                    sftp.put(tmp.name, dest)
+                    print(f"Uploaded version-admin.json -> {dest}")
+                    print(f"  {json.dumps(manifest, indent=2)}")
+                finally:
+                    os.unlink(tmp.name)
+            else:
+                print("WARNING: Could not detect version, skipping version-admin.json")
+        else:
+            print("INFO: ADMIN_DOWNLOAD_URL not set, skipping version-admin.json")
     finally:
         sftp.close()
         ssh.close()
