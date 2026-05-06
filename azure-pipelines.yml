@@ -15,7 +15,6 @@
 #   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD  … 必須
 # 任意:
 #   GOKA_FTP_REMOTE  … リモート相対パス（例: public_html）。未設定で SFTP ルート相当。
-#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID … 両方あるときキャッシュ全パージ
 # =============================================================================
 
 trigger:
@@ -54,24 +53,3 @@ steps:
       GOKA_FTP_USER: $(FTP_USERNAME)
       GOKA_FTP_PASS: $(FTP_PASSWORD)
       GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-
-  - script: |
-      set -e
-      if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ZONE_ID:-}" ]; then
-        echo "Skipping Cloudflare purge (set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID to enable)."
-        exit 0
-      fi
-      echo "Purging Cloudflare cache..."
-      CODE=$(curl -sS -o /tmp/cf_purge.json -w "%{http_code}" -X POST \
-        "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
-        -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-        -H "Content-Type: application/json" \
-        --data '{"purge_everything":true}')
-      cat /tmp/cf_purge.json
-      test "$CODE" = "200"
-      grep -q '"success":true' /tmp/cf_purge.json
-      echo "Cloudflare purge OK."
-    displayName: "Purge Cloudflare cache (optional)"
-    env:
-      CLOUDFLARE_API_TOKEN: $(CLOUDFLARE_API_TOKEN)
-      CLOUDFLARE_ZONE_ID: $(CLOUDFLARE_ZONE_ID)
