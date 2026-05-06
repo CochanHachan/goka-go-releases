@@ -362,18 +362,37 @@ stages:
                     json.dump(vj, f, ensure_ascii=False)
                     f.write("\n")
 
-                shutil.copy2("igo/constants.py", os.path.join(release_dir, "constants.py"))
-                shutil.copy2("installer/GokaGo_Setup.iss", os.path.join(release_dir, "GokaGo_Setup.iss"))
                 print(f"Created version.json for v{ver}")
-            displayName: "Create version.json + metadata"
+            displayName: "Create version.json"
 
-          # ── アーティファクト公開 ──
+          # ── メタデータ（コミットバック用、FTPには含めない） ──
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import os, shutil
+                meta_dir = os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"] + "/metadata"
+                os.makedirs(meta_dir, exist_ok=True)
+                shutil.copy2("igo/constants.py", os.path.join(meta_dir, "constants.py"))
+                shutil.copy2("installer/GokaGo_Setup.iss", os.path.join(meta_dir, "GokaGo_Setup.iss"))
+                print("Copied metadata for commit-back")
+            displayName: "Prepare metadata for commit-back"
+
+          # ── アーティファクト公開（リリース用） ──
           - task: PublishPipelineArtifact@1
             inputs:
               targetPath: "$(Build.ArtifactStagingDirectory)/release"
               artifact: "release-zips"
               publishLocation: "pipeline"
             displayName: "Publish release artifacts"
+
+          # ── アーティファクト公開（メタデータ用） ──
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)/metadata"
+              artifact: "build-metadata"
+              publishLocation: "pipeline"
+            displayName: "Publish build metadata"
 
   # ============================================================
   # Stage 2: Production Deploy — 承認後に本番配信
@@ -407,6 +426,11 @@ stages:
                   inputs:
                     artifactName: "release-zips"
                     targetPath: "$(Pipeline.Workspace)/release"
+
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifactName: "build-metadata"
+                    targetPath: "$(Pipeline.Workspace)/metadata"
 
                 # ── 本番 FTP アップロード（version.json + ZIPs） ──
                 - script: |
@@ -521,40 +545,47 @@ stages:
                   displayName: "Smoke test production files"
 
                 # ── version.json をリポジトリにコミットバック ──
-                - script: |
-                    set -e
-                    VER='$(RELEASE_VERSION)'
-                    NOTES='$(RELEASE_NOTES)'
+                - task: PythonScript@0
+                  inputs:
+                    scriptSource: "inline"
+                    script: |
+                      import json, os, shutil, subprocess
 
-                    # version.json を更新
-                    python3 -c "
-import json
-vj = {
-    'version': '${VER}',
-    'download_url': 'https://goka-igo.com/releases/goka_go_${VER}.zip',
-    'admin_download_url': 'https://goka-igo.com/releases/goka_admin_${VER}.zip',
-    'release_notes': '${NOTES}'
-}
-with open('version.json', 'w', encoding='utf-8') as f:
-    json.dump(vj, f, ensure_ascii=False)
-    f.write('\\n')
-print(f'Updated version.json to v${VER}')
-"
+                      ver = os.environ["RELEASE_VER"]
+                      notes = os.environ["RELEASE_NOTES_VAL"]
+                      metadata_dir = os.environ["METADATA_DIR"]
 
-                    # constants.py + GokaGo_Setup.iss をアーティファクトからコピー
-                    if [ -f "$(Pipeline.Workspace)/release/constants.py" ]; then
-                      cp "$(Pipeline.Workspace)/release/constants.py" igo/constants.py
-                    fi
-                    if [ -f "$(Pipeline.Workspace)/release/GokaGo_Setup.iss" ]; then
-                      cp "$(Pipeline.Workspace)/release/GokaGo_Setup.iss" installer/GokaGo_Setup.iss
-                    fi
+                      vj = {
+                          "version": ver,
+                          "download_url": f"https://goka-igo.com/releases/goka_go_{ver}.zip",
+                          "admin_download_url": f"https://goka-igo.com/releases/goka_admin_{ver}.zip",
+                          "release_notes": notes
+                      }
+                      with open("version.json", "w", encoding="utf-8") as f:
+                          json.dump(vj, f, ensure_ascii=False)
+                          f.write("\n")
+                      print(f"Updated version.json to v{ver}")
 
-                    # コミット＆プッシュ（[skip ci] で再トリガー防止）
-                    git config user.name "Azure Pipelines"
-                    git config user.email "azuredevops@users.noreply.github.com"
-                    git add version.json igo/constants.py installer/GokaGo_Setup.iss
-                    git diff --cached --quiet || (
-                      git commit -m "Release v${VER} [skip ci]"
-                      git push origin HEAD:main
-                    )
+                      src_constants = os.path.join(metadata_dir, "constants.py")
+                      if os.path.exists(src_constants):
+                          shutil.copy2(src_constants, "igo/constants.py")
+                      src_iss = os.path.join(metadata_dir, "GokaGo_Setup.iss")
+                      if os.path.exists(src_iss):
+                          shutil.copy2(src_iss, "installer/GokaGo_Setup.iss")
+
+                      subprocess.run(["git", "config", "user.name", "Azure Pipelines"], check=True)
+                      subprocess.run(["git", "config", "user.email", "azuredevops@users.noreply.github.com"], check=True)
+                      subprocess.run(["git", "add", "version.json", "igo/constants.py", "installer/GokaGo_Setup.iss"], check=True)
+
+                      diff = subprocess.run(["git", "diff", "--cached", "--quiet"])
+                      if diff.returncode != 0:
+                          subprocess.run(["git", "commit", "-m", f"Release v{ver} [skip ci]"], check=True)
+                          subprocess.run(["git", "push", "origin", "HEAD:main"], check=True)
+                          print("Committed and pushed version update")
+                      else:
+                          print("No changes to commit")
+                  env:
+                    RELEASE_VER: $(RELEASE_VERSION)
+                    RELEASE_NOTES_VAL: $(RELEASE_NOTES)
+                    METADATA_DIR: $(Pipeline.Workspace)/metadata
                   displayName: "Commit version.json back to repo"
