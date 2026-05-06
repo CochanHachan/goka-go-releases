@@ -571,6 +571,13 @@ stages:
                       if os.path.exists(src_iss):
                           shutil.copy2(src_iss, "installer/GokaGo_Setup.iss")
 
+                      # Normalize CRLF→LF (Windows artifact → Linux commit)
+                      for path in ["version.json", "igo/constants.py", "installer/GokaGo_Setup.iss"]:
+                          if os.path.exists(path):
+                              data = open(path, "rb").read()
+                              if b"\r\n" in data:
+                                  open(path, "wb").write(data.replace(b"\r\n", b"\n"))
+
                       subprocess.run(["git", "config", "user.name", "Azure Pipelines"], check=True)
                       subprocess.run(["git", "config", "user.email", "azuredevops@users.noreply.github.com"], check=True)
                       subprocess.run(["git", "add", "version.json", "igo/constants.py", "installer/GokaGo_Setup.iss"], check=True)
