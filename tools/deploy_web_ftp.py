@@ -37,9 +37,6 @@ def main() -> int:
 
     repo = Path(__file__).resolve().parent.parent
     web = repo / "web"
-    if not web.is_dir():
-        print("ERROR: web/ not found:", web, file=sys.stderr)
-        return 1
 
     base_parts = [p for p in remote_base.split("/") if p]
 
@@ -54,6 +51,10 @@ def main() -> int:
         return current
 
     try:
+        if not web.is_dir():
+            print("ERROR: web/ not found:", web, file=sys.stderr)
+            return 1
+
         uploaded = 0
         for root, _dirs, files in os.walk(web):
             rel = Path(root).relative_to(web)
