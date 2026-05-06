@@ -6,26 +6,74 @@
 
 必須環境変数:
   GOKA_FTP_HOST, GOKA_FTP_USER, GOKA_FTP_PASS
-  ADMIN_VERSION        … アプリバージョン (例: 1.2.191)
   ADMIN_DOWNLOAD_URL   … 管理者アプリ ZIP の URL
+
+バージョン取得（優先順位）:
+  1) 環境変数 ADMIN_VERSION
+  2) STAGING_DIR/version_staging.json の "version" フィールド
+  3) igo/constants.py の APP_VERSION
 
 任意:
   GOKA_FTP_REMOTE      … 例: public_html
+  STAGING_DIR          … ステージング成果物のディレクトリ
   ADMIN_RELEASE_NOTES  … リリースノート
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 
+def _detect_version() -> str:
+    """バージョンを自動検出する。"""
+    # 1) 環境変数
+    ver = os.environ.get("ADMIN_VERSION", "").strip()
+    if ver:
+        print(f"Version from ADMIN_VERSION env: {ver}")
+        return ver
+
+    # 2) version_staging.json（ステージング成果物）
+    staging_dir = os.environ.get("STAGING_DIR", "").strip()
+    if staging_dir:
+        vj_path = os.path.join(staging_dir, "version_staging.json")
+        if os.path.exists(vj_path):
+            try:
+                with open(vj_path, encoding="utf-8") as f:
+                    d = json.load(f)
+                ver = str(d.get("version", "")).strip()
+                if ver:
+                    print(f"Version from {vj_path}: {ver}")
+                    return ver
+            except Exception as e:
+                print(f"WARNING: Failed to read {vj_path}: {e}")
+
+    # 3) igo/constants.py
+    for cpath in ["igo/constants.py", os.path.join(staging_dir or ".", "igo", "constants.py")]:
+        if os.path.exists(cpath):
+            try:
+                text = open(cpath, encoding="utf-8").read()
+                m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', text)
+                if m:
+                    ver = m.group(1)
+                    print(f"Version from {cpath}: {ver}")
+                    return ver
+            except Exception as e:
+                print(f"WARNING: Failed to read {cpath}: {e}")
+
+    return ""
+
+
 def main() -> int:
-    version = os.environ.get("ADMIN_VERSION", "").strip()
+    version = _detect_version()
     download_url = os.environ.get("ADMIN_DOWNLOAD_URL", "").strip()
 
-    if not version or not download_url:
-        print("ERROR: ADMIN_VERSION and ADMIN_DOWNLOAD_URL required", file=sys.stderr)
+    if not version:
+        print("ERROR: Could not detect version", file=sys.stderr)
+        return 1
+    if not download_url:
+        print("ERROR: ADMIN_DOWNLOAD_URL required", file=sys.stderr)
         return 1
 
     notes = os.environ.get("ADMIN_RELEASE_NOTES", "").strip() or f"v{version}"
@@ -55,7 +103,6 @@ def main() -> int:
     sftp = ssh.open_sftp()
 
     try:
-        # remote_base のディレクトリを確認・作成
         base_parts = [p for p in remote_base.split("/") if p]
         current = "/"
         for p in base_parts:
