@@ -10,7 +10,7 @@
 #   2) Production (Linux): 承認待ち → FTP アップロード → Web 更新 → サーバーデプロイ
 #
 # 必須 Variable Groups:
-#   esigner-secrets: ES_USERNAME, ES_PASSWORD, ES_TOTP_SECRET, CREDENTIAL_ID
+#   esigner-secrets: ES_USERNAME, ES_PASSWORD
 #   ftp-secrets:     FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
 #   server-secrets:  GOKA_ADMIN_TOKEN, GOKA_SERVER_URL
 #
@@ -199,8 +199,6 @@ stages:
                 .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
-                  -totp_secret="$env:ES_TOTP_SECRET" `
-                  -credential_id="$env:CREDENTIAL_ID" `
                   -input_file_path="$exePath" `
                   -override="true"
                 Pop-Location
@@ -212,8 +210,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
             timeoutInMinutes: 5
 
@@ -282,8 +278,6 @@ stages:
                 .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
-                  -totp_secret="$env:ES_TOTP_SECRET" `
-                  -credential_id="$env:CREDENTIAL_ID" `
                   -input_file_path="$installerPath" `
                   -override="true"
                 Pop-Location
@@ -295,8 +289,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
             timeoutInMinutes: 5
 
@@ -326,8 +318,6 @@ stages:
                 .\CodeSignTool.bat sign `
                   -username="$env:ES_USERNAME" `
                   -password="$env:ES_PASSWORD" `
-                  -totp_secret="$env:ES_TOTP_SECRET" `
-                  -credential_id="$env:CREDENTIAL_ID" `
                   -input_file_path="$installerPath" `
                   -override="true"
                 Pop-Location
@@ -339,8 +329,6 @@ stages:
             env:
               ES_USERNAME: $(ES_USERNAME)
               ES_PASSWORD: $(ES_PASSWORD)
-              ES_TOTP_SECRET: $(ES_TOTP_SECRET)
-              CREDENTIAL_ID: $(CREDENTIAL_ID)
             continueOnError: true
             timeoutInMinutes: 5
 
