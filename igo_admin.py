@@ -83,7 +83,7 @@ from igo.constants_env import _ENV
 
 _ADMIN_SERVER_CONFIG = {
     "production": {
-        "api_base_url": "http://34.85.118.112:8000",
+        "api_base_url": "http://20.48.18.153:8000",
         "title":        "碁華 - 管理者画面",
     },
     "staging": {
