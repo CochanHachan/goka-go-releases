@@ -26,7 +26,7 @@ API_BASE = f"https://api.github.com/repos/{REPO}"
 WORKFLOW_NAME = "Build and Deploy"
 
 # サーバーデプロイ設定
-SERVER_URL = "http://34.85.118.112:8000"
+SERVER_URL = "http://20.48.18.153:8000"
 ADMIN_TOKEN = "goka-deploy-2026"
 
 

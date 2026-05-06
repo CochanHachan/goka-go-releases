@@ -10,7 +10,7 @@ import urllib.request
 import json
 import os
 
-API_BASE_URL = "http://34.85.118.112:8000"
+API_BASE_URL = "http://20.48.18.153:8000"
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "igo_users.db")
 
 
