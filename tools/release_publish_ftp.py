@@ -91,13 +91,17 @@ def _upload_file(sftp, cwd_from_root, base_parts: list[str], rel_parts: list[str
     remote_path = remote_dir.rstrip("/") + "/" + name
     file_size = local.stat().st_size
     start = time.time()
+    last_pct_reported = -1
 
     def _progress(transferred: int, total: int) -> None:
+        nonlocal last_pct_reported
         if total > 0:
             pct = transferred * 100 // total
             elapsed = time.time() - start
             speed = transferred / elapsed / 1024 / 1024 if elapsed > 0 else 0
-            if pct % 25 == 0 or transferred == total:
+            milestone = pct // 25
+            if milestone > last_pct_reported or transferred == total:
+                last_pct_reported = milestone
                 print(f"    {pct}% ({transferred // 1024 // 1024}MB / {total // 1024 // 1024}MB) @ {speed:.1f} MB/s")
 
     sftp.put(str(local), remote_path, callback=_progress)
