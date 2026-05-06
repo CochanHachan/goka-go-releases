@@ -228,7 +228,7 @@ stages:
             displayName: "PyInstaller igo_admin"
 
           # ── リリース ZIP 作成 ──
-          - script: python tools/make_release_zips.py "${RELEASE_VER}" "$(Build.ArtifactStagingDirectory)/release"
+          - script: python tools/make_release_zips.py "%RELEASE_VER%" "$(Build.ArtifactStagingDirectory)/release"
             displayName: "Create release ZIPs"
             env:
               RELEASE_VER: $(versionStep.RELEASE_VERSION)
