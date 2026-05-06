@@ -206,30 +206,18 @@ stages:
           - script: pip install paramiko
             displayName: "Install paramiko (SFTP)"
 
-          # ── SFTP でステージング ZIPs + インストーラーをアップロード ──
+          # ── SFTP でステージング ZIPs + インストーラー + version-admin.json をアップロード ──
           - script: |
               set -e
               python tools/staging_ftp_upload.py \
                 "$(Pipeline.Workspace)/staging" \
                 "staging/releases"
-            displayName: "SFTP upload ZIPs + installer"
+            displayName: "SFTP upload ZIPs + installer + version-admin.json"
             env:
               GOKA_FTP_HOST: $(FTP_SERVER)
               GOKA_FTP_USER: $(FTP_USERNAME)
               GOKA_FTP_PASS: $(FTP_PASSWORD)
               GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-
-          # ── 管理者アプリ用 version-admin.json をサイト直下にアップロード ──
-          - script: |
-              set -e
-              python tools/upload_admin_version.py
-            displayName: "SFTP upload version-admin.json to site root"
-            env:
-              GOKA_FTP_HOST: $(FTP_SERVER)
-              GOKA_FTP_USER: $(FTP_USERNAME)
-              GOKA_FTP_PASS: $(FTP_PASSWORD)
-              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-              STAGING_DIR: $(Pipeline.Workspace)/staging
               ADMIN_DOWNLOAD_URL: "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
 
           # ── 配信確認 ──
