@@ -34,6 +34,7 @@ import json
 import os
 import stat
 import sys
+import time
 from pathlib import Path
 
 
@@ -54,8 +55,17 @@ def _sftp_connect():
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(host, port=port, username=user, password=password, timeout=120)
+    ssh.connect(host, port=port, username=user, password=password, timeout=120, banner_timeout=60)
+    transport = ssh.get_transport()
+    if transport is not None:
+        transport.default_window_size = 2147483647
+        transport.packetizer.REKEY_BYTES = pow(2, 40)
+        transport.packetizer.REKEY_PACKETS = pow(2, 40)
     sftp = ssh.open_sftp()
+    channel = sftp.get_channel()
+    if channel is not None:
+        channel.in_window_size = 2147483647
+        channel.out_window_size = 2147483647
 
     base_parts = [p for p in remote_base.split("/") if p]
 
@@ -79,7 +89,21 @@ def _upload_file(sftp, cwd_from_root, base_parts: list[str], rel_parts: list[str
     remote_dir = cwd_from_root(dir_parts)
     name = rel_parts[-1]
     remote_path = remote_dir.rstrip("/") + "/" + name
-    sftp.put(str(local), remote_path)
+    file_size = local.stat().st_size
+    start = time.time()
+
+    def _progress(transferred: int, total: int) -> None:
+        if total > 0:
+            pct = transferred * 100 // total
+            elapsed = time.time() - start
+            speed = transferred / elapsed / 1024 / 1024 if elapsed > 0 else 0
+            if pct % 25 == 0 or transferred == total:
+                print(f"    {pct}% ({transferred // 1024 // 1024}MB / {total // 1024 // 1024}MB) @ {speed:.1f} MB/s")
+
+    sftp.put(str(local), remote_path, callback=_progress)
+    elapsed = time.time() - start
+    speed = file_size / elapsed / 1024 / 1024 if elapsed > 0 else 0
+    print(f"    Completed in {elapsed:.1f}s ({speed:.1f} MB/s)")
 
 
 def _upload_bytes(sftp, cwd_from_root, base_parts: list[str], rel_parts: list[str], data: bytes) -> None:
