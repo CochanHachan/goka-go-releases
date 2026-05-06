@@ -219,11 +219,73 @@ stages:
               GOKA_FTP_PASS: $(FTP_PASSWORD)
               GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
 
+          # ── 管理者アプリ用 version-admin.json をサイト直下にアップロード ──
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import json, os, re
+
+                # constants.py からバージョン取得
+                ver = "unknown"
+                const_path = os.path.join(os.environ["PIPELINE_WORKSPACE"], "staging", "version_staging.json")
+                if os.path.exists(const_path):
+                    d = json.load(open(const_path, encoding="utf-8"))
+                    ver = d.get("version", "unknown")
+
+                manifest = {
+                    "version": ver,
+                    "download_url": "https://goka-igo.com/staging/releases/goka-admin-staging.zip",
+                    "release_notes": f"v{ver} (staging)"
+                }
+
+                out_path = os.path.join(os.environ["PIPELINE_WORKSPACE"], "version-admin.json")
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, ensure_ascii=False, indent=2)
+                    f.write("\n")
+                print(f"Generated version-admin.json: {json.dumps(manifest, indent=2)}")
+            env:
+              PIPELINE_WORKSPACE: $(Pipeline.Workspace)
+            displayName: "Generate version-admin.json for admin auto-update"
+
+          - script: |
+              set -e
+              python -c "
+import paramiko, os
+host = os.environ['GOKA_FTP_HOST']
+user = os.environ['GOKA_FTP_USER']
+pw   = os.environ['GOKA_FTP_PASS']
+base = os.environ.get('GOKA_FTP_REMOTE', '').strip().strip('/')
+src  = os.path.join(os.environ['PIPELINE_WORKSPACE'], 'version-admin.json')
+
+ssh = paramiko.SSHClient()
+ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+ssh.connect(host, port=22, username=user, password=pw, timeout=90)
+sftp = ssh.open_sftp()
+try:
+    remote = '/' + base + '/version-admin.json' if base else '/version-admin.json'
+    sftp.put(src, remote)
+    print(f'Uploaded version-admin.json -> {remote}')
+finally:
+    sftp.close()
+    ssh.close()
+"
+            displayName: "SFTP upload version-admin.json to site root"
+            env:
+              GOKA_FTP_HOST: $(FTP_SERVER)
+              GOKA_FTP_USER: $(FTP_USERNAME)
+              GOKA_FTP_PASS: $(FTP_PASSWORD)
+              GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+              PIPELINE_WORKSPACE: $(Pipeline.Workspace)
+
           # ── 配信確認 ──
           - script: |
               set -e
               echo "Checking staging version..."
               curl -fsS "$(PUBLIC_BASE)/staging/version_staging.json" | head -c 500
+              echo
+              echo "Checking admin version-admin.json..."
+              curl -fsS "$(PUBLIC_BASE)/version-admin.json" | head -c 500
               echo
               echo "Checking update ZIP availability..."
               curl -sI "$(PUBLIC_BASE)/staging/releases/goka-go-update.zip" | head -3
