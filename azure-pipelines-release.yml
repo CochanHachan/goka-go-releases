@@ -7,7 +7,7 @@
 #
 # 流れ:
 #   1) Build (Windows):   PyInstaller → コード署名 → Inno Setup → ZIP 化
-#   2) Production (Linux): 承認待ち → FTP アップロード → Web 更新 → サーバーデプロイ
+#   2) Production (Linux): 承認待ち → SFTP アップロード → Web 更新 → サーバーデプロイ
 #
 # 必須 Variable Groups:
 #   esigner-secrets: ES_USERNAME, ES_PASSWORD
@@ -411,7 +411,7 @@ stages:
       RELEASE_NOTES: $[ stageDependencies.Build.WindowsBuild.outputs['versionStep.RELEASE_NOTES'] ]
     jobs:
       - deployment: ProductionDeploy
-        displayName: "Production FTP + Server Deploy"
+        displayName: "Production SFTP + Server Deploy"
         pool:
           vmImage: ubuntu-latest
         environment: 'production'
@@ -437,7 +437,10 @@ stages:
                     artifactName: "build-metadata"
                     targetPath: "$(Pipeline.Workspace)/metadata"
 
-                # ── 本番 FTP アップロード（version.json + ZIPs） ──
+                - script: pip install paramiko
+                  displayName: "Install paramiko (SFTP)"
+
+                # ── 本番 SFTP アップロード（version.json + ZIPs） ──
                 - script: |
                     set -e
                     python tools/release_publish_ftp.py \
@@ -446,13 +449,12 @@ stages:
                       --zip-admin "$(Pipeline.Workspace)/release/goka_admin_${RELEASE_VER}.zip" \
                       --public-base "$(PUBLIC_BASE)" \
                       --release-notes "${RELEASE_NOTES_VAL}"
-                  displayName: "FTP upload production ZIPs + version.json"
+                  displayName: "SFTP upload production ZIPs + version.json"
                   env:
                     GOKA_FTP_HOST: $(FTP_SERVER)
                     GOKA_FTP_USER: $(FTP_USERNAME)
                     GOKA_FTP_PASS: $(FTP_PASSWORD)
                     GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
                     RELEASE_VER: $(RELEASE_VERSION)
                     RELEASE_NOTES_VAL: $(RELEASE_NOTES)
 
@@ -472,25 +474,23 @@ stages:
                     python tools/staging_ftp_upload.py \
                       "$(Pipeline.Workspace)/release" \
                       "releases"
-                  displayName: "FTP upload update ZIP + installers"
+                  displayName: "SFTP upload update ZIP + installers"
                   env:
                     GOKA_FTP_HOST: $(FTP_SERVER)
                     GOKA_FTP_USER: $(FTP_USERNAME)
                     GOKA_FTP_PASS: $(FTP_PASSWORD)
                     GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
 
-                # ── Web ページ FTP アップロード ──
+                # ── Web ページ SFTP アップロード ──
                 - script: |
                     set -e
                     python tools/deploy_web_ftp.py
-                  displayName: "FTP upload web pages"
+                  displayName: "SFTP upload web pages"
                   env:
                     GOKA_FTP_HOST: $(FTP_SERVER)
                     GOKA_FTP_USER: $(FTP_USERNAME)
                     GOKA_FTP_PASS: $(FTP_PASSWORD)
                     GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-                    GOKA_FTP_TLS: $(GOKA_FTP_TLS)
                   continueOnError: true
 
                 # ── サーバーデプロイ（git pull + restart） ──

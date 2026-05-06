@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""リリース用 ZIP と version.json を FTPS で Xserver 等へアップロードする。
+"""リリース用 ZIP と version.json を SFTP/FTPS でサーバーへアップロードする。
 
-Azure Pipelines の「ステージング → 本番」連続デプロイで使う。手元の FTP 手動アップロード不要。
+Azure Pipelines の「ステージング → 本番」連続デプロイで使う。手元の手動アップロード不要。
 
-必須環境変数（deploy_web_ftp.py と同様）:
+必須環境変数:
   GOKA_FTP_HOST, GOKA_FTP_USER, GOKA_FTP_PASS
 
 任意:
   GOKA_FTP_REMOTE       … 例 public_html（先頭末尾スラッシュなし）
-  GOKA_FTP_TLS          … 1=FTPS（既定）、0=平文
+  GOKA_FTP_TLS          … 1=FTPS、0=平文FTP（SFTP利用時は無視）
+  GOKA_FTP_PORT         … 既定22（SFTP）。21を指定するとFTPS/FTPにフォールバック。
 
 必須引数（または環境変数で代替）:
   --version             … 例 1.2.162
@@ -31,71 +32,63 @@ import argparse
 import io
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 
 
-def _ftp_connect():
+def _sftp_connect():
+    """SFTP (paramiko) で接続する。"""
+    import paramiko
+
     host = os.environ.get("GOKA_FTP_HOST", "").strip()
     user = os.environ.get("GOKA_FTP_USER", "").strip()
     password = os.environ.get("GOKA_FTP_PASS", "")
     raw_remote = os.environ.get("GOKA_FTP_REMOTE", "")
     remote_base = raw_remote.strip().strip("/")
-    use_tls = os.environ.get("GOKA_FTP_TLS", "1").strip() != "0"
+    port = int(os.environ.get("GOKA_FTP_PORT", "22").strip())
 
     if not host or not user or not password:
-        print(
-            "ERROR: Set GOKA_FTP_HOST, GOKA_FTP_USER, GOKA_FTP_PASS",
-            file=sys.stderr,
-        )
+        print("ERROR: Set GOKA_FTP_HOST, GOKA_FTP_USER, GOKA_FTP_PASS", file=sys.stderr)
         sys.exit(1)
 
-    if use_tls:
-        from ftplib import FTP_TLS, error_perm
-
-        ftp = FTP_TLS()
-        ftp.connect(host, 21, timeout=120)
-        ftp.login(user, password)
-        ftp.prot_p()
-    else:
-        from ftplib import FTP, error_perm
-
-        ftp = FTP()
-        ftp.connect(host, 21, timeout=120)
-        ftp.login(user, password)
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(host, port=port, username=user, password=password, timeout=120)
+    sftp = ssh.open_sftp()
 
     base_parts = [p for p in remote_base.split("/") if p]
 
-    def cwd_from_root(parts: list[str]) -> None:
-        ftp.cwd("/")
+    def cwd_from_root(parts: list[str]) -> str:
+        """ディレクトリを再帰的に作成し、最終パスを返す。"""
+        current = "/"
         for p in parts:
+            current = current.rstrip("/") + "/" + p
             try:
-                ftp.cwd(p)
-            except error_perm:
-                try:
-                    ftp.mkd(p)
-                except error_perm:
-                    pass
-                ftp.cwd(p)
+                sftp.stat(current)
+            except FileNotFoundError:
+                sftp.mkdir(current)
+        return current
 
-    return ftp, cwd_from_root, base_parts
+    return sftp, ssh, cwd_from_root, base_parts
 
 
-def _upload_file(ftp, cwd_from_root, base_parts: list[str], rel_parts: list[str], local: Path) -> None:
-    """base_parts + rel_parts のディレクトリに local のファイル名で STOR。"""
-    parts = base_parts + rel_parts[:-1]
-    cwd_from_root(parts)
+def _upload_file(sftp, cwd_from_root, base_parts: list[str], rel_parts: list[str], local: Path) -> None:
+    """base_parts + rel_parts のディレクトリに local のファイルをアップロード。"""
+    dir_parts = base_parts + rel_parts[:-1]
+    remote_dir = cwd_from_root(dir_parts)
     name = rel_parts[-1]
-    with open(local, "rb") as f:
-        ftp.storbinary(f"STOR {name}", f)
+    remote_path = remote_dir.rstrip("/") + "/" + name
+    sftp.put(str(local), remote_path)
 
 
-def _upload_bytes(ftp, cwd_from_root, base_parts: list[str], rel_parts: list[str], data: bytes) -> None:
-    parts = base_parts + rel_parts[:-1]
-    cwd_from_root(parts)
+def _upload_bytes(sftp, cwd_from_root, base_parts: list[str], rel_parts: list[str], data: bytes) -> None:
+    dir_parts = base_parts + rel_parts[:-1]
+    remote_dir = cwd_from_root(dir_parts)
     name = rel_parts[-1]
-    bio = io.BytesIO(data)
-    ftp.storbinary(f"STOR {name}", bio)
+    remote_path = remote_dir.rstrip("/") + "/" + name
+    with sftp.open(remote_path, "wb") as f:
+        f.write(data)
 
 
 def _build_manifest(
@@ -157,7 +150,7 @@ def main() -> int:
     manifest = _build_manifest(ver, args.public_base, args.path_prefix, args.release_notes)
     body = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
 
-    ftp, cwd_from_root, base_parts = _ftp_connect()
+    sftp, ssh, cwd_from_root, base_parts = _sftp_connect()
     try:
         go_name = "goka_go_{}.zip".format(ver)
         ad_name = "goka_admin_{}.zip".format(ver)
@@ -166,7 +159,7 @@ def main() -> int:
         rel_ad = prefix_parts + ["releases", ad_name]
 
         print("Upload version.json ->", "/".join(rel_version))
-        _upload_bytes(ftp, cwd_from_root, base_parts, rel_version, body)
+        _upload_bytes(sftp, cwd_from_root, base_parts, rel_version, body)
         # version-admin.json: 管理者アプリ自動更新用
         admin_manifest = {
             "version": ver,
@@ -176,17 +169,15 @@ def main() -> int:
         admin_body = json.dumps(admin_manifest, ensure_ascii=False, indent=2).encode("utf-8")
         rel_version_admin = prefix_parts + ["version-admin.json"]
         print("Upload version-admin.json ->", "/".join(rel_version_admin))
-        _upload_bytes(ftp, cwd_from_root, base_parts, rel_version_admin, admin_body)
+        _upload_bytes(sftp, cwd_from_root, base_parts, rel_version_admin, admin_body)
         print("Upload", go_name)
-        _upload_file(ftp, cwd_from_root, base_parts, rel_go, zg)
+        _upload_file(sftp, cwd_from_root, base_parts, rel_go, zg)
         print("Upload", ad_name)
-        _upload_file(ftp, cwd_from_root, base_parts, rel_ad, za)
+        _upload_file(sftp, cwd_from_root, base_parts, rel_ad, za)
         print("OK. Manifest:", manifest)
     finally:
-        try:
-            ftp.quit()
-        except Exception:
-            ftp.close()
+        sftp.close()
+        ssh.close()
 
     return 0
 

@@ -1,16 +1,15 @@
 # =============================================================================
-# Azure Pipelines — ステージング EXE ビルド + FTP 配信
+# Azure Pipelines — ステージング EXE ビルド + SFTP 配信
 #
 # GitHub Actions "One Click Staging EXE" の Azure Pipelines 移植版。
 # main プッシュまたは手動実行で、テスト用クライアント・管理パネル・
 # インストーラー・自動アップデート用軽量 ZIP をビルドし、
-# Xserver (goka-igo.com) へ FTPS で配信する。
+# VPS (goka-igo.com) へ SFTP（22番ポート）で配信する。
 #
 # 必須パイプライン変数（シークレット推奨）:
 #   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
 # 任意:
 #   GOKA_FTP_REMOTE … 例: public_html
-#   GOKA_FTP_TLS    … 1=FTPS（既定）, 0=平文
 #
 # 登録: Pipelines → 新規 → 既存の YAML → /azure-pipelines-staging-exe.yml
 # =============================================================================
@@ -183,12 +182,12 @@ stages:
               publishLocation: "pipeline"
             displayName: "Publish staging artifacts"
 
-  # ── Stage 2: FTP 配信（ステージング） ──
+  # ── Stage 2: SFTP 配信（ステージング） ──
   - stage: Deploy
     displayName: "Deploy staging to goka-igo.com"
     dependsOn: Build
     jobs:
-      - job: FtpDeploy
+      - job: SftpDeploy
         pool:
           vmImage: ubuntu-latest
         steps:
@@ -204,19 +203,21 @@ stages:
               artifactName: "staging-build"
               targetPath: "$(Pipeline.Workspace)/staging"
 
-          # ── FTP でステージング ZIPs + インストーラーをアップロード ──
+          - script: pip install paramiko
+            displayName: "Install paramiko (SFTP)"
+
+          # ── SFTP でステージング ZIPs + インストーラーをアップロード ──
           - script: |
               set -e
               python tools/staging_ftp_upload.py \
                 "$(Pipeline.Workspace)/staging" \
                 "staging/releases"
-            displayName: "FTP upload ZIPs + installer"
+            displayName: "SFTP upload ZIPs + installer"
             env:
               GOKA_FTP_HOST: $(FTP_SERVER)
               GOKA_FTP_USER: $(FTP_USERNAME)
               GOKA_FTP_PASS: $(FTP_PASSWORD)
               GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-              GOKA_FTP_TLS: $(GOKA_FTP_TLS)
 
           # ── 配信確認 ──
           - script: |
