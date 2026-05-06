@@ -1,8 +1,8 @@
 # =============================================================================
-# Azure Pipelines — web/ を FTPS で本番サーバーへデプロイ（GitHub 非依存）
+# Azure Pipelines — web/ を SFTP で本番サーバーへデプロイ（GitHub 非依存）
 #
 # クライアント ZIP と version.json の本番反映は別パイプライン:
-#   azure-pipelines-release.yml（手動実行・ステージング→本番 FTPS）
+#   azure-pipelines-release.yml（手動実行・ステージング→本番 SFTP）
 # =============================================================================
 #
 # 配置: リポジトリ直下の azure-pipelines.yml
@@ -14,8 +14,7 @@
 # パイプライン変数（推奨: FTP_* はシークレット）:
 #   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD  … 必須
 # 任意:
-#   GOKA_FTP_REMOTE  … リモート相対パス（例: public_html）。未設定で FTP ルート相当。
-#   GOKA_FTP_TLS     … 1=FTPS（既定）、0=平文 FTP
+#   GOKA_FTP_REMOTE  … リモート相対パス（例: public_html）。未設定で SFTP ルート相当。
 #   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID … 両方あるときキャッシュ全パージ
 # =============================================================================
 
@@ -31,6 +30,9 @@ trigger:
 
 pr: none
 
+variables:
+- group: ftp-secrets
+
 pool:
   vmImage: ubuntu-latest
 
@@ -42,15 +44,16 @@ steps:
     inputs:
       versionSpec: "3.12"
 
+  - script: pip install paramiko
+    displayName: "Install paramiko (SFTP)"
+
   - script: python tools/deploy_web_ftp.py
-    displayName: "Deploy web/ via FTPS (tools/deploy_web_ftp.py)"
+    displayName: "Deploy web/ via SFTP (tools/deploy_web_ftp.py)"
     env:
-      # パイプライン変数 FTP_* → スクリプトが読む GOKA_FTP_* に渡す
       GOKA_FTP_HOST: $(FTP_SERVER)
       GOKA_FTP_USER: $(FTP_USERNAME)
       GOKA_FTP_PASS: $(FTP_PASSWORD)
       GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-      GOKA_FTP_TLS: $(GOKA_FTP_TLS)
 
   - script: |
       set -e
