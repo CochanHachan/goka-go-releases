@@ -104,7 +104,7 @@ stages:
                 import json, os, re
                 from datetime import datetime, timezone
 
-                manual_version = "${{ parameters.releaseVersion }}".strip()
+                manual_version = os.environ.get("PARAM_VERSION", "").strip()
 
                 if manual_version:
                     new_version = manual_version
@@ -116,7 +116,7 @@ stages:
                     parts[-1] = str(int(parts[-1]) + 1)
                     new_version = ".".join(parts)
 
-                notes = "${{ parameters.releaseNotes }}".strip()
+                notes = os.environ.get("PARAM_NOTES", "").strip()
                 if not notes:
                     notes = f"v{new_version} 自動ビルド"
 
@@ -126,6 +126,9 @@ stages:
                 print(f"##vso[task.setvariable variable=BUILD_DATE;isOutput=true]{build_date}")
                 print(f"##vso[task.setvariable variable=RELEASE_NOTES;isOutput=true]{notes}")
                 print(f"Version: {new_version}, Build: {build_date}, Notes: {notes}")
+            env:
+              PARAM_VERSION: ${{ parameters.releaseVersion }}
+              PARAM_NOTES: ${{ parameters.releaseNotes }}
             displayName: "Determine version"
 
           # ── ソースファイルのバージョン更新 ──
