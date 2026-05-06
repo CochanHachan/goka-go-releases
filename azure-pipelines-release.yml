@@ -138,8 +138,8 @@ stages:
               script: |
                 import re, os
 
-                version = "$(versionStep.RELEASE_VERSION)"
-                build_date = "$(versionStep.BUILD_DATE)"
+                version = os.environ["RELEASE_VER"]
+                build_date = os.environ["BUILD_DATE"]
 
                 with open("igo/constants.py", "r", encoding="utf-8") as f:
                     content = f.read()
@@ -155,6 +155,9 @@ stages:
                 with open("installer/GokaGo_Setup.iss", "w", encoding="utf-8") as f:
                     f.write(content)
                 print(f"Updated GokaGo_Setup.iss: AppVersion={version}")
+            env:
+              RELEASE_VER: $(versionStep.RELEASE_VERSION)
+              BUILD_DATE: $(versionStep.BUILD_DATE)
             displayName: "Update version in source files"
 
           # ── 不足アセット生成 ──
@@ -225,8 +228,10 @@ stages:
             displayName: "PyInstaller igo_admin"
 
           # ── リリース ZIP 作成 ──
-          - script: python tools/make_release_zips.py $(versionStep.RELEASE_VERSION) "$(Build.ArtifactStagingDirectory)/release"
+          - script: python tools/make_release_zips.py "${RELEASE_VER}" "$(Build.ArtifactStagingDirectory)/release"
             displayName: "Create release ZIPs"
+            env:
+              RELEASE_VER: $(versionStep.RELEASE_VERSION)
 
           # ── 軽量アップデート ZIP（KataGo 除外） ──
           - task: PythonScript@0
@@ -235,7 +240,7 @@ stages:
               script: |
                 import os, zipfile
 
-                ver = "$(versionStep.RELEASE_VERSION)"
+                ver = os.environ["RELEASE_VER"]
                 release_dir = os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"] + "/release"
                 full_zip = os.path.join(release_dir, f"goka_go_{ver}.zip")
                 update_zip = os.path.join(release_dir, f"goka_go_update_{ver}.zip")
@@ -249,12 +254,14 @@ stages:
                 full_mb = os.path.getsize(full_zip) / 1024 / 1024
                 update_mb = os.path.getsize(update_zip) / 1024 / 1024
                 print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
+            env:
+              RELEASE_VER: $(versionStep.RELEASE_VERSION)
             displayName: "Create lightweight update ZIP"
 
           # ── Inno Setup インストーラー（本番） ──
           - powershell: |
               choco install innosetup -y --no-progress
-              $version = '$(versionStep.RELEASE_VERSION)'
+              $version = $env:RELEASE_VER
               $issFile = "installer/GokaGo_Setup.iss"
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
               & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
@@ -268,6 +275,8 @@ stages:
                   Write-Host "Installer: $sizeMB MB -> $dest/Goka_Installer.exe"
               }
             displayName: "Build production installer"
+            env:
+              RELEASE_VER: $(versionStep.RELEASE_VERSION)
 
           # ── インストーラー署名 ──
           - powershell: |
@@ -294,7 +303,7 @@ stages:
 
           # ── 管理者 Inno Setup インストーラー ──
           - powershell: |
-              $version = '$(versionStep.RELEASE_VERSION)'
+              $version = $env:RELEASE_VER
               $issFile = "installer/GokaAdmin_Setup.iss"
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
               & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
@@ -308,6 +317,8 @@ stages:
                   Write-Host "Admin installer: $sizeMB MB -> $dest/GokaAdmin_Installer.exe"
               }
             displayName: "Build admin installer"
+            env:
+              RELEASE_VER: $(versionStep.RELEASE_VERSION)
 
           # ── 管理者インストーラー署名 ──
           - powershell: |
