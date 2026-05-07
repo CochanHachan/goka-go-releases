@@ -64,6 +64,19 @@ stages:
           - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
             displayName: "Install build dependencies"
 
+          # ── 不足アセット作成（本番ビルド前に必要） ──
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import os, shutil, json
+                if not os.path.exists("goka_go_test.ico"):
+                    shutil.copy2("goka_go.ico", "goka_go_test.ico")
+                if not os.path.exists("igo_config.json"):
+                    with open("igo_config.json", "w", encoding="utf-8") as f:
+                        json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
+            displayName: "Create missing assets"
+
           # ── 本番用インストーラービルド（_ENV = "production" のまま） ──
           - script: pyinstaller goka_go.spec --noconfirm
             displayName: "PyInstaller goka_go (production)"
@@ -123,19 +136,6 @@ stages:
                     json.dump(d, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
                     print("Updated version_staging.json:", json.dumps(d, indent=2))
             displayName: "Update download URLs for goka-igo.com"
-
-          # ── 不足アセット作成 ──
-          - task: PythonScript@0
-            inputs:
-              scriptSource: "inline"
-              script: |
-                import os, shutil, json
-                if not os.path.exists("goka_go_test.ico"):
-                    shutil.copy2("goka_go.ico", "goka_go_test.ico")
-                if not os.path.exists("igo_config.json"):
-                    with open("igo_config.json", "w", encoding="utf-8") as f:
-                        json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
-            displayName: "Create missing assets"
 
           # ── KataGo ダウンロード ──
           - script: python tools/download_katago_for_windows_build.py
