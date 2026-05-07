@@ -64,6 +64,34 @@ stages:
           - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
             displayName: "Install build dependencies"
 
+          # ── 本番用インストーラービルド（_ENV = "production" のまま） ──
+          - script: pyinstaller goka_go.spec --noconfirm
+            displayName: "PyInstaller goka_go (production)"
+
+          - powershell: |
+              choco install innosetup -y --no-progress
+              $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+              $issFile = "installer/GokaGo_Setup.iss"
+              (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+              & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+              Write-Host "Production installer built: Goka_Installer_$version.exe"
+            displayName: "Build production Inno Setup installer"
+
+          - task: PythonScript@0
+            inputs:
+              scriptSource: "inline"
+              script: |
+                import glob, shutil, os
+                staging_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "staging")
+                os.makedirs(staging_dir, exist_ok=True)
+                exes = glob.glob("dist/installer/Goka_Installer_*.exe")
+                if exes:
+                    shutil.copy2(exes[0], os.path.join(staging_dir, "Goka_Installer.exe"))
+                    print(f"Production installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB")
+                else:
+                    print("WARNING: Production installer not found!")
+            displayName: "Copy production installer to staging directory"
+
           # ── ステージング環境へ切替 ──
           - task: PythonScript@0
             inputs:
@@ -113,9 +141,9 @@ stages:
           - script: python tools/download_katago_for_windows_build.py
             displayName: "Download KataGo"
 
-          # ── PyInstaller ビルド ──
-          - script: pyinstaller goka_go.spec --noconfirm
-            displayName: "PyInstaller goka_go"
+          # ── PyInstaller ビルド（ステージング版、再ビルド） ──
+          - script: pyinstaller goka_go.spec --noconfirm --clean
+            displayName: "PyInstaller goka_go (staging)"
 
           - script: pyinstaller igo_admin.spec --noconfirm
             displayName: "PyInstaller igo_admin"
@@ -124,15 +152,14 @@ stages:
           - script: python tools/copy_katago_into_dist.py
             displayName: "Copy KataGo into dist"
 
-          # ── Inno Setup インストーラー ──
+          # ── Inno Setup インストーラー（ステージング版） ──
           - powershell: |
-              choco install innosetup -y --no-progress
               $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
               $issFile = "installer/GokaGoTest_Setup.iss"
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
               & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
-              Write-Host "Installer built: version $version"
-            displayName: "Build Inno Setup installer"
+              Write-Host "Staging installer built: version $version"
+            displayName: "Build staging Inno Setup installer"
 
           # ── ZIP 作成（フル + 軽量アップデート用） ──
           - task: PythonScript@0
