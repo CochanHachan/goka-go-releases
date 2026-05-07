@@ -32,8 +32,17 @@ def main() -> int:
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(host, port=port, username=user, password=password, timeout=90)
+    ssh.connect(host, port=port, username=user, password=password, timeout=120, banner_timeout=60)
+    transport = ssh.get_transport()
+    if transport is not None:
+        transport.default_window_size = 2147483647
+        transport.packetizer.REKEY_BYTES = pow(2, 40)
+        transport.packetizer.REKEY_PACKETS = pow(2, 40)
     sftp = ssh.open_sftp()
+    channel = sftp.get_channel()
+    if channel is not None:
+        channel.in_window_size = 2147483647
+        channel.out_window_size = 2147483647
 
     repo = Path(__file__).resolve().parent.parent
     web = repo / "web"
