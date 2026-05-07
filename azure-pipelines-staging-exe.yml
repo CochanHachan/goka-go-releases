@@ -234,6 +234,7 @@ stages:
 
                 - script: |
                     echo "=== Smoke test ==="
-                    curl -I "https://goka-igo.com/version-admin.json"
-                    curl -I "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
+                    curl -sf "https://goka-igo.com/version-admin-check.json?t=$(date +%s)"
+                    echo
+                    curl -sI "https://goka-igo.com/staging/releases/goka-admin-staging.zip" | head -5
                   displayName: "Smoke test"

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""web/ を SFTP でサーバーの public_html 直下に再帰アップロードする。
+"""web/ を SFTP でサーバーのドキュメントルートに再帰アップロードする。
 
 環境変数（必須）:
   GOKA_FTP_HOST   例: your-vps-host.example.com
@@ -7,7 +7,7 @@
   GOKA_FTP_PASS   SSH/SFTPパスワード
 
 任意:
-  GOKA_FTP_REMOTE   先頭スラッシュなし。デフォルト: public_html
+  GOKA_FTP_REMOTE   アップロード先ディレクトリ。デフォルト: /var/www/html
   GOKA_FTP_PORT     既定22（SFTP）
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ def main() -> int:
     host = os.environ.get("GOKA_FTP_HOST", "").strip()
     user = os.environ.get("GOKA_FTP_USER", "").strip()
     password = os.environ.get("GOKA_FTP_PASS", "")
-    remote_base = os.environ.get("GOKA_FTP_REMOTE", "public_html").strip().strip("/")
+    remote_base = os.environ.get("GOKA_FTP_REMOTE", "/var/www/html").strip()
     port = int(os.environ.get("GOKA_FTP_PORT", "22").strip())
 
     if not host or not user or not password:
