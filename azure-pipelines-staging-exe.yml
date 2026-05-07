@@ -1,17 +1,15 @@
 # =============================================================================
-# Azure Pipelines — ステージング EXE ビルド + SFTP 配信
+# Azure Pipelines — ステージング & 本番 EXE ビルド + SFTP 配信
 #
-# GitHub Actions "One Click Staging EXE" の Azure Pipelines 移植版。
-# main プッシュまたは手動実行で、テスト用クライアント・管理パネル・
-# インストーラー・自動アップデート用軽量 ZIP をビルドし、
-# VPS (goka-igo.com) へ SFTP（22番ポート）で配信する。
+# ■ 実行順序:
+#   1. main プッシュ → ステージングのビルド + デプロイ（自動）
+#   2. 承認（Approve）後 → 本番用インストーラーのビルド + デプロイ
+#
+# ■ コスト最適化:
+#   本番ビルドは承認されるまで実行しない（無駄な課金を防止）
 #
 # 必須パイプライン変数（シークレット推奨）:
 #   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
-# 任意:
-#   GOKA_FTP_REMOTE … 例: public_html
-#
-# 登録: Pipelines → 新規 → 既存の YAML → /azure-pipelines-staging-exe.yml
 # =============================================================================
 
 trigger:
@@ -21,12 +19,6 @@ trigger:
 
 pr: none
 
-parameters:
-  - name: sourceBranch
-    displayName: "ビルド元ブランチ（未指定時は main）"
-    type: string
-    default: "main"
-
 variables:
 - group: ftp-secrets
 - name: PUBLIC_BASE
@@ -35,9 +27,11 @@ variables:
   value: "staging"
 
 stages:
-  # ── Stage 1: Windows ビルド ──
-  - stage: Build
-    displayName: "Build Staging Client"
+  # =========================================================================
+  # Stage 1: ステージング ビルド（自動実行）
+  # =========================================================================
+  - stage: BuildStaging
+    displayName: "Build Staging"
     jobs:
       - job: WindowsBuild
         pool:
@@ -64,7 +58,7 @@ stages:
           - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
             displayName: "Install build dependencies"
 
-          # ── 不足アセット作成（本番ビルド前に必要） ──
+          # ── 不足アセット作成 ──
           - task: PythonScript@0
             inputs:
               scriptSource: "inline"
@@ -76,34 +70,6 @@ stages:
                     with open("igo_config.json", "w", encoding="utf-8") as f:
                         json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
             displayName: "Create missing assets"
-
-          # ── 本番用インストーラービルド（_ENV = "production" のまま） ──
-          - script: pyinstaller goka_go.spec --noconfirm
-            displayName: "PyInstaller goka_go (production)"
-
-          - powershell: |
-              choco install innosetup -y --no-progress
-              $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
-              $issFile = "installer/GokaGo_Setup.iss"
-              (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
-              & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
-              Write-Host "Production installer built: Goka_Installer_$version.exe"
-            displayName: "Build production Inno Setup installer"
-
-          - task: PythonScript@0
-            inputs:
-              scriptSource: "inline"
-              script: |
-                import glob, shutil, os
-                staging_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "staging")
-                os.makedirs(staging_dir, exist_ok=True)
-                exes = glob.glob("dist/installer/Goka_Installer_*.exe")
-                if exes:
-                    shutil.copy2(exes[0], os.path.join(staging_dir, "Goka_Installer.exe"))
-                    print(f"Production installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB")
-                else:
-                    print("WARNING: Production installer not found!")
-            displayName: "Copy production installer to staging directory"
 
           # ── ステージング環境へ切替 ──
           - task: PythonScript@0
@@ -129,7 +95,6 @@ stages:
                     d = json.load(open(path, encoding="utf-8"))
                     d["download_url"] = "https://goka-igo.com/staging/releases/goka-go-update.zip"
                     d["admin_download_url"] = "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
-                    # Sync version from constants.py
                     m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', open("igo/constants.py", encoding="utf-8").read())
                     if m:
                         d["version"] = m.group(1)
@@ -141,9 +106,9 @@ stages:
           - script: python tools/download_katago_for_windows_build.py
             displayName: "Download KataGo"
 
-          # ── PyInstaller ビルド（ステージング版、再ビルド） ──
-          - script: pyinstaller goka_go.spec --noconfirm --clean
-            displayName: "PyInstaller goka_go (staging)"
+          # ── PyInstaller ビルド ──
+          - script: pyinstaller goka_go.spec --noconfirm
+            displayName: "PyInstaller goka_go"
 
           - script: pyinstaller igo_admin.spec --noconfirm
             displayName: "PyInstaller igo_admin"
@@ -154,6 +119,7 @@ stages:
 
           # ── Inno Setup インストーラー（ステージング版） ──
           - powershell: |
+              choco install innosetup -y --no-progress
               $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
               $issFile = "installer/GokaGoTest_Setup.iss"
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
@@ -218,13 +184,15 @@ stages:
               publishLocation: "pipeline"
             displayName: "Publish staging artifacts"
 
-  # ── Stage 2: SFTP 配信（ステージング） ──
-  - stage: Deploy
-    displayName: "Deploy staging to goka-igo.com"
-    dependsOn: Build
+  # =========================================================================
+  # Stage 2: ステージング デプロイ（自動実行）
+  # =========================================================================
+  - stage: DeployStaging
+    displayName: "Deploy Staging"
+    dependsOn: BuildStaging
     jobs:
       - deployment: StagingDeploy
-        displayName: "Deploy to Staging"
+        displayName: "SFTP Deploy to Staging"
         pool:
           vmImage: ubuntu-latest
         environment: 'staging'
@@ -251,7 +219,7 @@ stages:
                     python tools/staging_ftp_upload.py \
                       "$(Pipeline.Workspace)/staging-build" \
                       "staging/releases"
-                  displayName: "Run SFTP deploy script"
+                  displayName: "SFTP upload staging files"
                   env:
                     GOKA_FTP_HOST: $(FTP_SERVER)
                     GOKA_FTP_USER: $(FTP_USERNAME)
@@ -265,3 +233,147 @@ stages:
                     echo
                     curl -sI "https://goka-igo.com/staging/releases/goka-admin-staging.zip" | head -5
                   displayName: "Smoke test"
+
+  # =========================================================================
+  # Stage 3: 本番ビルド（承認後に実行）
+  # =========================================================================
+  - stage: BuildProduction
+    displayName: "Build Production (承認後)"
+    dependsOn: DeployStaging
+    jobs:
+      - deployment: ProductionBuildApproval
+        displayName: "Build Production Installer"
+        pool:
+          vmImage: windows-latest
+        environment: 'production'
+        variables:
+          PYTHONIOENCODING: utf-8
+          PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 0
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: "3.13"
+
+                - task: Cache@2
+                  displayName: "Cache pip packages"
+                  inputs:
+                    key: 'pip | "windows" | requirements-build.txt'
+                    restoreKeys: |
+                      pip | "windows"
+                    path: $(PIP_CACHE_DIR)
+
+                - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
+                  displayName: "Install build dependencies"
+
+                # ── 不足アセット作成 ──
+                - task: PythonScript@0
+                  inputs:
+                    scriptSource: "inline"
+                    script: |
+                      import os, shutil, json
+                      if not os.path.exists("goka_go_test.ico"):
+                          shutil.copy2("goka_go.ico", "goka_go_test.ico")
+                      if not os.path.exists("igo_config.json"):
+                          with open("igo_config.json", "w", encoding="utf-8") as f:
+                              json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
+                  displayName: "Create missing assets"
+
+                # ── KataGo ダウンロード ──
+                - script: python tools/download_katago_for_windows_build.py
+                  displayName: "Download KataGo"
+
+                # ── PyInstaller ビルド（本番: _ENV = "production"） ──
+                - script: pyinstaller goka_go.spec --noconfirm
+                  displayName: "PyInstaller goka_go (production)"
+
+                # ── KataGo を dist にコピー ──
+                - script: python tools/copy_katago_into_dist.py
+                  displayName: "Copy KataGo into dist"
+
+                # ── Inno Setup 本番インストーラー ──
+                - powershell: |
+                    choco install innosetup -y --no-progress
+                    $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+                    $issFile = "installer/GokaGo_Setup.iss"
+                    (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+                    & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+                    Write-Host "Production installer built: Goka_Installer_$version.exe"
+                  displayName: "Build production Inno Setup installer"
+
+                # ── 本番アーティファクト準備 ──
+                - task: PythonScript@0
+                  inputs:
+                    scriptSource: "inline"
+                    script: |
+                      import glob, shutil, os
+                      prod_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "production")
+                      os.makedirs(prod_dir, exist_ok=True)
+                      exes = glob.glob("dist/installer/Goka_Installer_*.exe")
+                      if exes:
+                          shutil.copy2(exes[0], os.path.join(prod_dir, "Goka_Installer.exe"))
+                          print(f"Production installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB")
+                      else:
+                          raise FileNotFoundError("Production installer not found!")
+                  displayName: "Prepare production artifacts"
+
+                # ── アーティファクト公開 ──
+                - task: PublishPipelineArtifact@1
+                  inputs:
+                    targetPath: "$(Build.ArtifactStagingDirectory)/production"
+                    artifact: "production-build"
+                    publishLocation: "pipeline"
+                  displayName: "Publish production artifacts"
+
+  # =========================================================================
+  # Stage 4: 本番デプロイ（ビルド成功後、自動実行）
+  # =========================================================================
+  - stage: DeployProduction
+    displayName: "Deploy Production"
+    dependsOn: BuildProduction
+    jobs:
+      - deployment: ProductionDeploy
+        displayName: "SFTP Deploy Production Installer"
+        pool:
+          vmImage: ubuntu-latest
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.12'
+
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifactName: 'production-build'
+                    targetPath: '$(Pipeline.Workspace)/production-build'
+
+                - script: pip install paramiko
+                  displayName: "Install paramiko"
+
+                - script: |
+                    set -e
+                    python tools/staging_ftp_upload.py \
+                      "$(Pipeline.Workspace)/production-build" \
+                      "staging/releases"
+                  displayName: "SFTP upload production installer"
+                  env:
+                    GOKA_FTP_HOST: $(FTP_SERVER)
+                    GOKA_FTP_USER: $(FTP_USERNAME)
+                    GOKA_FTP_PASS: $(FTP_PASSWORD)
+                    GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+
+                - script: |
+                    echo "=== Production smoke test ==="
+                    curl -sf "https://goka-igo.com/staging/releases/Goka_Installer.exe" -o /dev/null -w "HTTP %{http_code} Size: %{size_download} bytes\n"
+                    echo "Production installer deployed successfully!"
+                  displayName: "Smoke test production installer"
