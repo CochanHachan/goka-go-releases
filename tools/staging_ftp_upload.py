@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """ステージング成果物を SFTP でサーバーにアップロードする。
 
+一括転送方式: ファイルを tar.gz にまとめて1回で転送し、
+サーバー側で展開する。個別転送より大幅に高速。
+
 環境変数（必須）:
   GOKA_FTP_HOST, GOKA_FTP_USER, GOKA_FTP_PASS
 任意:
@@ -19,6 +22,7 @@ import json
 import os
 import re
 import sys
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -50,8 +54,8 @@ def _detect_version(local_dir: Path) -> str:
     return ""
 
 
-def _sftp_connect():
-    """高速 SFTP 接続を確立する。"""
+def _ssh_connect():
+    """高速 SSH/SFTP 接続を確立する。"""
     import paramiko
 
     host = os.environ.get("GOKA_FTP_HOST", "").strip()
@@ -67,7 +71,6 @@ def _sftp_connect():
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    # 高速転送のためウィンドウサイズを最大化
     ssh.connect(
         host,
         port=port,
@@ -78,12 +81,11 @@ def _sftp_connect():
     )
     transport = ssh.get_transport()
     if transport is not None:
-        transport.default_window_size = 2147483647  # ~2GB
+        transport.default_window_size = 2147483647
         transport.packetizer.REKEY_BYTES = pow(2, 40)
         transport.packetizer.REKEY_PACKETS = pow(2, 40)
 
     sftp = ssh.open_sftp()
-    # SFTP チャンネルのバッファサイズを拡大
     channel = sftp.get_channel()
     if channel is not None:
         channel.in_window_size = 2147483647
@@ -127,6 +129,19 @@ def _upload_with_progress(sftp, local_path: str, remote_path: str) -> None:
     print(f"    Completed in {elapsed:.1f}s ({speed:.1f} MB/s)")
 
 
+def _ssh_exec(ssh, cmd: str) -> str:
+    """SSH コマンドを実行して stdout を返す。"""
+    print(f"  SSH: {cmd}")
+    _, stdout, stderr = ssh.exec_command(cmd, timeout=120)
+    out = stdout.read().decode("utf-8", errors="replace").strip()
+    err = stderr.read().decode("utf-8", errors="replace").strip()
+    if out:
+        print(f"  stdout: {out}")
+    if err:
+        print(f"  stderr: {err}")
+    return out
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print("Usage: staging_ftp_upload.py <local_dir> <remote_subdir>", file=sys.stderr)
@@ -139,31 +154,42 @@ def main() -> int:
         print(f"ERROR: {local_dir} is not a directory", file=sys.stderr)
         return 1
 
-    # ファイル一覧を事前に取得してサイズを表示
     files = sorted([f for f in local_dir.iterdir() if f.is_file()])
     total_size = sum(f.stat().st_size for f in files)
     print(f"Files to upload: {len(files)} ({total_size / 1024 / 1024:.1f} MB total)")
     for f in files:
         print(f"  {f.name}: {f.stat().st_size / 1024 / 1024:.1f} MB")
 
-    ssh, sftp, remote_base = _sftp_connect()
-
+    ssh, sftp, remote_base = _ssh_connect()
     target_parts = [p for p in f"{remote_base}/{remote_subdir}".split("/") if p]
 
     try:
         remote_dir = _ensure_dir(sftp, target_parts)
-        uploaded = 0
         upload_start = time.time()
 
-        for fpath in files:
-            size_mb = fpath.stat().st_size / 1024 / 1024
-            print(f"Uploading {fpath.name} ({size_mb:.1f} MB)...")
-            remote_path = remote_dir.rstrip("/") + "/" + fpath.name
-            _upload_with_progress(sftp, str(fpath), remote_path)
-            uploaded += 1
+        # ── 一括転送: tar.gz にまとめて1回で送り、サーバーで展開 ──
+        print("\n--- Bundling files into tar.gz ---")
+        tmp_tar = tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False)
+        try:
+            with tarfile.open(tmp_tar.name, "w:gz") as tar:
+                for fpath in files:
+                    tar.add(str(fpath), arcname=fpath.name)
+            tar_size = os.path.getsize(tmp_tar.name)
+            print(f"Bundle size: {tar_size / 1024 / 1024:.1f} MB (from {total_size / 1024 / 1024:.1f} MB)")
+
+            remote_tar = remote_dir.rstrip("/") + "/_deploy_bundle.tar.gz"
+            print(f"Uploading bundle to {remote_tar}...")
+            _upload_with_progress(sftp, tmp_tar.name, remote_tar)
+
+            # サーバー側で展開
+            print("Extracting on server...")
+            _ssh_exec(ssh, f"cd {remote_dir} && tar xzf _deploy_bundle.tar.gz && rm -f _deploy_bundle.tar.gz")
+            print(f"Bundle transfer + extract completed.")
+        finally:
+            os.unlink(tmp_tar.name)
 
         total_elapsed = time.time() - upload_start
-        print(f"Done. {uploaded} files uploaded to /{'/'.join(target_parts)} in {total_elapsed:.1f}s")
+        print(f"Done. {len(files)} files deployed to /{'/'.join(target_parts)} in {total_elapsed:.1f}s")
 
         # ── version-admin.json をサイト直下にアップロード ──
         download_url = os.environ.get("ADMIN_DOWNLOAD_URL", "").strip()
@@ -181,19 +207,17 @@ def main() -> int:
                     "release_notes": f"v{version}",
                 }
                 print(f"Manifest: {json.dumps(manifest, indent=2)}")
-                tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
-                try:
-                    json.dump(manifest, tmp, ensure_ascii=False, indent=2)
-                    tmp.close()
-                    dest = base_dir.rstrip("/") + "/version-admin.json"
-                    print(f"Uploading to: {dest}")
-                    sftp.put(tmp.name, dest)
-                    print(f"OK: Uploaded version-admin.json -> {dest}")
-                except Exception as e:
-                    print(f"ERROR: Failed to upload version-admin.json: {e}", file=sys.stderr)
-                    raise
-                finally:
-                    os.unlink(tmp.name)
+                manifest_json = json.dumps(manifest, ensure_ascii=False, indent=2)
+                dest = base_dir.rstrip("/") + "/version-admin.json"
+                print(f"Writing to: {dest}")
+                # SFTP で直接書き込み
+                with sftp.open(dest, "w") as f:
+                    f.write(manifest_json)
+                print(f"OK: Uploaded version-admin.json -> {dest}")
+                # 書き込み確認
+                with sftp.open(dest, "r") as f:
+                    verify = f.read().decode("utf-8")
+                print(f"Verify: {verify}")
             else:
                 print("WARNING: Could not detect version, skipping version-admin.json")
         else:

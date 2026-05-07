@@ -44,6 +44,7 @@ stages:
           vmImage: windows-latest
         variables:
           PYTHONIOENCODING: utf-8
+          PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
         steps:
           - checkout: self
             fetchDepth: 0
@@ -51,6 +52,14 @@ stages:
           - task: UsePythonVersion@0
             inputs:
               versionSpec: "3.13"
+
+          - task: Cache@2
+            displayName: "Cache pip packages"
+            inputs:
+              key: 'pip | "windows" | requirements-build.txt'
+              restoreKeys: |
+                pip | "windows"
+              path: $(PIP_CACHE_DIR)
 
           - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
             displayName: "Install build dependencies"
