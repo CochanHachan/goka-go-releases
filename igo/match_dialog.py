@@ -54,16 +54,16 @@ class MatchDialog:
         dh = 600
         try:
             wr = get_primary_work_area_rect()
-            work_w = wr[2] if wr else max(1, parent_root.winfo_screenwidth())
             work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
-            dh = int(work_h * get_ui_height_ratio("match_apply_height", 0.40))
-            dh = max(420, dh)
-            dw = int(dh * get_ui_width_ratio("match_apply_width", 0.60))
-            dw = max(250, dw)
+            h_ratio = get_ui_height_ratio("match_apply_height", 0.40)
+            w_ratio = get_ui_width_ratio("match_apply_width", 0.60)
+            dh = max(420, int(work_h * h_ratio))
+            dw = max(250, int(dh * w_ratio))
+            logger.info("MatchDialog size: work_h=%s h_ratio=%s w_ratio=%s -> dh=%s dw=%s",
+                        work_h, h_ratio, w_ratio, dh, dw)
         except Exception:
+            logger.warning("MatchDialog size calc failed", exc_info=True)
             dh = 600
-        # saved_geom is no longer used to override width;
-        # admin settings (match_apply_width) always take priority.
         # Center on parent window
         self.win.update_idletasks()
         pw = parent_root.winfo_width()
