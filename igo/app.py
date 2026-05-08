@@ -1025,8 +1025,8 @@ class App:
             sh = max(1, self.root.winfo_screenheight())
         fw = min(1.0, max(0.1, get_ui_width_ratio("board_frame_width", float(GAME_WINDOW_INITIAL_WIDTH_FRACTION))))
         fh = min(1.0, max(0.1, get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))))
+        w = int(sw * fw)
         h = int(sh * fh)
-        w = int(h * fw)
         min_w = MARGIN * 2 + CELL_SIZE * (BOARD_SIZE - 1)
         min_h = min_w + 120
         w = max(w, min_w)
@@ -1054,7 +1054,7 @@ class App:
             fh = get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))
             fw = get_ui_width_ratio("board_frame_width", float(GAME_WINDOW_INITIAL_WIDTH_FRACTION))
             target_h = max(320, int(sh * fh))
-            target_w = max(320, int(target_h * fw))
+            target_w = max(320, int(sw * fw))
             try:
                 self.root.update_idletasks()
                 cur_x = max(work_left, int(self.root.winfo_x()))
