@@ -50,7 +50,9 @@ def _fetch_server_settings():
 
 
 def _get_server_setting(key: str, default=None):
-    """メモリキャッシュからサーバー設定値を取得する。"""
+    """メモリキャッシュからサーバー設定値を取得する。未取得なら自動取得。"""
+    if _server_settings_cache is None:
+        _fetch_server_settings()
     if _server_settings_cache is None:
         return default
     val = _server_settings_cache.get(key)
