@@ -112,10 +112,10 @@ def main() -> int:
             except FileNotFoundError:
                 sftp.mkdir(current)
 
-        remote_path = current.rstrip("/") + "/version-admin.json"
+        remote_path = current.rstrip("/") + "/version-admin-check.json"
         with sftp.open(remote_path, "wb") as f:
             f.write(body)
-        print(f"Uploaded version-admin.json -> {remote_path}")
+        print(f"Uploaded version-admin-check.json -> {remote_path}")
     finally:
         sftp.close()
         ssh.close()

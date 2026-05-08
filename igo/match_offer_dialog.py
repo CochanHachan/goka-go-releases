@@ -157,26 +157,20 @@ class MatchOfferDialog:
         dh = 420
         try:
             wr = get_primary_work_area_rect()
-            work_w = wr[2] if wr else max(1, parent_root.winfo_screenwidth())
             work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
-            dh = int(work_h * get_ui_height_ratio("challenge_accept_height", 0.40))
-            dh = max(420, dh)
-            dw = int(work_w * get_ui_width_ratio("challenge_accept_width", 0.30))
-            dw = max(440, dw)
+            h_ratio = get_ui_height_ratio("challenge_accept_height", 0.40)
+            w_ratio = get_ui_width_ratio("challenge_accept_width", 0.60)
+            dh = max(420, int(work_h * h_ratio))
+            dw = max(250, int(dh * w_ratio))
+            logger.info("OfferDialog size: work_h=%s h_ratio=%s w_ratio=%s -> dh=%s dw=%s",
+                        work_h, h_ratio, w_ratio, dh, dw)
         except Exception:
+            logger.warning("OfferDialog size calc failed", exc_info=True)
             dh = 420
-        if self._saved_size and isinstance(self._saved_size, str):
-            size_part = self._saved_size.split("+")[0]
-            parts = size_part.split("x")
-            if len(parts) == 2:
-                try:
-                    dw = int(parts[0])
-                except ValueError:
-                    dw = 440
         x = px + (pw - dw) // 2
         y = py + (ph - dh) // 2
         self.win.geometry("{}x{}+{}+{}".format(dw, dh, x, y))
-        self.win.minsize(440, 420)
+        self.win.minsize(250, 420)
 
         # Add first offer
         self._add_offer(first_offer, first_addr)

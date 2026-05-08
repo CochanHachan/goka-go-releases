@@ -44,7 +44,7 @@ class MatchDialog:
         self.win.withdraw()  # Hide until positioned
         self.win.title(L("title_match_dialog"))
         self.win.configure(bg=T("container_bg"))
-        self.win.resizable(False, True)  # 横固定、縦のみ変更可
+        self.win.resizable(True, True)
         self.win.transient(parent_root)
         # Restore saved height or use default
         handle = app.current_user["handle_name"] if app.current_user else "default"
@@ -54,22 +54,16 @@ class MatchDialog:
         dh = 600
         try:
             wr = get_primary_work_area_rect()
-            work_w = wr[2] if wr else max(1, parent_root.winfo_screenwidth())
             work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
-            dh = int(work_h * get_ui_height_ratio("match_apply_height", 0.40))
-            dh = max(420, dh)
-            dw = int(work_w * get_ui_width_ratio("match_apply_width", 0.30))
-            dw = max(440, dw)
+            h_ratio = get_ui_height_ratio("match_apply_height", 0.40)
+            w_ratio = get_ui_width_ratio("match_apply_width", 0.60)
+            dh = max(420, int(work_h * h_ratio))
+            dw = max(250, int(dh * w_ratio))
+            logger.info("MatchDialog size: work_h=%s h_ratio=%s w_ratio=%s -> dh=%s dw=%s",
+                        work_h, h_ratio, w_ratio, dh, dw)
         except Exception:
+            logger.warning("MatchDialog size calc failed", exc_info=True)
             dh = 600
-        if saved_geom and isinstance(saved_geom, str):
-            size_part = saved_geom.split("+")[0]
-            parts = size_part.split("x")
-            if len(parts) == 2:
-                try:
-                    dw = int(parts[0])
-                except ValueError:
-                    dw = 460
         # Center on parent window
         self.win.update_idletasks()
         pw = parent_root.winfo_width()

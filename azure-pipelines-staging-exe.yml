@@ -1,17 +1,15 @@
 # =============================================================================
-# Azure Pipelines — ステージング EXE ビルド + SFTP 配信
+# Azure Pipelines — ステージング & 本番 EXE ビルド + SFTP 配信
 #
-# GitHub Actions "One Click Staging EXE" の Azure Pipelines 移植版。
-# main プッシュまたは手動実行で、テスト用クライアント・管理パネル・
-# インストーラー・自動アップデート用軽量 ZIP をビルドし、
-# VPS (goka-igo.com) へ SFTP（22番ポート）で配信する。
+# ■ 実行順序:
+#   1. main プッシュ → ステージングのビルド + デプロイ（自動）
+#   2. 承認（Approve）後 → 本番用インストーラーのビルド + デプロイ
+#
+# ■ コスト最適化:
+#   本番ビルドは承認されるまで実行しない（無駄な課金を防止）
 #
 # 必須パイプライン変数（シークレット推奨）:
 #   FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
-# 任意:
-#   GOKA_FTP_REMOTE … 例: public_html
-#
-# 登録: Pipelines → 新規 → 既存の YAML → /azure-pipelines-staging-exe.yml
 # =============================================================================
 
 trigger:
@@ -21,12 +19,6 @@ trigger:
 
 pr: none
 
-parameters:
-  - name: sourceBranch
-    displayName: "ビルド元ブランチ（未指定時は main）"
-    type: string
-    default: "main"
-
 variables:
 - group: ftp-secrets
 - name: PUBLIC_BASE
@@ -35,9 +27,11 @@ variables:
   value: "staging"
 
 stages:
-  # ── Stage 1: Windows ビルド ──
-  - stage: Build
-    displayName: "Build Staging Client"
+  # =========================================================================
+  # Stage 1: ステージング ビルド（自動実行・高速化済み）
+  # =========================================================================
+  - stage: BuildStaging
+    displayName: "Build Staging"
     jobs:
       - job: WindowsBuild
         pool:
@@ -45,14 +39,17 @@ stages:
         variables:
           PYTHONIOENCODING: utf-8
           PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
+          KATAGO_CACHE_DIR: $(Pipeline.Workspace)/.katago
+          INNO_CACHE_DIR: $(Pipeline.Workspace)/.innosetup
         steps:
           - checkout: self
-            fetchDepth: 0
+            fetchDepth: 1
 
           - task: UsePythonVersion@0
             inputs:
               versionSpec: "3.13"
 
+          # ── キャッシュ復元（pip / KataGo / Inno Setup） ──
           - task: Cache@2
             displayName: "Cache pip packages"
             inputs:
@@ -61,57 +58,92 @@ stages:
                 pip | "windows"
               path: $(PIP_CACHE_DIR)
 
-          - script: pip install pyinstaller tksheet cryptography websockets pillow pygame
-            displayName: "Install build dependencies"
+          - task: Cache@2
+            displayName: "Cache KataGo binaries"
+            inputs:
+              key: 'katago | "v1.16.4"'
+              path: $(KATAGO_CACHE_DIR)
 
-          # ── ステージング環境へ切替 ──
+          - task: Cache@2
+            displayName: "Cache Inno Setup"
+            inputs:
+              key: 'innosetup | "6"'
+              path: $(INNO_CACHE_DIR)
+
+          # ── pip install + Inno Setup を並列実行 ──
+          - powershell: |
+              $pipJob = Start-Job { pip install --no-compile pyinstaller tksheet cryptography websockets pillow pygame 2>&1 }
+              $innoDir = $env:INNO_CACHE_DIR
+              if (Test-Path "$innoDir\ISCC.exe") {
+                  Write-Host "Inno Setup restored from cache"
+              } else {
+                  choco install innosetup -y --no-progress
+                  New-Item -ItemType Directory -Path $innoDir -Force | Out-Null
+                  Copy-Item "C:\Program Files (x86)\Inno Setup 6\*" $innoDir -Recurse -Force
+              }
+              $pipResult = Receive-Job $pipJob -Wait -AutoRemoveJob
+              $pipResult | ForEach-Object { Write-Host $_ }
+            displayName: "Install pip deps + Inno Setup (parallel)"
+
+          # ── Inno Setup をキャッシュから復元（必要時のみ） ──
+          - powershell: |
+              $innoDir = $env:INNO_CACHE_DIR
+              $target = "C:\Program Files (x86)\Inno Setup 6"
+              if (-not (Test-Path "$target\ISCC.exe") -and (Test-Path "$innoDir\ISCC.exe")) {
+                  New-Item -ItemType Directory -Path $target -Force | Out-Null
+                  Copy-Item "$innoDir\*" $target -Recurse -Force
+                  Write-Host "Inno Setup restored to standard path"
+              }
+            displayName: "Restore Inno Setup from cache"
+
+          # ── アセット作成 + 環境切替 + URL更新（1ステップに統合） ──
           - task: PythonScript@0
             inputs:
               scriptSource: "inline"
               script: |
-                path = "igo/constants_env.py"
-                txt = open(path, encoding="utf-8").read()
-                assert '_ENV = "production"' in txt, "constants_env.py: _ENV not found"
-                txt = txt.replace('_ENV = "production"', '_ENV = "staging"')
-                open(path, "w", encoding="utf-8").write(txt)
-                print(txt)
-            displayName: "Switch to staging environment"
-
-          # ── download_url を goka-igo.com に更新 ──
-          - task: PythonScript@0
-            inputs:
-              scriptSource: "inline"
-              script: |
-                import json, os, re
-                path = "version_staging.json"
-                if os.path.exists(path):
-                    d = json.load(open(path, encoding="utf-8"))
-                    d["download_url"] = "https://goka-igo.com/staging/releases/goka-go-update.zip"
-                    d["admin_download_url"] = "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
-                    # Sync version from constants.py
-                    m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', open("igo/constants.py", encoding="utf-8").read())
-                    if m:
-                        d["version"] = m.group(1)
-                    json.dump(d, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-                    print("Updated version_staging.json:", json.dumps(d, indent=2))
-            displayName: "Update download URLs for goka-igo.com"
-
-          # ── 不足アセット作成 ──
-          - task: PythonScript@0
-            inputs:
-              scriptSource: "inline"
-              script: |
-                import os, shutil, json
+                import os, shutil, json, re
+                # 不足アセット作成
                 if not os.path.exists("goka_go_test.ico"):
                     shutil.copy2("goka_go.ico", "goka_go_test.ico")
                 if not os.path.exists("igo_config.json"):
                     with open("igo_config.json", "w", encoding="utf-8") as f:
                         json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
-            displayName: "Create missing assets"
+                # ステージング環境へ切替
+                path = "igo/constants_env.py"
+                txt = open(path, encoding="utf-8").read()
+                assert '_ENV = "production"' in txt, "constants_env.py: _ENV not found"
+                txt = txt.replace('_ENV = "production"', '_ENV = "staging"')
+                open(path, "w", encoding="utf-8").write(txt)
+                # download_url を goka-igo.com に更新
+                vs_path = "version_staging.json"
+                if os.path.exists(vs_path):
+                    d = json.load(open(vs_path, encoding="utf-8"))
+                    d["download_url"] = "https://goka-igo.com/staging/releases/goka-go-update.zip"
+                    d["admin_download_url"] = "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
+                    m = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', open("igo/constants.py", encoding="utf-8").read())
+                    if m:
+                        d["version"] = m.group(1)
+                    json.dump(d, open(vs_path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+                    print("Updated version_staging.json")
+                print("Assets + env switch + URLs done")
+            displayName: "Prepare assets, env switch, URLs"
 
-          # ── KataGo ダウンロード ──
-          - script: python tools/download_katago_for_windows_build.py
-            displayName: "Download KataGo"
+          # ── KataGo（キャッシュ or ダウンロード） ──
+          - powershell: |
+              $cacheDir = $env:KATAGO_CACHE_DIR
+              $katagoDir = Join-Path (Get-Location) "katago"
+              if (Test-Path "$cacheDir\katago.exe") {
+                  Write-Host "KataGo restored from cache"
+                  New-Item -ItemType Directory -Path $katagoDir -Force | Out-Null
+                  Copy-Item "$cacheDir\*" $katagoDir -Recurse -Force
+              } else {
+                  Write-Host "Downloading KataGo..."
+                  python tools/download_katago_for_windows_build.py
+                  New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+                  Copy-Item "$katagoDir\*" $cacheDir -Recurse -Force
+                  Write-Host "KataGo cached for future runs"
+              }
+            displayName: "KataGo (cache or download)"
 
           # ── PyInstaller ビルド ──
           - script: pyinstaller goka_go.spec --noconfirm
@@ -124,22 +156,30 @@ stages:
           - script: python tools/copy_katago_into_dist.py
             displayName: "Copy KataGo into dist"
 
-          # ── Inno Setup インストーラー ──
+          # ── Inno Setup インストーラー（ステージング + 管理者アプリ） ──
           - powershell: |
-              choco install innosetup -y --no-progress
               $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+              $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+              # ステージング版
               $issFile = "installer/GokaGoTest_Setup.iss"
               (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
-              & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
-              Write-Host "Installer built: version $version"
-            displayName: "Build Inno Setup installer"
+              & $iscc $issFile
+              Write-Host "Staging installer built: version $version"
+              # 管理者アプリ
+              $issFile = "installer/GokaAdmin_Setup.iss"
+              (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+              & $iscc $issFile
+              Write-Host "Admin installer built: version $version"
+            displayName: "Build Inno Setup installers"
 
-          # ── ZIP 作成（フル + 軽量アップデート用） ──
+          # ── ZIP + インストーラー + version_staging.json を一括収集 ──
           - task: PythonScript@0
             inputs:
               scriptSource: "inline"
               script: |
-                import os, shutil, zipfile
+                import os, shutil, zipfile, glob
+                staging_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "staging")
+                os.makedirs(staging_dir, exist_ok=True)
 
                 def create_zip(src_dir, dst_zip):
                     base_dir = os.path.dirname(os.path.abspath(src_dir))
@@ -147,8 +187,6 @@ stages:
                     shutil.make_archive(base_name, "zip", root_dir=base_dir, base_dir=os.path.basename(src_dir))
                     os.replace(base_name + ".zip", dst_zip)
 
-                staging_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "staging")
-                os.makedirs(staging_dir, exist_ok=True)
                 create_zip("dist/goka_go", os.path.join(staging_dir, "goka-go-staging.zip"))
                 create_zip("dist/igo_admin", os.path.join(staging_dir, "goka-admin-staging.zip"))
 
@@ -159,29 +197,23 @@ stages:
                         if "/katago/" in item.filename:
                             continue
                         dst.writestr(item, src.read(item.filename))
-                full_mb = os.path.getsize(full_zip) / 1024 / 1024
-                update_mb = os.path.getsize(update_zip) / 1024 / 1024
-                print(f"Full ZIP: {full_mb:.1f} MB, Update ZIP: {update_mb:.1f} MB")
-            displayName: "Create staging ZIPs (full + lightweight)"
 
-          # ── インストーラーコピー ──
-          - task: PythonScript@0
-            inputs:
-              scriptSource: "inline"
-              script: |
-                import glob, shutil, os
-                staging_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "staging")
-                exes = glob.glob("dist/installer/GokaGoTest_Setup_*.exe")
-                if exes:
-                    shutil.copy2(exes[0], os.path.join(staging_dir, "GokaGoTest_Setup.exe"))
-                    print(f"Installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB")
-            displayName: "Copy installer to staging directory"
+                # インストーラーコピー
+                for pattern, name in [
+                    ("dist/installer/GokaGoTest_Setup_*.exe", "GokaGoTest_Setup.exe"),
+                    ("dist/installer/GokaAdmin_Installer*.exe", "GokaAdmin_Installer.exe"),
+                ]:
+                    exes = glob.glob(pattern)
+                    if exes:
+                        shutil.copy2(exes[0], os.path.join(staging_dir, name))
+                        mb = os.path.getsize(exes[0]) / 1024 / 1024
+                        print(f"{name}: {mb:.1f} MB")
 
-          # ── version_staging.json コピー ──
-          - powershell: |
-              $staging = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY "staging"
-              Copy-Item "version_staging.json" "$staging\version_staging.json"
-            displayName: "Copy version_staging.json"
+                # version_staging.json コピー
+                if os.path.exists("version_staging.json"):
+                    shutil.copy2("version_staging.json", os.path.join(staging_dir, "version_staging.json"))
+                print("Artifacts collected")
+            displayName: "Collect staging artifacts"
 
           # ── アーティファクト公開 ──
           - task: PublishPipelineArtifact@1
@@ -191,16 +223,73 @@ stages:
               publishLocation: "pipeline"
             displayName: "Publish staging artifacts"
 
-  # ── Stage 2: SFTP 配信（ステージング） ──
-  - stage: Deploy
-    displayName: "Deploy staging to goka-igo.com"
-    dependsOn: Build
+  # =========================================================================
+  # Stage 2: ステージング デプロイ（自動実行）
+  # =========================================================================
+  - stage: DeployStaging
+    displayName: "Deploy Staging"
+    dependsOn: BuildStaging
     jobs:
       - deployment: StagingDeploy
-        displayName: "Staging SFTP Deploy"
+        displayName: "SFTP Deploy to Staging"
         pool:
           vmImage: ubuntu-latest
         environment: 'staging'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.12'
+
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifactName: 'staging-build'
+                    targetPath: '$(Pipeline.Workspace)/staging-build'
+
+                - script: pip install paramiko
+                  displayName: "Install paramiko"
+
+                - script: |
+                    set -e
+                    python tools/staging_ftp_upload.py \
+                      "$(Pipeline.Workspace)/staging-build" \
+                      "staging/releases"
+                  displayName: "SFTP upload staging files"
+                  env:
+                    GOKA_FTP_HOST: $(FTP_SERVER)
+                    GOKA_FTP_USER: $(FTP_USERNAME)
+                    GOKA_FTP_PASS: $(FTP_PASSWORD)
+                    GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
+                    ADMIN_DOWNLOAD_URL: "https://goka-igo.com/staging/releases/GokaAdmin_Installer.exe"
+
+                - script: |
+                    echo "=== Smoke test ==="
+                    curl -sf "https://goka-igo.com/version-admin-check.json?t=$(date +%s)"
+                    echo
+                    curl -sI "https://goka-igo.com/staging/releases/GokaAdmin_Installer.exe" | head -5
+                  displayName: "Smoke test"
+
+  # =========================================================================
+  # Stage 3: 本番ビルド（承認後に実行）
+  # =========================================================================
+  - stage: BuildProduction
+    displayName: "Build Production (承認後)"
+    dependsOn: DeployStaging
+    jobs:
+      - deployment: ProductionBuildApproval
+        displayName: "Build Production Installer"
+        pool:
+          vmImage: windows-latest
+        environment: 'production'
+        variables:
+          PYTHONIOENCODING: utf-8
+          PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
+          KATAGO_CACHE_DIR: $(Pipeline.Workspace)/.katago
+          INNO_CACHE_DIR: $(Pipeline.Workspace)/.innosetup
         strategy:
           runOnce:
             deploy:
@@ -210,38 +299,167 @@ stages:
 
                 - task: UsePythonVersion@0
                   inputs:
-                    versionSpec: "3.12"
+                    versionSpec: "3.13"
+
+                - task: Cache@2
+                  displayName: "Cache pip packages"
+                  inputs:
+                    key: 'pip | "windows" | requirements-build.txt'
+                    restoreKeys: |
+                      pip | "windows"
+                    path: $(PIP_CACHE_DIR)
+
+                - task: Cache@2
+                  displayName: "Cache KataGo binaries"
+                  inputs:
+                    key: 'katago | "v1.16.4"'
+                    path: $(KATAGO_CACHE_DIR)
+
+                - task: Cache@2
+                  displayName: "Cache Inno Setup"
+                  inputs:
+                    key: 'innosetup | "6"'
+                    path: $(INNO_CACHE_DIR)
+
+                # ── pip install + Inno Setup を並列実行 ──
+                - powershell: |
+                    $pipJob = Start-Job { pip install --no-compile pyinstaller tksheet cryptography websockets pillow pygame 2>&1 }
+                    $innoDir = $env:INNO_CACHE_DIR
+                    if (Test-Path "$innoDir\ISCC.exe") {
+                        Write-Host "Inno Setup restored from cache"
+                    } else {
+                        choco install innosetup -y --no-progress
+                        New-Item -ItemType Directory -Path $innoDir -Force | Out-Null
+                        Copy-Item "C:\Program Files (x86)\Inno Setup 6\*" $innoDir -Recurse -Force
+                    }
+                    $pipResult = Receive-Job $pipJob -Wait -AutoRemoveJob
+                    $pipResult | ForEach-Object { Write-Host $_ }
+                  displayName: "Install pip deps + Inno Setup (parallel)"
+
+                - powershell: |
+                    $innoDir = $env:INNO_CACHE_DIR
+                    $target = "C:\Program Files (x86)\Inno Setup 6"
+                    if (-not (Test-Path "$target\ISCC.exe") -and (Test-Path "$innoDir\ISCC.exe")) {
+                        New-Item -ItemType Directory -Path $target -Force | Out-Null
+                        Copy-Item "$innoDir\*" $target -Recurse -Force
+                        Write-Host "Inno Setup restored to standard path"
+                    }
+                  displayName: "Restore Inno Setup from cache"
+
+                # ── 不足アセット作成 ──
+                - task: PythonScript@0
+                  inputs:
+                    scriptSource: "inline"
+                    script: |
+                      import os, shutil, json
+                      if not os.path.exists("goka_go_test.ico"):
+                          shutil.copy2("goka_go.ico", "goka_go_test.ico")
+                      if not os.path.exists("igo_config.json"):
+                          with open("igo_config.json", "w", encoding="utf-8") as f:
+                              json.dump({"theme": "light", "language": "ja"}, f, ensure_ascii=False, indent=2)
+                  displayName: "Create missing assets"
+
+                # ── KataGo（キャッシュ or ダウンロード） ──
+                - powershell: |
+                    $cacheDir = $env:KATAGO_CACHE_DIR
+                    $katagoDir = Join-Path (Get-Location) "katago"
+                    if (Test-Path "$cacheDir\katago.exe") {
+                        Write-Host "KataGo restored from cache"
+                        New-Item -ItemType Directory -Path $katagoDir -Force | Out-Null
+                        Copy-Item "$cacheDir\*" $katagoDir -Recurse -Force
+                    } else {
+                        Write-Host "Downloading KataGo..."
+                        python tools/download_katago_for_windows_build.py
+                        New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+                        Copy-Item "$katagoDir\*" $cacheDir -Recurse -Force
+                    }
+                  displayName: "KataGo (cache or download)"
+
+                # ── PyInstaller ビルド（本番: _ENV = "production"） ──
+                - script: pyinstaller goka_go.spec --noconfirm
+                  displayName: "PyInstaller goka_go (production)"
+
+                # ── KataGo を dist にコピー ──
+                - script: python tools/copy_katago_into_dist.py
+                  displayName: "Copy KataGo into dist"
+
+                # ── Inno Setup 本番インストーラー ──
+                - powershell: |
+                    $version = (Select-String -Path "igo/constants.py" -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches.Groups[1].Value
+                    $issFile = "installer/GokaGo_Setup.iss"
+                    (Get-Content $issFile) -replace '#define AppVersion\s+"[^"]+"', "#define AppVersion   `"$version`"" | Set-Content $issFile
+                    & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" $issFile
+                    Write-Host "Production installer built: Goka_Installer_$version.exe"
+                  displayName: "Build production Inno Setup installer"
+
+                # ── 本番アーティファクト準備 ──
+                - task: PythonScript@0
+                  inputs:
+                    scriptSource: "inline"
+                    script: |
+                      import glob, shutil, os
+                      prod_dir = os.path.join(os.environ["BUILD_ARTIFACTSTAGINGDIRECTORY"], "production")
+                      os.makedirs(prod_dir, exist_ok=True)
+                      exes = glob.glob("dist/installer/Goka_Installer_*.exe")
+                      if exes:
+                          shutil.copy2(exes[0], os.path.join(prod_dir, "Goka_Installer.exe"))
+                          print(f"Production installer: {os.path.getsize(exes[0]) / 1024 / 1024:.1f} MB")
+                      else:
+                          raise FileNotFoundError("Production installer not found!")
+                  displayName: "Prepare production artifacts"
+
+                # ── アーティファクト公開 ──
+                - task: PublishPipelineArtifact@1
+                  inputs:
+                    targetPath: "$(Build.ArtifactStagingDirectory)/production"
+                    artifact: "production-build"
+                    publishLocation: "pipeline"
+                  displayName: "Publish production artifacts"
+
+  # =========================================================================
+  # Stage 4: 本番デプロイ（ビルド成功後、自動実行）
+  # =========================================================================
+  - stage: DeployProduction
+    displayName: "Deploy Production"
+    dependsOn: BuildProduction
+    jobs:
+      - deployment: ProductionDeploy
+        displayName: "SFTP Deploy Production Installer"
+        pool:
+          vmImage: ubuntu-latest
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.12'
 
                 - task: DownloadPipelineArtifact@2
                   inputs:
-                    artifactName: "staging-build"
-                    targetPath: "$(Pipeline.Workspace)/staging"
+                    artifactName: 'production-build'
+                    targetPath: '$(Pipeline.Workspace)/production-build'
 
                 - script: pip install paramiko
-                  displayName: "Install paramiko (SFTP)"
+                  displayName: "Install paramiko"
 
-                # ── SFTP でステージング ZIPs + インストーラー + version-admin.json をアップロード ──
                 - script: |
                     set -e
                     python tools/staging_ftp_upload.py \
-                      "$(Pipeline.Workspace)/staging" \
+                      "$(Pipeline.Workspace)/production-build" \
                       "staging/releases"
-                  displayName: "SFTP upload ZIPs + installer + version-admin.json"
+                  displayName: "SFTP upload production installer"
                   env:
                     GOKA_FTP_HOST: $(FTP_SERVER)
                     GOKA_FTP_USER: $(FTP_USERNAME)
                     GOKA_FTP_PASS: $(FTP_PASSWORD)
                     GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
-                    ADMIN_DOWNLOAD_URL: "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
 
-                # ── 配信確認 ──
                 - script: |
-                    set -e
-                    echo "=== Admin version-admin.json ==="
-                    curl -fsS "$(PUBLIC_BASE)/version-admin.json" | head -c 500
-                    echo
-                    echo "=== Staging admin ZIP ==="
-                    curl -sI "$(PUBLIC_BASE)/staging/releases/goka-admin-staging.zip" | head -3
-                    echo "=== Staging update ZIP ==="
-                    curl -sI "$(PUBLIC_BASE)/staging/releases/goka-go-update.zip" | head -3
-                  displayName: "Smoke test deployed files"
+                    echo "=== Production smoke test ==="
+                    curl -sf "https://goka-igo.com/staging/releases/Goka_Installer.exe" -o /dev/null -w "HTTP %{http_code} Size: %{size_download} bytes\n"
+                    echo "Production installer deployed successfully!"
+                  displayName: "Smoke test production installer"
