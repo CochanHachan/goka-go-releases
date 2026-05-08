@@ -1043,18 +1043,20 @@ class App:
         ws = WindowSettings(self._ws._db_path, user_key)
         ws.restore_window(self.root, default_geometry=defaults.get(screen_name, "500x400"))
         if screen_name == "game":
-            # 管理者設定の高さ比率を常に反映（保存済みジオメトリがあっても高さを更新）
+            # 管理者設定の縦横比率を常に反映（保存済みジオメトリがあっても更新）
             work_rect = get_primary_work_area_rect()
             if work_rect:
-                work_left, work_top, _, sh = work_rect
+                work_left, work_top, sw, sh = work_rect
             else:
                 work_left, work_top = 0, 0
+                sw = max(1, self.root.winfo_screenwidth())
                 sh = max(1, self.root.winfo_screenheight())
             fh = get_ui_height_ratio("board_frame_height", float(GAME_WINDOW_INITIAL_HEIGHT_FRACTION))
+            fw = get_ui_width_ratio("board_frame_width", float(GAME_WINDOW_INITIAL_WIDTH_FRACTION))
             target_h = max(320, int(sh * fh))
+            target_w = max(320, int(sw * fw))
             try:
                 self.root.update_idletasks()
-                cur_w = max(320, int(self.root.winfo_width()))
                 cur_x = max(work_left, int(self.root.winfo_x()))
                 # 100%時は作業領域上端に合わせてはみ出しを防ぐ
                 if fh >= 0.999:
@@ -1062,7 +1064,7 @@ class App:
                     target_h = sh
                 else:
                     cur_y = max(work_top, int(self.root.winfo_y()))
-                self.root.geometry("{}x{}+{}+{}".format(cur_w, target_h, cur_x, cur_y))
+                self.root.geometry("{}x{}+{}+{}".format(target_w, target_h, cur_x, cur_y))
             except Exception:
                 pass
         self._current_screen = screen_name
