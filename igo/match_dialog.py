@@ -44,7 +44,7 @@ class MatchDialog:
         self.win.withdraw()  # Hide until positioned
         self.win.title(L("title_match_dialog"))
         self.win.configure(bg=T("container_bg"))
-        self.win.resizable(False, True)  # 横固定、縦のみ変更可
+        self.win.resizable(True, True)
         self.win.transient(parent_root)
         # Restore saved height or use default
         handle = app.current_user["handle_name"] if app.current_user else "default"
