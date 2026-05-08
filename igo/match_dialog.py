@@ -59,7 +59,7 @@ class MatchDialog:
             dh = int(work_h * get_ui_height_ratio("match_apply_height", 0.40))
             dh = max(420, dh)
             dw = int(dh * get_ui_width_ratio("match_apply_width", 0.60))
-            dw = max(440, dw)
+            dw = max(250, dw)
         except Exception:
             dh = 600
         # saved_geom is no longer used to override width;

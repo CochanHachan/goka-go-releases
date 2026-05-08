@@ -162,7 +162,7 @@ class MatchOfferDialog:
             dh = int(work_h * get_ui_height_ratio("challenge_accept_height", 0.40))
             dh = max(420, dh)
             dw = int(dh * get_ui_width_ratio("challenge_accept_width", 0.60))
-            dw = max(440, dw)
+            dw = max(250, dw)
         except Exception:
             dh = 420
         # saved_size is no longer used to override width;
@@ -170,7 +170,7 @@ class MatchOfferDialog:
         x = px + (pw - dw) // 2
         y = py + (ph - dh) // 2
         self.win.geometry("{}x{}+{}+{}".format(dw, dh, x, y))
-        self.win.minsize(440, 420)
+        self.win.minsize(250, 420)
 
         # Add first offer
         self._add_offer(first_offer, first_addr)
