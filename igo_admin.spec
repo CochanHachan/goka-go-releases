@@ -131,8 +131,8 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         'unittest', 'test', 'tests',
-        'email', 'xmlrpc', 'pydoc', 'doctest',
-        'lib2to3', 'distutils', 'setuptools', 'pip', 'ensurepip',
+        'xmlrpc', 'pydoc', 'doctest',
+        'lib2to3', 'ensurepip',
         'idlelib', 'tkinter.test',
         'numpy', 'scipy', 'pandas', 'matplotlib',
     ],
