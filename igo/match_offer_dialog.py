@@ -165,14 +165,8 @@ class MatchOfferDialog:
             dw = max(440, dw)
         except Exception:
             dh = 420
-        if self._saved_size and isinstance(self._saved_size, str):
-            size_part = self._saved_size.split("+")[0]
-            parts = size_part.split("x")
-            if len(parts) == 2:
-                try:
-                    dw = int(parts[0])
-                except ValueError:
-                    dw = 440
+        # saved_size is no longer used to override width;
+        # admin settings (challenge_accept_width) always take priority.
         x = px + (pw - dw) // 2
         y = py + (ph - dh) // 2
         self.win.geometry("{}x{}+{}+{}".format(dw, dh, x, y))

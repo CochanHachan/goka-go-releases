@@ -62,14 +62,8 @@ class MatchDialog:
             dw = max(440, dw)
         except Exception:
             dh = 600
-        if saved_geom and isinstance(saved_geom, str):
-            size_part = saved_geom.split("+")[0]
-            parts = size_part.split("x")
-            if len(parts) == 2:
-                try:
-                    dw = int(parts[0])
-                except ValueError:
-                    dw = 460
+        # saved_geom is no longer used to override width;
+        # admin settings (match_apply_width) always take priority.
         # Center on parent window
         self.win.update_idletasks()
         pw = parent_root.winfo_width()
