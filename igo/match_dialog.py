@@ -58,7 +58,7 @@ class MatchDialog:
             work_h = wr[3] if wr else max(1, parent_root.winfo_screenheight())
             dh = int(work_h * get_ui_height_ratio("match_apply_height", 0.40))
             dh = max(420, dh)
-            dw = int(work_w * get_ui_width_ratio("match_apply_width", 0.30))
+            dw = int(dh * get_ui_width_ratio("match_apply_width", 0.60))
             dw = max(440, dw)
         except Exception:
             dh = 600
