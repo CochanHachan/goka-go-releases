@@ -10,6 +10,9 @@ from igo.constants import API_BASE_URL, APP_DATA_DIR_NAME
 
 logger = logging.getLogger(__name__)
 
+# サーバーから取得した設定をメモリにキャッシュ
+_server_settings_cache = None
+
 
 def _get_app_data_dir():
     """Return writable app data directory (works in both dev and PyInstaller)."""
@@ -32,9 +35,34 @@ def _get_install_dir():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _fetch_server_settings():
+    """サーバーから設定を取得してメモリにキャッシュする。"""
+    global _server_settings_cache
+    try:
+        import urllib.request as _ur
+        _req = _ur.Request(API_BASE_URL + "/api/settings")
+        with _ur.urlopen(_req, timeout=5) as _resp:
+            _server_settings_cache = json.loads(_resp.read().decode("utf-8"))
+        logger.info("Server settings loaded: %s", _server_settings_cache)
+    except Exception:
+        logger.warning("Failed to fetch server settings", exc_info=True)
+        _server_settings_cache = None
+
+
+def _get_server_setting(key: str, default=None):
+    """メモリキャッシュからサーバー設定値を取得する。"""
+    if _server_settings_cache is None:
+        return default
+    val = _server_settings_cache.get(key)
+    return val if val is not None else default
+
+
 def _init_config_if_needed():
-    """On first run, copy igo_config.json from install dir to app data dir.
-    Also fetch theme from server if available."""
+    """起動時にサーバーから設定を取得してメモリにキャッシュする。
+    ローカル igo_config.json はテーマ・言語の保存にのみ使用。"""
+    # サーバーから設定を取得（メモリキャッシュ）
+    _fetch_server_settings()
+    # ローカル config はテーマ・言語用に初期化だけしておく
     app_cfg = os.path.join(_get_app_data_dir(), "igo_config.json")
     if not os.path.exists(app_cfg):
         install_cfg = os.path.join(_get_install_dir(), "igo_config.json")
@@ -45,59 +73,26 @@ def _init_config_if_needed():
             except OSError:
                 logger.warning("Failed to copy config from install dir", exc_info=True)
         else:
-            # Create default config
             try:
                 default_cfg = {"theme": "light", "language": "ja"}
                 with open(app_cfg, "w", encoding="utf-8") as f:
                     json.dump(default_cfg, f, ensure_ascii=False, indent=2)
             except OSError:
                 logger.warning("Failed to create default config", exc_info=True)
-    # Fetch theme from server and apply locally
-    try:
-        import urllib.request as _ur
-        _req = _ur.Request(API_BASE_URL + "/api/settings")
-        with _ur.urlopen(_req, timeout=3) as _resp:
-            server_settings = json.loads(_resp.read().decode("utf-8"))
-        server_theme = server_settings.get("theme")
-        server_timeout = server_settings.get("offer_timeout_min")
-        cfg = {}
-        if os.path.exists(app_cfg):
-            with open(app_cfg, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        changed = False
-        if server_theme and server_theme in ("dark", "light"):
+    # テーマをサーバーから反映
+    server_theme = _get_server_setting("theme")
+    if server_theme and server_theme in ("dark", "light"):
+        try:
+            cfg = {}
+            if os.path.exists(app_cfg):
+                with open(app_cfg, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
             if cfg.get("theme") != server_theme:
                 cfg["theme"] = server_theme
-                changed = True
-        if server_timeout is not None:
-            if cfg.get("offer_timeout_min") != server_timeout:
-                cfg["offer_timeout_min"] = server_timeout
-                changed = True
-        server_fischer_main = server_settings.get("fischer_main_time")
-        server_fischer_inc = server_settings.get("fischer_increment")
-        if server_fischer_main is not None:
-            if cfg.get("fischer_main_time") != server_fischer_main:
-                cfg["fischer_main_time"] = server_fischer_main
-                changed = True
-        if server_fischer_inc is not None:
-            if cfg.get("fischer_increment") != server_fischer_inc:
-                cfg["fischer_increment"] = server_fischer_inc
-                changed = True
-        for _dk in ("default_main_time_min", "default_byoyomi_sec",
-                     "default_byoyomi_count", "default_komi",
-                     "board_frame_height", "board_frame_width",
-                     "match_apply_height", "match_apply_width",
-                     "challenge_accept_height", "challenge_accept_width",
-                     "sakura_dialog_height", "sakura_dialog_width"):
-            _dv = server_settings.get(_dk)
-            if _dv is not None and cfg.get(_dk) != _dv:
-                cfg[_dk] = _dv
-                changed = True
-        if changed:
-            with open(app_cfg, "w", encoding="utf-8") as f:
-                json.dump(cfg, f, ensure_ascii=False, indent=2)
-    except (OSError, ValueError, KeyError, AttributeError):
-        logger.debug("Server unreachable, using local config", exc_info=True)
+                with open(app_cfg, "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, ensure_ascii=False, indent=2)
+        except (OSError, json.JSONDecodeError):
+            logger.debug("Failed to update theme in local config", exc_info=True)
 
 
 def _get_db_path():
@@ -170,56 +165,47 @@ def get_primary_work_area_rect():
 
 
 def get_ui_height_ratio(key: str, default: float = 0.5) -> float:
-    """Get a UI height ratio from config. Returns default if not set."""
-    try:
-        cfg_path = os.path.join(_get_app_data_dir(), "igo_config.json")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        val = cfg.get(key)
-        if val is not None:
+    """サーバー設定から UI 高さ比率を取得する。"""
+    val = _get_server_setting(key)
+    if val is not None:
+        try:
             return float(val)
-    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
-        logger.debug("Failed to read %s, using default", key, exc_info=True)
+        except (ValueError, TypeError):
+            pass
     return default
 
 
 def get_ui_width_ratio(key: str, default: float = 0.5) -> float:
-    """Get a UI width ratio from config. Returns default if not set."""
-    try:
-        cfg_path = os.path.join(_get_app_data_dir(), "igo_config.json")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        val = cfg.get(key)
-        if val is not None:
+    """サーバー設定から UI 横幅比率を取得する。"""
+    val = _get_server_setting(key)
+    if val is not None:
+        try:
             return float(val)
-    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
-        logger.debug("Failed to read %s, using default", key, exc_info=True)
+        except (ValueError, TypeError):
+            pass
     return default
 
 
 def get_offer_timeout_ms():
-    """Get match offer timeout in milliseconds from config (default 180000 = 3 min)."""
-    try:
-        cfg_path = os.path.join(_get_app_data_dir(), "igo_config.json")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        minutes = int(cfg.get("offer_timeout_min", 3))
-        return max(1, minutes) * 60 * 1000
-    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
-        logger.debug("Failed to read offer_timeout, using default", exc_info=True)
-        return 180000
+    """サーバー設定から対局申込タイムアウト（ミリ秒）を取得する。"""
+    val = _get_server_setting("offer_timeout_min")
+    if val is not None:
+        try:
+            return max(1, int(val)) * 60 * 1000
+        except (ValueError, TypeError):
+            pass
+    return 180000
+
 
 def get_fischer_settings():
-    """Get Fischer time control settings from config.
+    """サーバー設定からフィッシャー時間設定を取得する。
     Returns (main_time_seconds, increment_seconds). Default: (300, 10)."""
+    main_t = _get_server_setting("fischer_main_time")
+    inc = _get_server_setting("fischer_increment")
     try:
-        cfg_path = os.path.join(_get_app_data_dir(), "igo_config.json")
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        main_t = int(cfg.get("fischer_main_time", 300))
-        inc = int(cfg.get("fischer_increment", 10))
-        return (max(60, main_t), max(1, inc))
-    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError):
-        logger.debug("Failed to read fischer settings, using defaults", exc_info=True)
+        m = max(60, int(main_t)) if main_t is not None else 300
+        i = max(1, int(inc)) if inc is not None else 10
+        return (m, i)
+    except (ValueError, TypeError):
         return (300, 10)
 
