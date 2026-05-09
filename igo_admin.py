@@ -35,7 +35,7 @@ def _admin_app_base_dir():
 
 # Notebook 行の高さ（pack だとタブが最小高さに潰れやすいため grid + 固定高さで確保）
 _ADMIN_TAB_AREA_HEIGHT = 252
-_ADMIN_UPDATE_CHECK_URL = "https://goka-igo.com/version-admin.json"
+_ADMIN_UPDATE_CHECK_URL = "https://goka-igo.com/version-admin-check.json"
 _ADMIN_UPDATE_TITLE = "管理者ツール更新"
 _ADMIN_UPDATE_APP_VERSION = APP_VERSION
 
@@ -402,8 +402,11 @@ class AdminApp:
 
         def _worker():
             try:
-                req = urllib.request.Request(_ADMIN_UPDATE_CHECK_URL)
+                cache_bust = "?t={}".format(int(_time.time()))
+                url = _ADMIN_UPDATE_CHECK_URL + cache_bust
+                req = urllib.request.Request(url)
                 req.add_header("User-Agent", "GokaAdmin/{} (Windows)".format(_ADMIN_UPDATE_APP_VERSION))
+                req.add_header("Cache-Control", "no-cache")
                 with urllib.request.urlopen(req, timeout=8) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                 latest = str(data.get("version", "")).strip()
@@ -434,12 +437,14 @@ class AdminApp:
 
     def _download_and_launch_admin_update(self, download_url: str):
         try:
+            sep = "&" if "?" in download_url else "?"
+            dl_url = "{}{}t={}".format(download_url, sep, int(_time.time()))
             suffix = ".exe"
             lower = download_url.lower()
             if lower.endswith(".zip"):
                 suffix = ".zip"
             dst = os.path.join(tempfile.gettempdir(), "goka_admin_update" + suffix)
-            urllib.request.urlretrieve(download_url, dst)
+            urllib.request.urlretrieve(dl_url, dst)
             if dst.lower().endswith(".exe"):
                 if hasattr(os, "startfile"):
                     os.startfile(dst)  # type: ignore[attr-defined]
