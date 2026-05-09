@@ -24,7 +24,7 @@ jobs:
           GOKA_STAGING_URL: ${{ secrets.GOKA_STAGING_URL }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          STAGING_URL="${GOKA_STAGING_URL:-http://136.110.101.14:8000}"
+          STAGING_URL="${GOKA_STAGING_URL:-http://20.48.18.153:8001}"
           echo "ディスク容量を確認・クリーンアップ..."
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
@@ -52,7 +52,7 @@ jobs:
           GOKA_STAGING_URL: ${{ secrets.GOKA_STAGING_URL }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          STAGING_URL="${GOKA_STAGING_URL:-http://136.110.101.14:8000}"
+          STAGING_URL="${GOKA_STAGING_URL:-http://20.48.18.153:8001}"
           echo "========================================"
           echo "ステージング環境セットアップを開始します"
           echo "ステージングサーバー: ${STAGING_URL}"
@@ -92,7 +92,7 @@ jobs:
           GOKA_STAGING_URL: ${{ secrets.GOKA_STAGING_URL }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          STAGING_URL="${GOKA_STAGING_URL:-http://136.110.101.14:8000}"
+          STAGING_URL="${GOKA_STAGING_URL:-http://20.48.18.153:8001}"
           echo "ステージングサーバーの応答を確認..."
 
           # 少し待ってから確認

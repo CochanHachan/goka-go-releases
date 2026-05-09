@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Run unit tests
+        # tests/test_endpoint_consistency.py が igo/constants.py と
+        # igo_admin.py の URL ペア一致を検証する。これが落ちた場合は両ファイルを
+        # 揃えること (片側だけ更新するのは split-brain の温床)。
+        run: python -m unittest discover -s tests -v

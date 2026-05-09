@@ -990,6 +990,24 @@ async def version_check():
         return JSONResponse(content={"version": "0.0.0"}, status_code=500)
 
 
+@app.get("/api/runtime-info")
+async def runtime_info():
+    """サーバープロセスのランタイム情報を返す。
+
+    管理者画面が「いまどの環境のサーバーに繋がっているか」を表示するために使う。
+    クライアント・管理者ツール・サーバーの3者間で接続先が食い違うと
+    別DBを見る split-brain が発生するため、ここで env と DB 名を露出させ、
+    管理者画面側で接続先のずれを目視確認できるようにする。
+    """
+    m = re.search(r'dbname=(\S+)', PG_DSN)
+    db_name = m.group(1) if m else ""
+    return {
+        "env": _ENV_LABEL,
+        "db_path": db_name,
+        "port": PORT,
+    }
+
+
 @app.get("/api/db-test")
 async def db_test():
     """DB接続テスト（デバッグ用）。"""

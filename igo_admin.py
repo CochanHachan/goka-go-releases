@@ -87,7 +87,10 @@ _ADMIN_SERVER_CONFIG = {
         "title":        "碁華 - 管理者画面",
     },
     "staging": {
-        "api_base_url": "http://136.110.101.14:8000",
+        # 注意: igo/constants.py の staging.api_base_url と必ず一致させること。
+        # 不一致だと管理画面とテストアプリが別 DB を見てユーザー一覧が食い違う。
+        # tests/test_endpoint_consistency.py が一致を強制している。
+        "api_base_url": "http://20.48.18.153:8001",
         "title":        "碁華 - 管理者画面 [STAGING]",
     },
 }

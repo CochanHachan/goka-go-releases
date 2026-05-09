@@ -29,7 +29,7 @@ jobs:
           DEPLOY_BRANCH: ${{ github.event.inputs.branch || 'main' }}
         run: |
           TOKEN="${GOKA_ADMIN_TOKEN:-goka-deploy-2026}"
-          URL="${GOKA_STAGING_URL:-http://136.110.101.14:8000}"
+          URL="${GOKA_STAGING_URL:-http://20.48.18.153:8001}"
           echo "Deploying staging server at ${URL} (branch: ${DEPLOY_BRANCH})..."
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "X-Token: ${TOKEN}" \
@@ -113,12 +113,15 @@ jobs:
 
           if c_env != "staging":
               errors.append("constants.py: _ENV is not 'staging'")
-          if "136.110.101.14" not in CLOUD_SERVER_URL:
-              errors.append("constants.py: CLOUD_SERVER_URL does not point to staging")
-          if "136.110.101.14" not in API_BASE_URL:
-              errors.append("constants.py: API_BASE_URL does not point to staging")
-          if "[STAGING]" not in STAGING_LABEL:
-              errors.append("constants.py: STAGING_LABEL missing [STAGING]")
+          # ステージングは Phase B-4 以降 Azure VM (20.48.18.153:8001) に統一済み。
+          # ここで URL を assert することで、誤って production の URL に書き換えた
+          # 状態のままステージングビルドを生成する事故を防ぐ。
+          if "20.48.18.153:8001" not in CLOUD_SERVER_URL:
+              errors.append("constants.py: CLOUD_SERVER_URL does not point to staging (20.48.18.153:8001)")
+          if "20.48.18.153:8001" not in API_BASE_URL:
+              errors.append("constants.py: API_BASE_URL does not point to staging (20.48.18.153:8001)")
+          if "テスト" not in STAGING_LABEL:
+              errors.append("constants.py: STAGING_LABEL missing 'テスト'")
 
           # --- 検証3: igo_admin.py が constants_env から _ENV を import しているか ---
           with open("igo_admin.py", "r", encoding="utf-8") as f:
