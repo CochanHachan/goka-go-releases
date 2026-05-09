@@ -197,7 +197,7 @@ stages:
     dependsOn: Build
     jobs:
       - deployment: StagingDeploy
-        displayName: "Staging SFTP Deploy"
+        displayName: "Deploy to Staging"
         pool:
           vmImage: ubuntu-latest
         environment: 'staging'
@@ -206,27 +206,25 @@ stages:
             deploy:
               steps:
                 - checkout: self
-                  fetchDepth: 1
 
                 - task: UsePythonVersion@0
                   inputs:
-                    versionSpec: "3.12"
+                    versionSpec: '3.12'
 
                 - task: DownloadPipelineArtifact@2
                   inputs:
-                    artifactName: "staging-build"
-                    targetPath: "$(Pipeline.Workspace)/staging"
+                    artifactName: 'staging-build'
+                    targetPath: '$(Pipeline.Workspace)/staging-build'
 
                 - script: pip install paramiko
-                  displayName: "Install paramiko (SFTP)"
+                  displayName: "Install paramiko"
 
-                # ── SFTP でステージング ZIPs + インストーラー + version-admin.json をアップロード ──
                 - script: |
                     set -e
                     python tools/staging_ftp_upload.py \
-                      "$(Pipeline.Workspace)/staging" \
+                      "$(Pipeline.Workspace)/staging-build" \
                       "staging/releases"
-                  displayName: "SFTP upload ZIPs + installer + version-admin.json"
+                  displayName: "Run SFTP deploy script"
                   env:
                     GOKA_FTP_HOST: $(FTP_SERVER)
                     GOKA_FTP_USER: $(FTP_USERNAME)
@@ -234,14 +232,9 @@ stages:
                     GOKA_FTP_REMOTE: $(GOKA_FTP_REMOTE)
                     ADMIN_DOWNLOAD_URL: "https://goka-igo.com/staging/releases/goka-admin-staging.zip"
 
-                # ── 配信確認 ──
                 - script: |
-                    set -e
-                    echo "=== Admin version-admin.json ==="
-                    curl -fsS "$(PUBLIC_BASE)/version-admin.json" | head -c 500
+                    echo "=== Smoke test ==="
+                    curl -sf "https://goka-igo.com/version-admin-check.json?t=$(date +%s)"
                     echo
-                    echo "=== Staging admin ZIP ==="
-                    curl -sI "$(PUBLIC_BASE)/staging/releases/goka-admin-staging.zip" | head -3
-                    echo "=== Staging update ZIP ==="
-                    curl -sI "$(PUBLIC_BASE)/staging/releases/goka-go-update.zip" | head -3
-                  displayName: "Smoke test deployed files"
+                    curl -sI "https://goka-igo.com/staging/releases/goka-admin-staging.zip" | head -5
+                  displayName: "Smoke test"

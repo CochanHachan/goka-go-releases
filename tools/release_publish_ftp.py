@@ -188,15 +188,15 @@ def main() -> int:
 
         print("Upload version.json ->", "/".join(rel_version))
         _upload_bytes(sftp, cwd_from_root, base_parts, rel_version, body)
-        # version-admin.json: 管理者アプリ自動更新用
+        # version-admin-check.json: 管理者アプリ自動更新用（Cloudflareキャッシュ回避）
         admin_manifest = {
             "version": ver,
-            "download_url": manifest["admin_download_url"],
+            "admin_download_url": manifest["admin_download_url"],
             "release_notes": manifest.get("release_notes", ""),
         }
         admin_body = json.dumps(admin_manifest, ensure_ascii=False, indent=2).encode("utf-8")
-        rel_version_admin = prefix_parts + ["version-admin.json"]
-        print("Upload version-admin.json ->", "/".join(rel_version_admin))
+        rel_version_admin = prefix_parts + ["version-admin-check.json"]
+        print("Upload version-admin-check.json ->", "/".join(rel_version_admin))
         _upload_bytes(sftp, cwd_from_root, base_parts, rel_version_admin, admin_body)
         print("Upload", go_name)
         _upload_file(sftp, cwd_from_root, base_parts, rel_go, zg)
