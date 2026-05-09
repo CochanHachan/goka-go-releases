@@ -80,7 +80,7 @@ def main() -> int:
 
     manifest = {
         "version": version,
-        "download_url": download_url,
+        "admin_download_url": download_url,
         "release_notes": notes,
     }
     body = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
