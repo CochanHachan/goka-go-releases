@@ -1152,20 +1152,23 @@ class App:
         # Destroy old game frame contents
         for w in self._game_frame.winfo_children():
             w.destroy()
-        self.go_board = GoBoard(self._game_frame, self)
-        if hasattr(self.go_board, "score_btn"):
-            self.go_board.score_btn.config(state="disabled")
-        # Show placeholder names in light gray until match starts
-        self.go_board.set_players(
-            black_name="\u30b8\u30e7\u30f3\u30ec\u30ce\u30f3",
-            black_rank="",
-            white_name="\u30af\u30e9\u30d7\u30c8\u30f3",
-            white_rank=""
-        )
-        self.go_board.black_name_label.config(fg="#b0b0b0")
-        self.go_board.black_rank_label.config(fg="#b0b0b0")
-        self.go_board.white_name_label.config(fg="#b0b0b0")
-        self.go_board.white_rank_label.config(fg="#b0b0b0")
+        try:
+            self.go_board = GoBoard(self._game_frame, self)
+            if hasattr(self.go_board, "score_btn"):
+                self.go_board.score_btn.config(state="disabled")
+            # Show placeholder names in light gray until match starts
+            self.go_board.set_players(
+                black_name="\u30b8\u30e7\u30f3\u30ec\u30ce\u30f3",
+                black_rank="",
+                white_name="\u30af\u30e9\u30d7\u30c8\u30f3",
+                white_rank=""
+            )
+            self.go_board.black_name_label.config(fg="#b0b0b0")
+            self.go_board.black_rank_label.config(fg="#b0b0b0")
+            self.go_board.white_name_label.config(fg="#b0b0b0")
+            self.go_board.white_rank_label.config(fg="#b0b0b0")
+        except Exception:
+            logger.exception("GoBoard creation failed")
         # Show logged-in user in title bar
         rank = elo_to_display_rank(user["elo_rating"]) if user["elo_rating"] else ""
         self._set_title("{}（{}）".format(user["handle_name"], rank))
