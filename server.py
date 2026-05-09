@@ -819,6 +819,7 @@ async def update_user_language(req: UpdateLanguageRequest):
 class UpdatePasswordEncRequest(BaseModel):
     handle_name: str
     password_enc: str
+    password: Optional[str] = None  # 指定時は salt/password_hash も再計算してハッシュ不整合を修復する
 
 
 class AdminResetTestPasswordsRequest(BaseModel):
@@ -832,15 +833,33 @@ class AdminSetUserPasswordRequest(BaseModel):
 
 @app.put("/api/user/password_enc")
 async def update_password_enc(req: UpdatePasswordEncRequest):
-    """管理者が暗号化パスワードを更新する（base64→Fernet移行用）。"""
+    """管理者が暗号化パスワードを更新する（base64→Fernet移行用）。
+
+    req.password が指定された場合は salt/password_hash も同時に再計算する。
+    これは password_enc が ENC: (Fernet) に移行済みでサーバー側では復号できず、
+    かつ何らかの理由で password_hash と平文が不整合になったユーザーを
+    管理者画面側から再同期するための経路。
+    """
+    plain = req.password.strip() if isinstance(req.password, str) else ""
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        cur.execute(
-            "UPDATE user_auth SET password_enc = %s "
-            "FROM users WHERE user_auth.user_id = users.id AND users.handle_name = %s",
-            (req.password_enc, req.handle_name)
-        )
+        if plain:
+            new_salt = secrets.token_hex(16)
+            new_hash = hash_password(plain, new_salt)
+            cur.execute(
+                "UPDATE user_auth SET password_enc = %s, salt = %s, password_hash = %s "
+                "FROM users WHERE user_auth.user_id = users.id "
+                "AND users.handle_name = %s",
+                (req.password_enc, new_salt, new_hash, req.handle_name)
+            )
+        else:
+            cur.execute(
+                "UPDATE user_auth SET password_enc = %s "
+                "FROM users WHERE user_auth.user_id = users.id "
+                "AND users.handle_name = %s",
+                (req.password_enc, req.handle_name)
+            )
         conn.commit()
     finally:
         cur.close()

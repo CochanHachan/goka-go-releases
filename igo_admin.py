@@ -377,6 +377,9 @@ class AdminApp:
         self._opponents = {}
         self._online_lock = threading.Lock()
         self._refresh_gen = 0  # 世代カウンター: 手動リフレッシュ時にインクリメントし、古い自動リフレッシュ結果を破棄する
+        # 平文を伴う password_enc 再同期（salt/password_hash 修復）をセッション中
+        # 1ハンドルにつき1回だけ実行するためのキャッシュ。
+        self._auth_realigned = set()
         self._build_main()
         self._ws.restore_window(self.root, default_geometry="1000x900")
         self._start_heartbeat_listener()
@@ -1331,9 +1334,17 @@ class AdminApp:
     # =================================================================
     # パスワード移行
     # =================================================================
-    def _migrate_password_enc(self, handle, new_enc):
+    def _migrate_password_enc(self, handle, new_enc, password=None):
+        """password_enc をサーバーに送信する。
+
+        password を渡すと、サーバー側で salt/password_hash も同じ平文で
+        再計算され、ハッシュ不整合（管理画面では正しい平文が表示されているのに
+        ログインできない状態）が修復される。
+        """
         try:
             data = {"handle_name": handle, "password_enc": new_enc}
+            if password:
+                data["password"] = password
             self._api_put("/api/user/password_enc", data)
         except Exception as e:
             print("Password migration error:", handle, e)
@@ -1438,9 +1449,19 @@ class AdminApp:
             display_rank = elo_to_display_rank(elo_int) if elo_int else u.get("rank", "")
             pw_enc = u.get("password_enc", "")
             pw_plain = admin_decrypt(pw_enc)
-            if pw_enc.startswith("B64:") and pw_plain and pw_plain != "（復号不可）":
-                new_enc = admin_encrypt(pw_plain)
-                self._migrate_password_enc(handle, new_enc)
+            if pw_plain and pw_plain != "（復号不可）":
+                if pw_enc.startswith("B64:"):
+                    # B64: 仮保管 → ENC: Fernet 暗号文へ移行する。同時にサーバーの
+                    # salt/password_hash も再計算してハッシュ不整合を防ぐ。
+                    new_enc = admin_encrypt(pw_plain)
+                    self._migrate_password_enc(handle, new_enc, password=pw_plain)
+                    self._auth_realigned.add(handle)
+                elif handle not in self._auth_realigned:
+                    # 既に ENC: 化済み。サーバー側では復号できないため、過去に発生した
+                    # password_hash 不整合を修復するため、復号できた平文を一度だけ
+                    # サーバーに送って salt/password_hash を再同期する。
+                    self._migrate_password_enc(handle, pw_enc, password=pw_plain)
+                    self._auth_realigned.add(handle)
             created = u.get("created_at", "")
             user_id = u.get("id", "")
             opponent = u.get("opponent", "")
